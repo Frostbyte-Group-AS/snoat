@@ -353,3 +353,13 @@ gapet lukkes, er neste steg et førsteparts endepunkt montert på kundens eget
 domene (`/_snoat/*` via Caddy-ruten), slik at sporingen blir same-origin uten
 CORS. Det er bevisst ikke bygget ennå.
 
+---
+
+## August 2026: GitHub Webhook & Auto-Deploy Aktivert (SnoatAuth)
+
+* **Status:** Verifisert & Operativ.
+* **GitHub App:** `SnoatAuth` (`app_id: 4426927`, installasjon `150187645`).
+* **Webhook Endpoint:** `https://api.snoat.com/api/webhooks/github` (JSON payload, verifisert med `GITHUB_WEBHOOK_SECRET` HMAC-SHA256 signatur).
+* **Abonnerte eventer:** `push` (aktivert under GitHub App settings `Permissions & events -> Subscribe to events`).
+* **Verifisering:** `git push` til `main` på `DSandleman/mittvel` trigget automatisk bygg (Node 22), helsesjekk og Caddy-rutebytte med 0s nedetid.
+
