@@ -33,8 +33,14 @@ export interface Project {
    * av `deployments.status`, og en stopp rører ingen deployment.
    */
   stopped_at: string | null;
-  /** Planen prosjektet kjører på ('free', 'pro', 'business'). */
+  /** Planen prosjektet kjører på ('free', 'pro', 'business', 'agency'). */
   plan?: SubscriptionTier;
+  /**
+   * Kallerens egen ID for prosjektet, satt ved opprettelse over maskin-APIet.
+   * Unik per bruker, og det som gjør `POST /api/projects` idempotent.
+   * NULL for prosjekter opprettet fra dashboardet.
+   */
+  external_ref: string | null;
   created_at: string;
 }
 
@@ -74,6 +80,21 @@ export interface AnalyticsSummary {
 
 export type AnalyticsDimension = "path" | "referrer" | "browser" | "os" | "device" | "country";
 
+/**
+ * Langlevd nøkkel for maskin-til-maskin-tilgang. Speiler `public.api_keys`
+ * (migrasjon 0010). Klartekstnøkkelen finnes ikke her – kun sha256-hashen.
+ */
+export interface ApiKey {
+  id: string;
+  user_id: string;
+  name: string;
+  token_prefix: string;
+  token_hash: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
 /** Kobling mellom en Snoat-bruker og en GitHub App-installasjon. */
 export interface GithubInstallation {
   id: string;
@@ -96,7 +117,19 @@ export interface Deployment {
   created_at: string;
 }
 
-export type SubscriptionTier = "free" | "pro" | "business";
+/**
+ * `agency` er ikke en plan noen kan kjøpe.
+ *
+ * Den finnes for integrasjonspartnere som drifter mange kundesider under én
+ * konto hos oss (LeadLab/«Snekkeren»), og settes for hånd med
+ * `source = 'invoice'`. Å modellere det som en ordinær tier – i stedet for et
+ * «hvis dette er LeadLab»-unntak spredt utover sperrepunktene – gjør at
+ * `entitlementFor()` og `assertCanDeploy()` går sin vante vei.
+ *
+ * Den holdes utenfor plankatalogen i `services/markets.ts`, slik at den ikke
+ * dukker opp på prissiden.
+ */
+export type SubscriptionTier = "free" | "pro" | "business" | "agency";
 
 export type SubscriptionStatus =
   | "active"

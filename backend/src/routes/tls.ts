@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { slugFromHostname } from "../lib/caddy.js";
+import { parentDomain, slugFromHostname } from "../lib/caddy.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
 
@@ -39,15 +39,27 @@ tlsPermission.get("/tls-ask", async (c) => {
 
   const slug = slugFromHostname(domain);
 
-  let query = supabase.from("projects").select("id");
-  
-  if (slug) {
-    query = query.eq("name", slug);
-  } else {
-    query = query.eq("custom_domain", domain);
-  }
+  const lookup = async (column: "name" | "custom_domain", value: string) =>
+    await supabase.from("projects").select("id").eq(column, value).maybeSingle();
 
-  const { data, error } = await query.maybeSingle();
+  let { data, error } = slug
+    ? await lookup("name", slug)
+    : await lookup("custom_domain", domain);
+
+  // Et eget domene dekker subdomenene sine, siden en flerleietaker-app gir hver
+  // kunde sitt eget `<kunde>.domenet` og de ikke kan registreres én for én.
+  // Oppslaget gjøres kun når navnet ikke traff et prosjekt direkte, slik at et
+  // eksplisitt registrert subdomene alltid vinner over foreldredomenet.
+  //
+  // Merk at on-demand utsteder ett sertifikat per navn, ikke ett wildcard:
+  // Let's Encrypt teller 50 per registrert domene per uke, så en app som får
+  // mange nye subdomener på kort tid kan møte den grensen.
+  if (!slug && !error && !data) {
+    const parent = parentDomain(domain);
+    if (parent) {
+      ({ data, error } = await lookup("custom_domain", parent));
+    }
+  }
 
   if (error) {
     // Fail closed. Caddy prøver igjen ved neste handshake.

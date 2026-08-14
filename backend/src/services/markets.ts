@@ -85,9 +85,21 @@ export const DEFAULT_MARKET: MarketId = "no";
  * flytte prislappen fra uke til uke.
  */
 export const PLAN_PRICES: Record<MarketId, Record<SubscriptionTier, number>> = {
-  no: { free: 0, pro: 19900, business: 79900 },
-  eu: { free: 0, pro: 1900, business: 7900 },
+  // `agency` har ingen listepris. Den avtales og faktureres utenfor Stripe, og
+  // vises aldri i katalogen – se `planCatalogue()`. Nullen står her fordi typen
+  // krever en verdi per tier, ikke fordi planen er gratis.
+  no: { free: 0, pro: 19900, business: 79900, agency: 0 },
+  eu: { free: 0, pro: 1900, business: 7900, agency: 0 },
 };
+
+/**
+ * Planer som ikke skal vises fram.
+ *
+ * `planCatalogue()` serverer både det innloggede `/api/billing` og den åpne
+ * `/api/pricing`. Uten dette filteret ville byråplanen dukket opp på
+ * landingssiden med prisen 0 kr – altså som en gratis Business-plan.
+ */
+const UNLISTED_PLANS: ReadonlySet<SubscriptionTier> = new Set(["agency"]);
 
 /** Antall desimaler i valutaens minste enhet. Begge våre valutaer har to. */
 export const CURRENCY_MINOR_UNITS = 100;
@@ -219,13 +231,15 @@ export interface PlanOffer {
  * ikke kan komme i utakt med dashboardet.
  */
 export function planCatalogue(marketId: MarketId): PlanOffer[] {
-  return (Object.keys(PLAN_LIMITS) as SubscriptionTier[]).map((plan) => ({
-    id: plan,
-    limits: PLAN_LIMITS[plan],
-    price: priceFor(marketId, plan),
-    priceIncludingVat: priceIncludingVat(marketId, plan),
-    currency: MARKETS[marketId].currency,
-    purchasable:
-      plan !== "free" && isStripeConfigured() && priceIdForPlan(plan as PaidTier) !== null,
-  }));
+  return (Object.keys(PLAN_LIMITS) as SubscriptionTier[])
+    .filter((plan) => !UNLISTED_PLANS.has(plan))
+    .map((plan) => ({
+      id: plan,
+      limits: PLAN_LIMITS[plan],
+      price: priceFor(marketId, plan),
+      priceIncludingVat: priceIncludingVat(marketId, plan),
+      currency: MARKETS[marketId].currency,
+      purchasable:
+        plan !== "free" && isStripeConfigured() && priceIdForPlan(plan as PaidTier) !== null,
+    }));
 }

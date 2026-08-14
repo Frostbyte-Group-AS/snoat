@@ -350,6 +350,76 @@ export async function retirePrevious(
   return removed;
 }
 
+/**
+ * Fjerner containere for prosjektet som ikke er den `keep` peker på.
+ *
+ * Samme jobb som `retirePrevious`, men uten en LogStream å skrive til – den
+ * finnes bare mens en deployment kjører. En utrulling som ble avbrutt midtveis
+ * (backend drept mellom helsesjekk og opprydding) etterlater to kjørende
+ * containere for samme prosjekt, og hver av dem holder på sin CPU-andel og sitt
+ * minne i det uendelige. Før ble dette bare logget som en advarsel.
+ */
+export async function removeStaleContainers(project: Project, keep: string): Promise<string[]> {
+  const stale = (await listProjectContainers(project)).filter((container) => container.name !== keep);
+  const removed: string[] = [];
+
+  for (const container of stale) {
+    try {
+      await stopAndRemove(container.id);
+      removed.push(container.name);
+      logger.info({ project: project.name, container: container.name }, "Fjernet foreldreløs container");
+    } catch (error) {
+      logger.warn(
+        { project: project.name, container: container.name, err: error },
+        "Kunne ikke fjerne foreldreløs container",
+      );
+    }
+  }
+
+  return removed;
+}
+
+/**
+ * Fjerner containere som tilhører prosjekter som ikke finnes lenger.
+ *
+ * `removeStaleContainers` rydder rester av *samme* prosjekt, men den slår opp på
+ * prosjekt-ID – så en container fra et prosjekt som er slettet fra databasen blir
+ * aldri sett av noen. Den fortsetter å kjøre, holder på minnet og CPU-andelen sin,
+ * og overlever hver eneste restart. Vi fant en slik som hadde kjørt siden et
+ * prosjekt som ikke lenger eksisterer.
+ *
+ * Kjøres ved oppstart, når vi uansett leser hele prosjektlisten. Tar bare
+ * containere vi selv har merket, og bare når vi har en fullstendig liste å
+ * sammenligne mot – ellers ville en tom liste sett ut som «slett alt».
+ */
+export async function removeContainersForUnknownProjects(knownProjectIds: Set<string>): Promise<string[]> {
+  if (knownProjectIds.size === 0) return [];
+
+  const infos = await docker.listContainers({
+    all: true,
+    filters: { label: [`${LABEL_MANAGED}=true`] },
+  });
+
+  const removed: string[] = [];
+
+  for (const info of infos) {
+    const projectId = info.Labels?.[LABEL_PROJECT];
+    // Uten prosjekt-ID vet vi ikke hva den hører til, og da lar vi den stå.
+    if (!projectId || knownProjectIds.has(projectId)) continue;
+
+    const name = (info.Names[0] ?? "").replace(/^\//, "");
+    try {
+      await stopAndRemove(info.Id);
+      removed.push(name);
+      logger.info({ container: name, projectId }, "Fjernet container fra slettet prosjekt");
+    } catch (error) {
+      logger.warn({ container: name, projectId, err: error }, "Kunne ikke fjerne container fra slettet prosjekt");
+    }
+  }
+
+  return removed;
+}
+
 /** Stopper og fjerner alle containere for prosjektet. Brukes når det slettes. */
 export async function removeContainer(project: Project): Promise<void> {
   for (const container of await listProjectContainers(project)) {

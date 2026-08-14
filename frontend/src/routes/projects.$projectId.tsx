@@ -229,18 +229,35 @@ function ProjectDetailPage() {
                 {repoLabel}
               </a>
 
-              {/* URL-en skjules når appen er stoppet. En lenke som ser levende
-                  ut, men gir 502, er verre enn ingen lenke. */}
+              {/* Begge adressene appen svarer på, ikke bare Snoat-adressen. Har
+                  kunden koblet til et eget domene, er det som regel det hen
+                  faktisk bruker – og fram til nå måtte hen inn i DNS-fanen for å
+                  se om det virket. Lenkene skjules når appen er stoppet: en
+                  lenke som ser levende ut, men gir 502, er verre enn ingen. */}
               {latestDeployment?.url && !isStopped ? (
-                <a
-                  href={latestDeployment.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-primary transition-opacity hover:opacity-80 font-medium"
-                >
-                  <span className="material-symbols-outlined icon-sm">link</span>
-                  {latestDeployment.url.replace(/^https?:\/\//, "")}
-                </a>
+                <>
+                  <a
+                    href={latestDeployment.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-primary transition-opacity hover:opacity-80 font-medium"
+                  >
+                    <span className="material-symbols-outlined icon-sm">link</span>
+                    {latestDeployment.url.replace(/^https?:\/\//, "")}
+                  </a>
+
+                  {project.custom_domain && (
+                    <a
+                      href={`https://${project.custom_domain}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-primary transition-opacity hover:opacity-80 font-medium"
+                    >
+                      <span className="material-symbols-outlined icon-sm">link</span>
+                      {project.custom_domain}
+                    </a>
+                  )}
+                </>
               ) : (
                 <span className="inline-flex items-center gap-1.5 text-on-surface-variant/60">
                   <span className="material-symbols-outlined icon-sm">link_off</span>
@@ -313,9 +330,8 @@ function ProjectDetailPage() {
           )}
 
           {activeTab === "dns" && (
-            <DnsSettingsTab 
-              project={project} 
-              isLive={latestDeployment?.status === "success"}
+            <DnsSettingsTab
+              project={project}
               onSaveDomain={(domain) => domainMutation.mutate(domain)}
               isSaving={domainMutation.isPending}
             />

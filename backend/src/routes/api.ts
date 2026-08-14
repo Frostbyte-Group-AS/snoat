@@ -5,6 +5,11 @@ import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware
 import * as analytics from "../services/analytics.js";
 import { invalidateHostMap } from "../services/analytics-ingest.js";
 import * as deploy from "../services/deploy.js";
+import { ensureProjectRoute, type RouteStatus } from "../services/deploy.js";
+import { checkDomain } from "../services/domain-status.js";
+import { assertSafeRepoUrl } from "../services/git.js";
+import { entitlementFor } from "../services/plans.js";
+import { logger } from "../lib/logger.js";
 import { DeployError, type Deployment, type ErrorDetail } from "../types.js";
 import { billing } from "./billing.js";
 import { githubApi } from "./github.js";
@@ -23,6 +28,166 @@ api.route("/github", githubApi);
  * `/api` i `index.ts`, akkurat som GitHub-webhooken.
  */
 api.route("/billing", billing);
+
+/**
+ * Oppretter et prosjekt.
+ *
+ * Dashboardet trenger ikke dette – det skriver raden rett i Supabase med sin
+ * egen sesjon og RLS. Endepunktet finnes for **integrasjoner**: LeadLab har
+ * ingen nettleser og ingen brukersesjon å skrive med, men skal likevel kunne
+ * opprette en kundeside hos oss. Se `middleware/auth.ts` for API-nøkkelen.
+ *
+ * ⚠️ Merk at plangrensene *ikke* håndheves her, like lite som for dashboardet.
+ * Et prosjekt uten deployment koster ingenting; det er `startDeployment()` som
+ * sperrer, og den sperrer likt uansett hvem som ba om bygget.
+ */
+api.post("/projects", async (c) => {
+  const body = await c.req.json<{
+    name?: unknown;
+    repoUrl?: unknown;
+    externalRef?: unknown;
+    githubInstallationId?: unknown;
+    buildCommand?: unknown;
+    envVars?: unknown;
+    staticOutputDir?: unknown;
+    staticSpaFallback?: unknown;
+  }>().catch(() => null);
+
+  if (!body) throw new HTTPException(400, { message: "Kroppen må være gyldig JSON" });
+
+  const name = typeof body.name === "string" ? body.name.trim().toLowerCase() : "";
+  const repoUrl = typeof body.repoUrl === "string" ? body.repoUrl.trim() : "";
+
+  // Samme regex som check-constrainten i databasen. Vi gjentar den her for å
+  // kunne svare 400 med en forklaring, i stedet for å la Postgres svare 500 med
+  // navnet på en constraint kalleren aldri har hørt om. `name` er subdomenet.
+  if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(name)) {
+    throw new HTTPException(400, {
+      message:
+        "«name» må være en gyldig subdomene-slug: små bokstaver, tall og bindestrek, " +
+        "1–63 tegn, og kan ikke begynne eller slutte med bindestrek.",
+    });
+  }
+
+  try {
+    assertSafeRepoUrl(repoUrl);
+  } catch {
+    throw new HTTPException(400, { message: `Ugyldig repository-URL: «${repoUrl}»` });
+  }
+
+  const userId = c.get("userId");
+  const externalRef =
+    typeof body.externalRef === "string" && body.externalRef.trim()
+      ? body.externalRef.trim()
+      : null;
+
+  // Idempotens. Et nettverksbrudd etter at raden ble skrevet, men før svaret
+  // kom fram, gjør at kalleren prøver igjen – og uten dette ville kunden fått
+  // to prosjekter. Vi svarer 200 (ikke 201) med den eksisterende raden, slik at
+  // kalleren kan se forskjell på «jeg lagde den nå» og «den fantes».
+  if (externalRef) {
+    const { data: existing, error } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("external_ref", externalRef)
+      .maybeSingle();
+
+    if (error) throw new HTTPException(500, { message: `Databasefeil: ${error.message}` });
+    if (existing) return c.json({ project: existing, created: false }, 200);
+  }
+
+  const installationId = Number(body.githubInstallationId);
+
+  const insert = {
+    user_id: userId,
+    name,
+    repo_url: repoUrl,
+    external_ref: externalRef,
+    build_command: typeof body.buildCommand === "string" ? body.buildCommand : null,
+    env_vars:
+      body.envVars && typeof body.envVars === "object" && !Array.isArray(body.envVars)
+        ? (body.envVars as Record<string, string>)
+        : {},
+    static_output_dir:
+      typeof body.staticOutputDir === "string" && body.staticOutputDir.trim()
+        ? body.staticOutputDir.trim()
+        : null,
+    static_spa_fallback: body.staticSpaFallback === true,
+    // Uten denne kan repoet ikke være privat: kloningen har da ingen
+    // installasjon å be om et token fra. Se `authenticatedCloneUrl()`.
+    github_installation_id:
+      Number.isSafeInteger(installationId) && installationId > 0 ? installationId : null,
+    // Prosjektet arver kontoens plan. `resourcesFor()` foretrekker prosjektets
+    // egen plan framfor kontoens, så uten dette ville en byråkonto fått
+    // gratisplanens 256 MB på hver container den startet.
+    plan: (await entitlementFor(userId)).plan,
+  };
+
+  const { data, error } = await supabase.from("projects").insert(insert).select("*").single();
+
+  if (error) {
+    // 23505 = unique_violation. To indekser kan treffe: (user_id, name) og
+    // (user_id, external_ref). Begge betyr «dette finnes allerede», som er en
+    // konflikt kalleren kan handle på – ikke en serverfeil.
+    if (error.code === "23505") {
+      throw new HTTPException(409, {
+        message: `Du har allerede et prosjekt som heter «${name}».`,
+      });
+    }
+    throw new HTTPException(500, { message: `Kunne ikke opprette prosjektet: ${error.message}` });
+  }
+
+  logger.info({ userId, project: name, externalRef, via: c.get("authKind") }, "Prosjekt opprettet");
+
+  return c.json({ project: data, created: true }, 201);
+});
+
+/**
+ * Sletter et prosjekt, og rydder opp etter det.
+ *
+ * Dashboardet har historisk slettet raden direkte via Supabase, og det er en
+ * felle: containerne og Caddy-ruten blir stående igjen, og uten raden finnes
+ * ikke lenger prosjekt-ID-en `no.snoat.project-id`-labelen peker på. Da må de
+ * ryddes for hånd, av noen som først må finne ut at de er der.
+ *
+ * Rekkefølgen er derfor: riv ned først, slett raden etterpå. Feiler nedrivingen,
+ * beholder vi raden – et prosjekt vi fortsatt kan finne igjen er langt bedre enn
+ * en foreldreløs container.
+ */
+api.delete("/projects/:projectId", async (c) => {
+  const project = await loadOwnedProject(c, c.req.param("projectId"));
+
+  if (deploy.isDeploying(project.id)) {
+    throw new HTTPException(409, {
+      message: "Prosjektet bygges akkurat nå. Vent til bygget er ferdig før du sletter det.",
+      cause: { code: "deploy.building_now" } satisfies ErrorDetail,
+    });
+  }
+
+  // `markStopped: false` – vi skal ikke skrive `stopped_at` på en rad som er i
+  // ferd med å forsvinne. Det ville bare vært en ekstra skriving som kan feile.
+  await deploy.teardownProject(project, false);
+
+  const { error } = await supabase.from("projects").delete().eq("id", project.id);
+
+  if (error) {
+    throw new HTTPException(500, {
+      message:
+        `Applikasjonen er tatt ned, men prosjektraden kunne ikke slettes: ${error.message}. ` +
+        `Prøv igjen – nedrivingen er idempotent.`,
+    });
+  }
+
+  // Statistikken slår opp prosjekt på vertsnavn i en cachet tabell. Uten dette
+  // ville treff mot det slettede subdomenet fortsatt blitt tilskrevet raden som
+  // ikke lenger finnes.
+  invalidateHostMap();
+
+  logger.info({ project: project.name, via: c.get("authKind") }, "Prosjekt slettet");
+
+  return c.json({ deleted: true });
+});
 
 /**
  * Starter en deployment.
@@ -110,22 +275,43 @@ api.patch("/projects/:projectId/domain", async (c) => {
   // domene må være kjent for ingesten før den første besøkende kommer.
   invalidateHostMap();
 
-  // Hvis prosjektet kjører, oppdater Caddy atomisk
-  if (!project.stopped_at) {
-    try {
-      const route = await import("../lib/caddy.js").then(m => m.getAppRoute(project.name));
-      if (route) {
-        await import("../lib/caddy.js").then(m => m.restoreAppRoute(project.name, normalized, route));
-      }
-    } catch (err) {
-      // Vi feiler ikke forespørselen hvis Caddy-oppdateringen feilet, fordi databasen er oppdatert.
-      // Neste deployment eller oppstart vil uansett rute riktig.
-      const logger = await import("../lib/logger.js").then(m => m.logger);
-      logger.error({ project: project.name, err }, "Kunne ikke oppdatere Caddy-rute med nytt domene");
-    }
+  // Skriv ruten på nytt med det nye vertsnavnet. `ensureProjectRoute` oppretter
+  // ruten hvis den mangler – tidligere ble den bare *endret* når den allerede
+  // fantes, og et prosjekt uten rute i Caddy fikk dermed lagret domenet i
+  // databasen uten at noe pekte dit. TLS-sjekken leser databasen og sa ja, så
+  // kunden fikk et gyldig sertifikat for et domene som svarte «ingen applikasjon
+  // er rutet til dette domenet».
+  //
+  // Feiler den, skal svaret si det. Databasen er oppdatert, så neste deployment
+  // eller backend-oppstart retter det opp – men kunden skal ikke få vite at
+  // domenet virker når det ikke gjør det.
+  let route: RouteStatus;
+  try {
+    route = await ensureProjectRoute({ ...project, custom_domain: normalized });
+  } catch (err) {
+    logger.error({ project: project.name, err }, "Kunne ikke oppdatere Caddy-rute med nytt domene");
+    throw new HTTPException(502, {
+      message: "Domenet ble lagret, men ruten kunne ikke settes opp. Prøv å deploye prosjektet på nytt.",
+    });
   }
 
-  return c.json({ success: true, custom_domain: normalized });
+  return c.json({ success: true, custom_domain: normalized, route });
+});
+
+/**
+ * Måler om det egne domenet faktisk virker: DNS, rute og sertifikat.
+ *
+ * Ligger på GET slik at DNS-fanen kan spørre på nytt så ofte kunden vil mens hen
+ * venter på propagering. Sjekken utfører ingen endringer.
+ */
+api.get("/projects/:projectId/domain/status", async (c) => {
+  const project = await loadOwnedProject(c, c.req.param("projectId"));
+
+  if (!project.custom_domain) {
+    throw new HTTPException(404, { message: "Prosjektet har ikke noe eget domene." });
+  }
+
+  return c.json(await checkDomain(project, project.custom_domain));
 });
 
 /** Status og logger for én deployment. Dashboardet bruker Realtime i stedet. */

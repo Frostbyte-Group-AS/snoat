@@ -172,6 +172,10 @@ billing.post("/checkout", async (c) => {
         // avgiftsplikt automatisk. Det er den enkleste veien inn i EU-markedet:
         // B2B krever ingen VAT OSS-registrering fra vår side.
         tax_id_collection: { enabled: true },
+        // Gir kunden et «Har du en kampanjekode?»-felt i kassen. Kan ikke stå
+        // sammen med `discounts` – da avviser Stripe sesjonen – så en rabatt vi
+        // vil påføre selv må erstatte denne, ikke legges ved siden av.
+        allow_promotion_codes: true,
       },
       {
         idempotencyKey: `checkout:${userId}:${projectId ?? "account"}:${plan}:${market.currency}:${Math.floor(Date.now() / 300_000)}`,

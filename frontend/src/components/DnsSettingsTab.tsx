@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { Project } from "@/lib/database.types";
-import { projectHostname, projectUrl, snoatServerIp } from "@/lib/platform";
+import { getDomainStatus, type DomainCheck, type DomainStatus } from "@/lib/api";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { projectHostname, snoatServerIp } from "@/lib/platform";
 
 /** Hvor lenge «Kopiert!» vises på knappen. */
 const COPY_RESET_MS = 2000;
@@ -17,14 +20,12 @@ interface DnsRecord {
   description: string;
 }
 
-export function DnsSettingsTab({ 
-  project, 
-  isLive,
+export function DnsSettingsTab({
+  project,
   onSaveDomain,
   isSaving
-}: { 
-  project: Project; 
-  isLive: boolean;
+}: {
+  project: Project;
   onSaveDomain: (domain: string | null) => void;
   isSaving: boolean;
 }) {
@@ -32,6 +33,15 @@ export function DnsSettingsTab({
   const [domain, setDomain] = useState(project.custom_domain || "");
   const [mode, setMode] = useState<DomainMode>("root");
   const [subdomain, setSubdomain] = useState("app");
+
+  // `useState` leser bare startverdien ved første render. Monteres fanen før
+  // prosjektet er ferdig lastet – eller lastes prosjektet på nytt etter en
+  // lagring – ble feltet stående tomt selv om prosjektet har et domene. Da viste
+  // knappen «Fjern», og ett klikk nullet domenet uten at noen hadde bedt om det.
+  // Vi følger derfor den lagrede verdien når den endrer seg.
+  useEffect(() => {
+    setDomain(project.custom_domain || "");
+  }, [project.custom_domain]);
 
   const snoatHostname = projectHostname(project.name);
   const cleanDomain = normalizeDomain(domain);
@@ -74,6 +84,23 @@ export function DnsSettingsTab({
 
   const isFreePlan = (project.plan ?? "free") === "free";
 
+  const statusQuery = useQuery({
+    queryKey: ["domain-status", project.id],
+    queryFn: () => getDomainStatus(project.id),
+    enabled: Boolean(project.custom_domain),
+    // DNS-propagering tar minutter til timer. Vi henter på nytt i bakgrunnen så
+    // panelet blir grønt av seg selv, uten at kunden må lure på om hen skal
+    // laste siden på nytt. Når alt stemmer er det ingenting mer å vente på.
+    refetchInterval: (q) => (q.state.data?.ready ? false : 30_000),
+  });
+
+  const status = statusQuery.data;
+
+  // Detaljene er bare interessante mens noe mangler. Virker domenet, foldes alt
+  // sammen og fanen viser én linje som sier nettopp det – det er hele poenget
+  // med å dele den opp.
+  const defaultOpen = status?.ready ? [] : ["status", "records"];
+
   return (
     <div className="flex flex-col gap-6">
       {/* Sperre for Free-plan */}
@@ -91,46 +118,32 @@ export function DnsSettingsTab({
         </div>
       )}
 
-      {/* Prosjektets nåværende status og Snoat-adresse */}
-      <div className="floating-card p-6 md:p-8 flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="font-label text-label-md text-on-surface-variant">{t("dns.default_address")}</span>
-            {isLive ? (
-              <span className="font-label text-label-md text-secondary underline decoration-secondary underline-offset-4 font-semibold px-1">
-                {t("dns.status_live")}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-variant/40 text-on-surface-variant px-2.5 py-0.5 font-label text-xs">
-                <span className="h-1.5 w-1.5 rounded-full bg-on-surface-variant/60" />
-                {t("dns.status_not_deployed")}
-              </span>
-            )}
+      {/* Domenekonfigurasjon. Snoat-adressen sto tidligere i et eget kort her;
+          den og det egne domenet er nå lenker øverst på prosjektsiden, der man
+          leter etter dem. */}
+      <div className="floating-card p-6 md:p-8 flex flex-col gap-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-headline text-headline-md text-on-surface">{t("dns.connect_title")}</h2>
+            <p className="mt-1 font-body text-body-md text-on-surface-variant">
+              {t("dns.connect_desc")}
+            </p>
           </div>
 
-          <a
-            href={projectUrl(project.name)}
-            target="_blank"
-            rel="noreferrer"
-            className="font-mono text-sm text-primary hover:underline"
-          >
-            {snoatHostname}
-          </a>
-        </div>
-
-        <p className="font-body text-xs text-on-surface-variant flex items-center gap-2">
-          <span className="material-symbols-outlined icon-sm text-primary">lock</span>
-          {t("dns.ssl_note")}
-        </p>
-      </div>
-
-      {/* Domenekonfigurasjon */}
-      <div className="floating-card p-6 md:p-8 flex flex-col gap-6">
-        <div>
-          <h2 className="font-headline text-headline-md text-on-surface">{t("dns.connect_title")}</h2>
-          <p className="mt-1 font-body text-body-md text-on-surface-variant">
-            {t("dns.connect_desc")}
-          </p>
+          {project.custom_domain && status && (
+            <span
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 font-label text-xs ${
+                status.ready ? "bg-secondary/15 text-secondary" : "bg-surface-variant/40 text-on-surface-variant"
+              }`}
+            >
+              <span className="material-symbols-outlined icon-sm">
+                {status.ready ? "check_circle" : "hourglass_top"}
+              </span>
+              {status.ready
+                ? t("dns.badge_connected", "Koblet til")
+                : t("dns.badge_waiting", "Venter")}
+            </span>
+          )}
         </div>
 
         <div className="flex flex-col gap-4 md:flex-row md:items-center justify-between">
@@ -145,29 +158,47 @@ export function DnsSettingsTab({
                 placeholder={isFreePlan ? t("project_plan.gated_dns_title") : "dittdomene.no"}
                 className="flex-1 rounded-xl bg-surface-container px-4 py-3 font-mono text-sm text-on-surface outline-none ring-primary/60 placeholder:text-on-surface-variant/40 focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
               />
+              {/* Lagre-knappen lagrer, og bare det. Den tømte tidligere domenet
+                  når feltet var tomt, slik at ett klikk kunne koble fra et
+                  domene som virket – uten å spørre. Frakobling har nå sin egen
+                  knapp under, med bekreftelse. */}
               <button
                 type="button"
-                onClick={() => onSaveDomain(cleanDomain || null)}
-                disabled={isFreePlan || isSaving || (isSavedDomain && !cleanDomain) || (!cleanDomain && !project.custom_domain)}
+                onClick={() => cleanDomain && onSaveDomain(cleanDomain)}
+                disabled={isFreePlan || isSaving || !cleanDomain || isSavedDomain}
                 className={`shrink-0 rounded-xl px-4 py-3 font-label text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                   isSaving
                     ? "bg-surface-variant/40 text-on-surface-variant cursor-wait"
                     : isSavedDomain && cleanDomain
                       ? "bg-secondary/15 text-secondary"
-                      : cleanDomain
-                        ? "bg-primary text-on-primary hover:bg-primary/90"
-                        : "bg-error/15 text-error hover:bg-error/25"
+                      : "bg-primary text-on-primary hover:bg-primary/90"
                 }`}
               >
-                {isSaving 
-                  ? t("common.saving", "Lagrer...") 
-                  : isSavedDomain && cleanDomain 
-                    ? t("common.saved", "Lagret") 
-                    : cleanDomain 
-                      ? t("common.save", "Lagre") 
-                      : t("common.remove", "Fjern")}
+                {isSaving
+                  ? t("common.saving", "Lagrer...")
+                  : isSavedDomain && cleanDomain
+                    ? t("common.saved", "Lagret")
+                    : t("common.save", "Lagre")}
               </button>
             </div>
+
+            {project.custom_domain && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(t("dns.disconnect_confirm", {
+                    domain: project.custom_domain,
+                    defaultValue: "Koble fra {{domain}}? Siden slutter å svare på dette domenet til det kobles til igjen.",
+                  }))) {
+                    onSaveDomain(null);
+                  }
+                }}
+                disabled={isSaving}
+                className="self-start font-label text-xs text-on-surface-variant underline underline-offset-4 transition-colors hover:text-error disabled:opacity-50"
+              >
+                {t("dns.disconnect", "Koble fra {{domain}}", { domain: project.custom_domain })}
+              </button>
+            )}
           </div>
 
           {mode === "subdomain" && (
@@ -209,23 +240,58 @@ export function DnsSettingsTab({
         </div>
       </div>
 
-      {/* DNS Oppføringer (Vises KUN når bruker har fylt inn et domene) */}
+      {/* Detaljene, sammenfoldet. Tidligere lå tilstand og oppføringer utbrettet
+          under hverandre og fylte skjermen med informasjon som bare er relevant
+          mens man setter opp domenet. */}
       {hasDomain && (
-        <div className="floating-card p-6 md:p-8 flex flex-col gap-6 animate-in fade-in-50 slide-in-from-top-2 duration-300">
-          <div>
-            <h2 className="font-headline text-headline-md text-on-surface">{t("dns.records_title")}</h2>
-            <p className="mt-1 font-body text-body-md text-on-surface-variant">
-              {t("dns.records_desc")}
-            </p>
-          </div>
+        <Accordion
+          type="multiple"
+          defaultValue={defaultOpen}
+          key={String(status?.ready)}
+          className="floating-card px-6 md:px-8"
+        >
+          {project.custom_domain && (
+            <AccordionItem value="status" className="border-outline-variant/30">
+              <AccordionTrigger className="py-5 hover:no-underline">
+                <span className="flex items-center gap-3">
+                  <span className="font-headline text-headline-sm text-on-surface">
+                    {t("dns.status_title", "Tilkobling")}
+                  </span>
+                  {status && (
+                    <span className="font-body text-xs text-on-surface-variant">
+                      {status.ready
+                        ? t("dns.status_ready", "Domenet er koblet til og svarer.")
+                        : t("dns.status_waiting", "Slik ligger det an akkurat nå.")}
+                    </span>
+                  )}
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="pb-6">
+                <DomainStatusPanel query={statusQuery} />
+              </AccordionContent>
+            </AccordionItem>
+          )}
 
-          {/* Vertikal liste over oppføringene */}
-          <div className="flex flex-col gap-4">
-            {records.map((record) => (
-              <RecordRow key={record.id} record={record} />
-            ))}
-          </div>
-        </div>
+          <AccordionItem value="records" className="border-none">
+            <AccordionTrigger className="py-5 hover:no-underline">
+              <span className="flex items-center gap-3">
+                <span className="font-headline text-headline-sm text-on-surface">
+                  {t("dns.records_title")}
+                </span>
+                <span className="font-body text-xs text-on-surface-variant">
+                  {records.length}
+                </span>
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="pb-6">
+              <div className="flex flex-col gap-4">
+                {records.map((record) => (
+                  <RecordRow key={record.id} record={record} />
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       )}
     </div>
   );
@@ -308,6 +374,86 @@ function CopyButton({ value, label }: { value: string; label: string }) {
       </span>
       {copied ? t("dns.copied") : t("dns.copy")}
     </button>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Component: Faktisk tilstand for det egne domenet
+// -----------------------------------------------------------------------------
+
+/**
+ * De tre tingene som må stemme før et eget domene svarer, målt hver for seg.
+ *
+ * Tidligere kunne fanen bare gjenta hvilke records kunden skulle sette, og lot
+ * hen kjøre `dig` selv for å finne ut om det hadde virket. Verst var tilfellet
+ * der sertifikatet var utstedt, men Caddy manglet ruten: da svarte domenet over
+ * HTTPS med «ingen applikasjon er rutet til dette domenet», og ingenting i
+ * dashbordet forklarte hvorfor. Hver linje her har sin egen tilstand, så det er
+ * mulig å se nøyaktig hvilket ledd som mangler.
+ */
+function DomainStatusPanel({ query }: { query: UseQueryResult<DomainStatus> }) {
+  const { t } = useTranslation();
+  const status = query.data;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {query.isError && (
+        <p className="font-body text-body-md text-error">
+          {t("dns.status_error", "Kunne ikke hente status akkurat nå.")}
+        </p>
+      )}
+
+      {status && (
+        <div className="flex flex-col divide-y divide-outline-variant/30">
+          <DomainCheckRow
+            label={t("dns.check_dns", "DNS peker hit")}
+            check={status.dns}
+          />
+          <DomainCheckRow
+            label={t("dns.check_route", "Rute aktiv")}
+            check={status.route}
+          />
+          <DomainCheckRow
+            label={t("dns.check_certificate", "Sertifikat")}
+            check={status.certificate}
+          />
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => query.refetch()}
+        disabled={query.isFetching}
+        className="self-start inline-flex items-center gap-1.5 rounded-xl bg-surface-container px-3 py-2 font-label text-sm text-on-surface-variant transition-all hover:text-on-surface disabled:opacity-50 disabled:cursor-wait"
+      >
+        <span className={`material-symbols-outlined icon-sm ${query.isFetching ? "animate-spin" : ""}`}>
+          refresh
+        </span>
+        {t("dns.status_recheck", "Sjekk på nytt")}
+      </button>
+    </div>
+  );
+}
+
+function DomainCheckRow({ label, check }: { label: string; check: DomainCheck }) {
+  // Ikonet bærer tilstanden, men aldri alene: fargeblinde skal se forskjell på
+  // «venter» og «feilet» uten å skille grønt fra rødt, så formen skiller også.
+  const presentation = {
+    ok: { icon: "check_circle", tone: "text-secondary" },
+    pending: { icon: "hourglass_top", tone: "text-on-surface-variant" },
+    failed: { icon: "error", tone: "text-error" },
+  }[check.state];
+
+  return (
+    <div className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+      <span className={`material-symbols-outlined icon-sm mt-0.5 ${presentation.tone}`}>
+        {presentation.icon}
+      </span>
+      <div className="flex flex-col gap-0.5">
+        <span className="font-label text-label-md text-on-surface">{label}</span>
+        <span className="font-body text-xs text-on-surface-variant">{check.detail}</span>
+      </div>
+    </div>
   );
 }
 

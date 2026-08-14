@@ -4,15 +4,40 @@ Hvert prosjekt får automatisk `<slug><SNOAT_APP_DOMAIN_SUFFIX>` – altså
 `min-app.snoat.com` i produksjon og `min-app.snoat.localhost` lokalt. Denne filen
 handler om steget videre: at kunden peker sitt **eget** domene mot Snoat.
 
-Statusen i dag er todelt, og det er viktig å holde de to fra hverandre:
-
 | Del | Status |
 | --- | --- |
 | Veiledningen i dashboardet (hvilke records kunden må sette) | **Implementert** |
-| Ruting og sertifikat for det egne domenet i Caddy | **Ikke implementert** |
+| Lagring (`projects.custom_domain`, migrasjon `0006`) | **Implementert** |
+| Ruting i Caddy, inkludert `*.<domenet>` | **Implementert** |
+| Sertifikat via on-demand TLS med `ask`-endepunkt | **Implementert** |
+| Statusvisning i DNS-fanen (DNS / rute / sertifikat) | **Implementert** |
 
-DNS-fanen lagrer altså ingenting og oppretter ingen rute. Den forteller kunden
-hva som skal inn hos registraren. Se «Det som gjenstår» nederst.
+### Fellen: to kilder til sannhet
+
+TLS-tillatelsen (`routes/tls.ts`) leser **databasen**, mens rutingen leser
+**Caddys minne**. Caddy kjører med `persist: false`, så en Caddy-restart uten en
+påfølgende reconcile tømmer rutene mens databasen fortsatt sier at domenet er
+koblet opp. Da svarer `tls-ask` ja, kunden får et gyldig sertifikat – og
+forespørselen faller likevel gjennom til catch-all-en med «ingen applikasjon er
+rutet til dette domenet». Symptomet ser ut som et sertifikatproblem, men er et
+ruteproblem.
+
+`ensureProjectRoute()` i `services/deploy.ts` er det ene stedet som skriver en
+rute for et prosjekt. Den **oppretter** ruten hvis den mangler – tidligere ble
+den bare endret når den allerede fantes, slik at et domene kunne lagres uten at
+noe pekte dit. Både `reconcileRoutes()` og `PATCH /projects/:id/domain` går
+gjennom den, og domene-endepunktet svarer 502 hvis skrivingen feiler i stedet for
+å påstå at alt gikk bra.
+
+`GET /projects/:id/domain/status` måler de tre leddene hver for seg og er det
+DNS-fanen viser. Sertifikatsjekken er en TLS-handshake mot Caddy med domenet som
+SNI, og den kjøres **kun** når DNS og rute allerede stemmer: handshaken utløser
+on-demand-utstedelse, og et forsøk uten fungerende DNS teller mot Let's Encrypts
+grense på fem mislykkede valideringer per vertsnavn per time.
+
+Et eget domene dekker også subdomenene sine (`*.dittdomene.no`), slik at en
+flerleietaker-app kan gi hver kunde sitt eget vertsnavn uten å registrere dem én
+for én. `parentDomain()` i `lib/caddy.ts` er oppslaget som gjør det.
 
 ## DNS-fanen i prosjektvisningen
 
@@ -91,31 +116,13 @@ dig +short www.dittdomene.no CNAME  # skal svare med <slug>.snoat.com.
 
 ## Det som gjenstår
 
-Caddy svarer i dag **kun** på vertsnavn som ligger i en `host`-matcher.
-`upsertAppRoute` i `backend/src/lib/caddy.ts` registrerer nøyaktig ett:
-`<slug><SNOAT_APP_DOMAIN_SUFFIX>`. En kunde som peker `dittdomene.no` mot
-serveren treffer altså Caddy, men uten en rute for vertsnavnet får hen verken
-innhold eller sertifikat.
-
-For å gjøre funksjonen ekte trengs:
-
-1. **Lagring.** En kolonne `custom_domain` (eller en egen `project_domains`-tabell
-   for flere domener per prosjekt) i `projects`, med RLS som resten av skjemaet.
-   Unikhet på tvers av brukere må håndheves i databasen – to prosjekter kan ikke
-   eie samme vertsnavn.
-2. **Ruting.** `upsertAppRoute` må ta imot en liste vertsnavn og legge dem alle i
-   `match[0].host`. Det atomiske `PATCH /id/<rute>` vi allerede bruker holder for
-   dette; ingen ny mekanikk trengs.
-3. **Sertifikat.** `caddy/config.json` har ingen `tls`-app, så Caddy kjører med
-   standard automatisk HTTPS og utsteder per vertsnavn som står i konfigurasjonen.
-   Legges et domene inn før DNS peker riktig, forsøker Caddy utstedelse og feiler
-   i loop – og Let's Encrypt har rate limits. Derfor bør enten (a) domenet
-   verifiseres før ruten oppdateres, eller (b) on-demand TLS med et `ask`-endepunkt
-   mot backend tas i bruk, slik at Caddy spør oss om vertsnavnet er kjent før den
-   ber om et sertifikat.
-4. **Verifisering i UI.** Et endepunkt som slår opp domenet og sammenligner mot
-   `SNOAT_SERVER_IP`, slik at fanen kan vise «Peker riktig ✓» i stedet for å be
-   kunden kjøre `dig` selv.
-
-Inntil dette er på plass skal teksten i fanen forbli ærlig på at egne domener
-rulles ut trinnvis. Ikke lov kunden noe plattformen ikke leverer.
+1. **Flere domener per prosjekt.** `custom_domain` er én kolonne, så et prosjekt
+   kan eie nøyaktig ett eget domene. Skal kunden ha både `dittdomene.no` og
+   `dittdomene.com`, må dette bli en `project_domains`-tabell.
+2. **Ekte wildcard-sertifikat.** On-demand utsteder ett sertifikat per vertsnavn.
+   Let's Encrypt teller 50 per registrert domene per uke, så en app som får mange
+   nye subdomener raskt vil treffe taket. Løsningen er DNS-01-utfordring med et
+   ekte `*.dittdomene.no`-sertifikat, men det krever API-tilgang til kundens
+   DNS-sone.
+3. **Rydding av sertifikater.** Fjernes et domene fra et prosjekt, blir
+   sertifikatet liggende i Caddys lager til det utløper.

@@ -31,6 +31,9 @@ services:
   db:
     image: supabase/postgres:17.6.1.157-mmlb
     restart: unless-stopped
+    # Databasen ligger bak hvert eneste oppslag plattformen gjør, inkludert
+    # TLS-tillatelsen. Blir den treg under bygging, blir alt tregt.
+    cpu_shares: 4096
     environment:
       <<: *db-env
       PGPASSWORD: ${POSTGRES_PASSWORD}
@@ -238,6 +241,9 @@ services:
   kong:
     image: kong:2.8.1
     restart: unless-stopped
+    # All Supabase-trafikk fra brukerappene går gjennom Kong. Sultes den, faller
+    # innlogging og databasekall i appene, ikke bare i dashbordet.
+    cpu_shares: 4096
     depends_on:
       auth:
         condition: service_healthy
@@ -285,6 +291,12 @@ services:
   caddy:
     image: caddy:2.11.4-alpine
     restart: unless-stopped
+    # Proxyen skal vinne over en pågående bygging. Cgroup-ene ligger som søsken
+    # under system.slice, så uten dette konkurrerer Caddy med lik vekt mot
+    # dockerd/containerd – som under et `next build` har titalls kjørbare tråder.
+    # Da står handshakes og proxying i kø, og utenfra ser hele plattformen død ut
+    # selv om ingen container har stoppet. Vekten betyr bare noe under press.
+    cpu_shares: 8192
     command: ["caddy", "run", "--config", "/etc/caddy/config.json"]
     volumes:
       - ./caddy/config.json:/etc/caddy/config.json:ro
@@ -309,6 +321,10 @@ services:
       # Settes av scripts/bootstrap-env.mjs ut fra SNOAT_DOMAIN.
       target: ${BACKEND_BUILD_TARGET:-dev}
     restart: unless-stopped
+    # Backend styrer byggingen og svarer på TLS-tillatelser. Blir den sultet av
+    # sin egen byggejobb, henger `tls-ask` – og da feiler handshaken for alle
+    # domener som ikke allerede har et sertifikat.
+    cpu_shares: 4096
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -333,6 +349,7 @@ services:
       SNOAT_ANALYTICS_ROLLUP_RETENTION_DAYS: ${SNOAT_ANALYTICS_ROLLUP_RETENTION_DAYS:-400}
       SNOAT_GEOIP_DB_PATH: ${SNOAT_GEOIP_DB_PATH:-}
       SNOAT_APP_DOMAIN_SUFFIX: ${SNOAT_APP_DOMAIN_SUFFIX:-.snoat.localhost}
+      SNOAT_SERVER_IP: ${SNOAT_SERVER_IP:-127.0.0.1}
       SNOAT_APPS_NETWORK: ${SNOAT_APPS_NETWORK:-snoat_apps}
       SNOAT_FRONTEND_ORIGIN: ${SNOAT_FRONTEND_ORIGIN:-http://localhost:8080}
       SNOAT_APP_PORT: ${SNOAT_APP_PORT:-3000}

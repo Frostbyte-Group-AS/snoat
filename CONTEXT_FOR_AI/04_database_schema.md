@@ -66,6 +66,33 @@ finne prosjektet uten at noe annet ser galt ut.
 Kombinasjonen `(user_id, repo_url)` er **ikke** unik: flere prosjekter kan peke
 på samme repo, og ett push-event starter da en deployment per prosjekt.
 
+`external_ref` (migrasjon 0010) er integrasjonens egen ID for prosjektet, satt av
+`POST /api/projects`. Den gjør opprettelsen idempotent: unik på
+`(user_id, external_ref)` gjennom en **delvis** indeks, slik at prosjekter fra
+dashboardet – der feltet er NULL – ikke teller som duplikater av hverandre.
+Unikheten er per bruker og ikke global, så to partnere kan bruke samme interne
+ID-er uten å kollidere.
+
+## api_keys
+Langlevde nøkler for maskin-til-maskin-tilgang (migrasjon 0010).
+- **Kolonner:** `id`, `user_id` (FK -> `profiles`), `name`, `token_prefix`,
+  `token_hash`, `created_at`, `last_used_at`, `revoked_at`
+
+**Vi lagrer aldri nøkkelen i klartekst** – kun sha256-hashen, av samme grunn som
+vi aldri lagrer et GitHub-token. `token_prefix` er de første tegnene, slik at en
+nøkkel kan gjenkjennes i en liste uten å avsløre resten. Tilbaketrekking er en
+tidsstempling og ikke en sletting: en nøkkel som har vært i bruk skal kunne spores
+i ettertid.
+
+RLS er slått på **uten en eneste policy**. Det er ikke en forglemmelse: en tabell
+uten policies er stengt for alle andre enn service-role-nøkkelen, og en innlogget
+bruker i nettleseren har ingenting her å gjøre.
+
+`last_used_at` skrives uten at kallet venter på svaret. Feltet finnes for at vi
+skal kunne se hvilke nøkler som er i bruk før vi rydder, og det er ikke verdt et
+rundturs-kall i den kritiske stien for hver forespørsel – langt mindre verdt at en
+mislykket skriving gjør et gyldig kall til en 401.
+
 ## github_installations
 Kobling mellom en Snoat-bruker og en GitHub App-installasjon.
 - **Kolonner:**

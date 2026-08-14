@@ -272,7 +272,27 @@ stier som forsøker `..`, absolutt sti og skall-metategn.
 
 ---
 
-## 9. Sammenligning mot Vercel & Roadmap
+## 9. Innebygd Statistikk (Analytics)
+
+Snoat inkluderer nå en dedikert `AnalyticsTab` for hvert prosjekt. Denne funksjonen tilbyr besøksstatistikk og ytelsesdata til brukeren, lik Vercel Web Analytics, men bygget med en personvernsfokusert, script-fri tilnærming.
+
+**Teknisk implementasjon:**
+- Data hentes direkte fra Caddys access-logger på proxy-nivået, ikke via et JavaScript-sporingsscript injisert i kundens frontend.
+- Siden vi opererer på nettverkslaget kan plattformen måle **nøyaktig responstid, serverfeil (5xx) og faktisk båndbreddeforbruk** – tall et klient-script aldri vil se.
+- Ingen cookies settes, noe som gjør løsningen 100 % GDPR-kompatibel ut av boksen uten krav til samtykkebannere.
+- Fanen viser KPIs (unike besøkende, totalt antall klikk, båndbredde, feilrate, gjennomsnittlig svartid) og distribusjonsdata (mest besøkte stier, trafikkilder, nettlesere, enheter og land).
+
+---
+
+## 10. Oppgradert Faktureringsgrensesnitt
+
+Abonnementshåndteringen er nå trukket direkte inn i det enkelte prosjekt. 
+- En ny `ProjectPlanCard`-komponent (skjult i en accordion under prosjektinnstillinger) lar kunden se og oppgradere sin egen plan direkte fra prosjektet.
+- Dette erstatter den tidligere globale innstillingssiden for fakturering, og gjør at grensene (Free, Pro, Business) presenteres der brukeren faktisk føler på kapasitetsbehovene.
+
+---
+
+## 11. Sammenligning mot Vercel & Roadmap
 
 ### Hovedforskjeller mellom Vercel og Snoat
 1. **Edge Network & CDN:** Vercel har 300+ edge-lokasjoner globalt. Snoat har sitt fokus på **norsk datasuverenitet** på lokal norsk infrastruktur (Frostbyte Group AS).

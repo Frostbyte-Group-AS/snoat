@@ -69,6 +69,15 @@ const schema = z.object({
   SNOAT_GEOIP_DB_PATH: optionalEnv,
   /** Suffikset hvert prosjekt får sitt subdomene under. */
   SNOAT_APP_DOMAIN_SUFFIX: z.string().default(".snoat.localhost"),
+  /**
+   * A-record-målet kundene peker sine egne domener mot.
+   *
+   * Backend trenger fasiten for å kunne svare på om et domene faktisk peker hit.
+   * Uten den kan DNS-fanen bare gjenta hva kunden *skal* sette, ikke om det er
+   * gjort – og det er nettopp forskjellen mellom «virker ikke» og «venter på at
+   * DNS propagerer».
+   */
+  SNOAT_SERVER_IP: z.string().default("127.0.0.1"),
   /** Docker-nettverket brukerapplikasjoner kobles til, slik at Caddy når dem. */
   SNOAT_APPS_NETWORK: z.string().default("snoat_apps"),
   /**

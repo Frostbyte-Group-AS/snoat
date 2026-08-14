@@ -17,6 +17,39 @@ tilbake, ikke bare utløpte.
 
 Frontend henter tokenet fra sesjonen i `frontend/src/lib/api.ts`.
 
+### API-nøkler (maskin-til-maskin)
+
+Integrasjoner sender en langlevd nøkkel i **samme header**:
+
+```
+Authorization: Bearer snoat_ak_<64 hex>
+```
+
+`requireAuth` skiller de to på `snoat_ak_`-prefikset. Rekkefølgen er ikke
+tilfeldig: et ugyldig JWT ville ellers kostet et rundturs-kall til GoTrue før vi
+i det hele tatt vurderte at det kunne være en nøkkel.
+
+**En API-nøkkel *er* brukeren sin.** `userId` settes til eieren, og alt nedenfor
+– `loadOwnedProject`, plangrensene, eierskapssjekkene – oppfører seg som om
+vedkommende var innlogget. Det er hele poenget med byrå-modellen: en partner som
+LeadLab er én konto hos oss, ikke et unntak spredt utover tilgangskoden.
+`c.get("authKind")` er `"session"` eller `"api_key"` for de endepunktene som
+trenger å vite forskjellen.
+
+Nøkkelen lagres kun som sha256-hash (`public.api_keys`, migrasjon 0010). Den kan
+derfor ikke vises igjen etter utstedelsen – mistes den, trekkes den tilbake og en
+ny utstedes. Ingen salt eller bcrypt: inndata er 256 bits fra `randomBytes`, ikke
+et passord, og verken saltet eller kostnaden har noe å bidra med da.
+
+**Det finnes ingen HTTP-rute for å utstede nøkler**, og det er med vilje – et
+endepunkt som utsteder legitimasjon må selv beskyttes av legitimasjon, og den
+første nøkkelen har ingen å bli beskyttet av. Utstedelse skjer på serveren:
+
+```bash
+docker compose exec backend node dist/scripts/issue-api-key.js \
+  --email partner@example.no --name leadlab-produksjon --plan agency
+```
+
 **To unntak:** `POST /api/webhooks/github` og `POST /api/webhooks/stripe` ligger
 under `/api`, men utenfor `requireAuth` – hverken GitHub eller Stripe har en
 Supabase-sesjon. Begge er signaturverifisert i stedet, og monteres før `api` i
@@ -47,6 +80,62 @@ nettleser-mekanisme.
 
 Svarer `503` med `"status": "degraded"` og en `error`-streng per avhengighet som
 er nede. Dette er førstevalget når noe ikke virker lokalt.
+
+### `POST /api/projects`
+
+Oppretter et prosjekt. **Dashboardet bruker ikke dette** – det skriver raden rett
+i Supabase med sin egen sesjon og RLS. Endepunktet finnes for integrasjoner, som
+ikke har noen sesjon å skrive med.
+
+```json
+{
+  "name": "kundenavn",
+  "repoUrl": "https://github.com/leadlab-sites/kundenavn-a1b2c3",
+  "externalRef": "1f0c…",
+  "githubInstallationId": 12345,
+  "staticOutputDir": "out",
+  "envVars": {}
+}
+```
+
+`name` er subdomenet og valideres mot samme regex som check-constrainten i
+databasen. `githubInstallationId` er det som gjør private repoer klonbare.
+`staticOutputDir` gjør prosjektet statisk – ingen container, kun filer.
+
+**`externalRef` gjør kallet idempotent.** Kalleren legger sin egen ID der, og et
+gjentatt POST svarer `200` med `created: false` og den eksisterende raden i
+stedet for å lage et nytt prosjekt. Uten det ville et nettverksbrudd etter at
+raden ble skrevet, men før svaret kom fram, gitt kunden to prosjekter ved neste
+forsøk. Unikheten er `(user_id, external_ref)`, så to partnere kan bruke samme
+interne ID-er uten å kollidere.
+
+| Kode | Betydning |
+| --- | --- |
+| 201 | Opprettet (`created: true`) |
+| 200 | Fantes allerede, funnet via `externalRef` (`created: false`) |
+| 400 | Ugyldig `name` eller `repoUrl` |
+| 409 | Navnet er i bruk av et annet prosjekt på samme konto |
+
+⚠️ **Plangrensene håndheves ikke her**, like lite som for dashboardet. Et prosjekt
+uten deployment koster ingenting; det er `startDeployment()` som sperrer.
+
+### `DELETE /api/projects/:projectId`
+
+Sletter prosjektet **og rydder opp etter det**: containere og Caddy-rute først,
+raden etterpå.
+
+Rekkefølgen er poenget. Frontend har historisk slettet raden direkte via
+Supabase, og da blir containerne og ruten stående igjen – uten raden finnes ikke
+lenger prosjekt-ID-en `no.snoat.project-id`-labelen peker på, så de må ryddes for
+hånd av noen som først må finne ut at de er der. Feiler nedrivingen, beholdes
+raden: et prosjekt vi fortsatt kan finne igjen er bedre enn en foreldreløs
+container.
+
+| Kode | Betydning |
+| --- | --- |
+| 200 | `{ "deleted": true }` |
+| 409 | Et bygg pågår – vent til det er ferdig |
+| 404 | Finnes ikke, eller tilhører noen andre |
 
 ### `POST /api/projects/:projectId/deploy`
 
@@ -302,6 +391,21 @@ pågående build er forventet, og skal ikke se ut som en leveringsfeil hos GitHu
 Er `GITHUB_WEBHOOK_SECRET` tom, tas forespørselen imot **uten** signaturkontroll,
 med en advarsel i loggen. Se `08_security_model.md`.
 
+### `POST /api/github/installations`
+
+`/github/setup` uten nettleseren. Registrerer en installasjon på den som kaller:
+`{ "installationId": 12345 }` → `201` med kontoen.
+
+Setup-ruten får ID-en som en query-parameter i en redirect og verifiserer
+avsenderen med en HMAC-signert `state` – en mekanikk som forutsetter at det
+finnes en nettleser å redirecte. En integrasjon kjører installasjonsflyten i sitt
+eget UI og sitter igjen med ID-en; da mangler den bare et sted å levere den.
+Tilliten hviler her på API-nøkkelen i stedet for på `state`, men vi spør fortsatt
+GitHub om installasjonen finnes før vi lagrer – ID-en kommer utenfra.
+
+Svarer `404` hvis GitHub ikke kjenner installasjonen, og `503` hvis App-en ikke
+er konfigurert.
+
 ### `GET /github/setup`
 
 **Utenfor `/api`, og uten `requireAuth`.** GitHub sender nettleseren hit etter
@@ -345,9 +449,14 @@ diagnostikk blandet med verktøy-output, og frontend faller da tilbake på
 - **`installation`-eventet.** Webhook-mottaket håndterer kun `push`. Blir App-en
   avinstallert, oppdager vi det fortsatt ikke før neste gang repo-listen hentes
   og GitHub svarer 404 (`08_security_model.md`).
-- **Sletting av prosjekt.** Frontend sletter raden direkte via Supabase (RLS),
-  men da blir containerne og ruten hengende igjen – og uten raden finnes ikke
-  lenger prosjekt-ID-en labelene peker på, så de må ryddes for hånd. Bruk `/stop`
-  først, eller la et fremtidig `DELETE /api/projects/:id` gjøre begge deler.
 - **Rate limiting.** Ingenting hindrer en bruker i å trigge mange builds på rad
-  utover `409`-låsen per prosjekt.
+  utover `409`-låsen per prosjekt. Med API-nøkler er dette mer relevant enn før:
+  en integrasjon i en løkke har ingen menneskelig hånd som stopper den. Foreløpig
+  er `buildMinutesPerMonth` på byråplanen det eneste taket.
+- **Rettighetsskille for API-nøkler.** `authKind` finnes, men ingen endepunkter
+  leser den ennå: en nøkkel kan i dag også kalle `/api/billing/checkout`. Det er
+  ufarlig (en Stripe-kasse må fullføres i en nettleser), men skillet bør bli
+  ekte før nøkler deles ut til flere partnere.
+- **`DELETE /api/projects/:id` finnes nå**, men frontend bruker den ikke – den
+  sletter fortsatt raden direkte via Supabase, med de foreldreløse containerne
+  det gir. Ruten er der; kallstedet mangler.

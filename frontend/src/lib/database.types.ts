@@ -42,8 +42,13 @@ export interface Project {
    * ut som «Live».
    */
   stopped_at: string | null;
-  /** Planen prosjektet kjører på ('free', 'pro', 'business'). */
+  /** Planen prosjektet kjører på ('free', 'pro', 'business', 'agency'). */
   plan?: SubscriptionTier;
+  /**
+   * Integrasjonens egen ID for prosjektet, satt av `POST /api/projects`.
+   * NULL for prosjekter opprettet herfra – dashboardet skriver aldri feltet.
+   */
+  external_ref?: string | null;
   created_at: string;
 }
 

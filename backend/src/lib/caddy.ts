@@ -57,12 +57,31 @@ export function slugFromHostname(hostname: string): string | null {
 }
 
 /**
+ * Foreldredomenet til et vertsnavn – `a.example.com` gir `example.com`.
+ *
+ * Et eget domene dekker også subdomenene sine: en flerleietaker-app gir hver
+ * kunde sitt eget `<kunde>.domenet`, og de kan ikke registreres én for én.
+ * `null` når navnet ikke har et foreldredomene å snakke om (`example.com` selv,
+ * eller en enkelt etikett), slik at oppslaget aldri kan treffe et toppdomene.
+ */
+export function parentDomain(hostname: string): string | null {
+  const labels = hostname.split(".");
+
+  // Under tre etiketter finnes det ikke noe foreldredomene som er et registrert
+  // domene: `example.com` → `com`, og det skal aldri slås opp.
+  if (labels.length < 3) return null;
+
+  const parent = labels.slice(1).join(".");
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(parent) ? parent : null;
+}
+
+/**
  * `handle` er bevisst løst typet: en rute peker enten på en container
  * (`reverse_proxy`) eller på en katalog med statiske filer (`file_server`), og
  * de to har ikke felles form. Vi leser aldri ut av den uten å sjekke hva vi
  * faktisk fikk – se `routeUpstream()` og `routeRoot()`.
  */
-interface CaddyRoute {
+export interface CaddyRoute {
   "@id": string;
   match: Array<{ host: string[] }>;
   handle: Array<Record<string, unknown>>;
@@ -207,7 +226,13 @@ async function upsertRoute(
   logContext: Record<string, unknown>,
 ): Promise<string> {
   const hostname = appHostname(slug);
-  const hosts = customDomain ? [hostname, customDomain] : [hostname];
+
+  // Et eget domene tar med subdomenene sine. Caddys host-matcher støtter `*` som
+  // én etikett helt foran, så `*.example.com` treffer `a.example.com`, men ikke
+  // `example.com` selv – derfor må begge stå oppført.
+  const hosts = customDomain
+    ? [hostname, customDomain, `*.${customDomain}`]
+    : [hostname];
 
   const route: CaddyRoute = {
     "@id": routeId(slug),

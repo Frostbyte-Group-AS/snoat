@@ -581,10 +581,96 @@ async function runPipeline(
  * igjen rutene ved oppstart for hvert prosjekt som faktisk har en kjørende
  * container.
  */
+/**
+ * Hvorfor et prosjekt ikke har en rute. Brukes av DNS-fanen til å si noe presist
+ * i stedet for «virker ikke».
+ */
+export type RouteBlockedReason =
+  | "no_deployment"
+  | "stopped"
+  | "missing_files"
+  | "no_container";
+
+export type RouteStatus = { routed: true } | { routed: false; reason: RouteBlockedReason };
+
+/**
+ * Sørger for at prosjektet har en Caddy-rute som dekker vertsnavnene sine.
+ *
+ * Skrives ubetinget, ikke bare når det allerede finnes en rute å endre: en rute
+ * som mangler er nettopp tilfellet som må repareres. Caddy holder rutene i
+ * minnet (`persist: false`), så en Caddy-restart uten en påfølgende reconcile
+ * etterlater et prosjekt uten rute mens databasen fortsatt sier at alt er koblet
+ * opp. Da svarer TLS-sjekken ja på domenet – den leser databasen – mens
+ * forespørselen faller gjennom til catch-all-en og gir «ingen applikasjon er
+ * rutet til dette domenet».
+ */
+export async function ensureProjectRoute(project: Project): Promise<RouteStatus> {
+  // Et prosjekt brukeren har stoppet skal ikke komme tilbake. For containere er
+  // dette allerede sant – de er fjernet – men en *statisk* side ligger fortsatt
+  // på disk, og uten denne sjekken ville ruten blitt gjenopprettet.
+  if (project.stopped_at) return { routed: false, reason: "stopped" };
+
+  const { data: deployments } = await supabase
+    .from("deployments")
+    .select("id, created_at")
+    .eq("project_id", project.id)
+    .eq("status", "success")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  const latest = deployments?.[0];
+  if (!latest) return { routed: false, reason: "no_deployment" };
+
+  // Statiske prosjekter har ingen container å slå opp – ruten skal peke på
+  // katalogen den siste vellykkede deploymenten la igjen. Finnes ikke katalogen
+  // (volumet er nytt eller ryddet), må prosjektet deployes på nytt.
+  if (project.static_output_dir) {
+    const root = siteDirFor(project.id, latest.id);
+
+    if (!(await directoryExists(root))) {
+      logger.warn(
+        { project: project.name, root },
+        "Statisk prosjekt mangler filer på disk – må deployes på nytt",
+      );
+      return { routed: false, reason: "missing_files" };
+    }
+
+    await caddy.upsertStaticRoute(project.name, project.custom_domain, root, project.static_spa_fallback);
+    return { routed: true };
+  }
+
+  // Databasen vet hvilken deployment som er live, så vi foretrekker containeren
+  // som hører til den. Ellers ville en igjenglemt container fra en avbrutt
+  // deployment kunne overta trafikken bare fordi den er nyest.
+  const expected = containers.containerNameFor(project, latest.id);
+  const name = (await containers.isRunningByName(expected))
+    ? expected
+    : await containers.currentContainerName(project);
+
+  if (!name) return { routed: false, reason: "no_container" };
+
+  await caddy.upsertAppRoute(project.name, project.custom_domain, containers.upstreamFor(name));
+
+  // Rullerende utrulling som ble avbrutt midtveis (backend drept mellom
+  // helsesjekk og opprydding) etterlater to kjørende containere. Ruten peker på
+  // én av dem; resten er død vekt som holder på CPU-andel og minne til noen
+  // rydder manuelt. Nå som ruten er skrevet og vi vet hvilken container som
+  // gjelder, er det trygt å fjerne de andre.
+  const removed = await containers.removeStaleContainers(project, name);
+  if (removed.length > 0) {
+    logger.info(
+      { project: project.name, removed, routedTo: name },
+      "Ryddet foreldreløse containere fra en avbrutt deployment",
+    );
+  }
+
+  return { routed: true };
+}
+
 export async function reconcileRoutes(): Promise<{ restored: number; skipped: number }> {
   const { data, error } = await supabase
     .from("projects")
-    .select("*, deployments(id, status, created_at)")
+    .select("*")
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(`Kunne ikke lese prosjekter: ${error.message}`);
@@ -592,77 +678,21 @@ export async function reconcileRoutes(): Promise<{ restored: number; skipped: nu
   let restored = 0;
   let skipped = 0;
 
-  for (const row of data ?? []) {
-    const { deployments, ...project } = row as Project & {
-      deployments: Array<{ id: string; status: DeploymentStatus; created_at: string }>;
-    };
+  const projects = (data ?? []) as Project[];
 
-    const latest = (deployments ?? [])
-      .filter((d) => d.status === "success")
-      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  for (const project of projects) {
+    const status = await ensureProjectRoute(project);
+    if (status.routed) restored += 1;
+    else skipped += 1;
+  }
 
-    if (!latest) {
-      skipped += 1;
-      continue;
-    }
-
-    // Et prosjekt brukeren har stoppet skal ikke komme tilbake fordi backend
-    // startet på nytt. For containere er dette allerede sant – de er fjernet, så
-    // det finnes ingenting å rute til – men en *statisk* side ligger fortsatt på
-    // disk, og uten denne sjekken ville ruten blitt gjenopprettet ved neste
-    // oppstart.
-    if (project.stopped_at) {
-      skipped += 1;
-      continue;
-    }
-
-    // Statiske prosjekter har ingen container å slå opp – ruten skal peke på
-    // katalogen den siste vellykkede deploymenten la igjen. Finnes ikke
-    // katalogen (volumet er nytt eller ryddet), er det ingenting å gjenopprette,
-    // og prosjektet må deployes på nytt.
-    if (project.static_output_dir) {
-      const root = siteDirFor(project.id, latest.id);
-
-      if (!(await directoryExists(root))) {
-        logger.warn(
-          { project: project.name, root },
-          "Statisk prosjekt mangler filer på disk – må deployes på nytt",
-        );
-        skipped += 1;
-        continue;
-      }
-
-      await caddy.upsertStaticRoute(project.name, project.custom_domain, root, project.static_spa_fallback);
-      restored += 1;
-      continue;
-    }
-
-    // Databasen vet hvilken deployment som er live, så vi foretrekker containeren
-    // som hører til den. Ellers ville en igjenglemt container fra en avbrutt
-    // deployment kunne overta trafikken bare fordi den er nyest.
-    const expected = containers.containerNameFor(project, latest.id);
-    const name = (await containers.isRunningByName(expected))
-      ? expected
-      : await containers.currentContainerName(project);
-
-    if (!name) {
-      skipped += 1;
-      continue;
-    }
-
-    await caddy.upsertAppRoute(project.name, project.custom_domain, containers.upstreamFor(name));
-    restored += 1;
-
-    // Rullerende utrulling som ble avbrutt midtveis (backend drept mellom
-    // helsesjekk og opprydding) etterlater to kjørende containere. Vi rører dem
-    // ikke her – neste deployment rydder – men det skal være synlig i loggen.
-    const running = await containers.countRunning(project);
-    if (running > 1) {
-      logger.warn(
-        { project: project.name, running, routedTo: name },
-        "Flere kjørende containere for prosjektet – rest fra en avbrutt deployment",
-      );
-    }
+  // Vi har nettopp lest hele prosjektlisten, og det er den eneste anledningen
+  // der vi trygt kan avgjøre hva som *ikke* hører til noe prosjekt lenger.
+  const orphaned = await containers.removeContainersForUnknownProjects(
+    new Set(projects.map((project) => project.id)),
+  );
+  if (orphaned.length > 0) {
+    logger.info({ orphaned }, "Ryddet containere fra slettede prosjekter");
   }
 
   logger.info({ restored, skipped }, "Caddy-ruter synkronisert mot Supabase");

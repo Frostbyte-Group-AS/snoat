@@ -29,14 +29,37 @@ er det bare et spørsmål om tid før prissiden og virkeligheten sier ulike ting
 **Prisene står et annet sted**: `PLAN_PRICES` i `backend/src/services/markets.ts`.
 Skillet er poenget – grensene er like i alle markeder, prisene er det ikke.
 
+### Den fjerde planen: `agency`
+
+Det finnes en tier til, som ikke står i tabellen over fordi den ikke kan kjøpes.
+`agency` (migrasjon 0010) er for integrasjonspartnere som drifter mange
+kundesider under **én** konto hos oss – i dag LeadLab, gjennom nettsidebyggeren
+«Snekkeren». Den settes for hånd med `source = 'invoice'`, slik at en senere
+Stripe-webhook ikke skriver over den.
+
+Grensene: 50 kjørende apper, 20 000 byggeminutter/md, 1 GB / 1 vCPU per app.
+Tallene er høye, men **ikke** `Infinity`, og det er et bevisst valg: et tak som
+aldri kan nås er et tak vi aldri får se virke. En integrasjon i en løkke har ingen
+menneskelig hånd som stopper den, og den skal treffe *noe* før den tar ned verten
+for alle de andre. `maxRunningProjects` er nesten teoretisk – kundesidene er
+statiske og teller ikke mot taket – så den bremser bare hvis en partner begynner
+å deploye apper som faktisk kjører.
+
+Planen holdes utenfor `planCatalogue()` via `UNLISTED_PLANS` i `markets.ts`. Uten
+det filteret ville den dukket opp på landingssiden med prisen 0 kr, altså som en
+gratis Business-plan. `SubscriptionTier` i **frontend** har fortsatt bare tre
+verdier, og det er tilsiktet: dashboardet skal aldri motta `agency` i
+plankatalogen, og byråkontoen logger seg ikke inn der.
+
+Modelleringen er poenget: hadde dette vært et «hvis dette er LeadLab»-unntak,
+måtte hvert enkelt sperrepunkt husket på det. Som en ordinær tier går
+`entitlementFor()` og `assertCanDeploy()` sin vante vei.
+
 **Statiske sider er ubegrenset med vilje.** Et prosjekt med `static_output_dir`
 kjører ingen container (`03_deployment_flow.md`) og koster noen megabyte på disk.
 Kostnaden ligger i kjørende prosesser, ikke i filer.
 
-**Båndbredde er ikke en grense.** Vi måler den ikke: Caddys access-logger samles
-ikke inn noe sted. En grense vi ikke kan måle er en grense vi ikke kan håndheve,
-så prissiden sier «rimelig bruk» framfor et GB-tall. Skal det endres, må
-logginnsamling og aggregering per vertsnavn bygges først – se «Ikke implementert».
+**Båndbredde er ikke en grense.** Vi samler nå inn Caddy sine access-logger for å vise båndbredde og statistikk i panelet (gjennom den nye `AnalyticsTab`-komponenten), men vi håndhever ingen hard GB-grense. En grense vi måler men ikke håndhever betyr at prissiden fortsatt sier «rimelig bruk». Skal vi blokkere trafikk ved overforbruk, må det bygges en enforcement-mekanisme oppå analytics-dataene.
 
 ## ⚠️ Marked, språk og valuta er tre forskjellige ting
 
@@ -448,9 +471,8 @@ kjøp, og teksten på siden lover ikke noe annet.
 
 ## Frontend
 
-`frontend/src/routes/settings.billing.tsx` (`/settings/billing`), lenket fra
-`DashboardNav`. Følger stilguiden i `05_design_system.md`: ingen borders,
-`floating-card`, målere på `bg-surface-container`.
+Oppgraderinger og abonnement for et bestemt prosjekt håndteres nå direkte i prosjektinnstillingene (`frontend/src/routes/projects.$projectId.tsx`), primært via komponenten `ProjectPlanCard`. Den fungerer som en accordion-meny og henter sine egne priser.
+Følger stilguiden i `05_design_system.md`: ingen borders, `floating-card`, målere på `bg-surface-container`.
 
 Målerne blir røde først når grensen er **nådd**, ikke når den nærmer seg – en
 måler som står rød på 80 % lærer brukeren å ignorere rødt.
@@ -499,7 +521,7 @@ prisside er verre enn ingen tall.
 
 ## Ikke implementert
 
-- **Båndbreddemåling.** Ingen innsamling av Caddy-logger. Derfor ingen GB-grense.
+
 - **Egne domener som betalt funksjon.** Ruting og lagring for kundedomener finnes
   ikke ennå (`11_custom_domains_and_dns.md`) – `upsertAppRoute` registrerer
   nøyaktig ett vertsnavn, og `tls-ask` innvilger kun `<slug><SNOAT_APP_DOMAIN_SUFFIX>`.

@@ -121,6 +121,29 @@ run_step 40 "Sjekker at hemmeligheter finnes på VPS..." \
     fi
 EOF
 
+# 2c. Tak på hva en byggejobb får lov til å ta av maskinen.
+#
+# BuildKit er innebygd i dockerd, og byggesteg kjøres av containerd. Begge ligger
+# som *søsken* til containerne under `system.slice` – ikke over dem – så uten et
+# tak konkurrerer et `next build` med lik vekt mot Caddy, og vinner, fordi det
+# har titalls kjørbare tråder mot proxyens få. Resultatet var at snoat.com og
+# alle hostede tjenester ble utilgjengelige under bygging uten at én eneste
+# container faktisk stoppet: ingen OOM-drap, ingen restarter, bare sult.
+#
+# CPUQuota=250% av fire kjerner lar byggingen bruke to og en halv og etterlater
+# halvannen til plattformen. MemoryHigh presser kjernen til å ta minne tilbake
+# fra byggingen før verten begynner å swappe.
+#
+# Fordi containerne ligger i egne scopes, rammer taket kun byggingen – appene som
+# kjører merker ingenting. `set-property` skriver en varig drop-in og trer i kraft
+# umiddelbart, uten å restarte dockerd, så ingen apper mister kontakten.
+run_step 45 "Setter ressurstak for bygging..." \
+  ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_IP}" 'bash -s' <<'EOF'
+    set -euo pipefail
+    systemctl set-property docker.service CPUQuota=250% CPUWeight=20 MemoryHigh=6G
+    systemctl set-property containerd.service CPUQuota=250% CPUWeight=20
+EOF
+
 # 3. Bygger Docker-containere på VPS
 run_step 50 "Bygger containere (dette kan ta litt tid)..." \
   ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_IP}" "cd /opt/snoat && docker compose build frontend backend"

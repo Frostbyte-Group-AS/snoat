@@ -60,6 +60,26 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
     buildMinutesPerMonth: 2000,
     queuePriority: 20,
   },
+  /**
+   * Integrasjonspartnere som drifter mange kundesider under én konto.
+   *
+   * Tallene er høye, men ikke `Infinity`. Et tak som aldri kan nås er et tak vi
+   * aldri får se virke: en løpsk integrasjon som starter bygg i loop skal treffe
+   * *noe* før den tar ned verten for alle de andre. `buildMinutesPerMonth` er
+   * derfor satt til noe som ville tatt uker å bruke opp ved normal drift, og
+   * som likevel stopper en feil før den blir en hendelse.
+   *
+   * `maxRunningProjects` er nesten teoretisk: kundesidene er statiske og teller
+   * ikke mot taket (`assertCanDeploy` returnerer tidlig for dem). Den bremser
+   * bare hvis en partner begynner å deploye apper som faktisk kjører.
+   */
+  agency: {
+    maxRunningProjects: 50,
+    memoryMb: 1024,
+    cpus: 1,
+    buildMinutesPerMonth: 20_000,
+    queuePriority: 5,
+  },
 };
 
 /**
@@ -354,6 +374,13 @@ export async function assertCanDeploy(project: Project, entitlement: Entitlement
   }
 }
 
+const PLAN_NAMES: Record<SubscriptionTier, string> = {
+  free: "Free",
+  pro: "Pro",
+  business: "Business",
+  agency: "Byrå",
+};
+
 export function planName(plan: SubscriptionTier): string {
-  return plan === "free" ? "Free" : plan === "pro" ? "Pro" : "Business";
+  return PLAN_NAMES[plan] ?? plan;
 }

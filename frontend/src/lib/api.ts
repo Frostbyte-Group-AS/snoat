@@ -98,6 +98,25 @@ export function updateCustomDomain(projectId: string, customDomain: string | nul
   });
 }
 
+/** Én av de tre tingene som må stemme før et eget domene svarer. */
+export interface DomainCheck {
+  state: "ok" | "pending" | "failed";
+  detail: string;
+}
+
+export interface DomainStatus {
+  domain: string;
+  ready: boolean;
+  dns: DomainCheck & { expected: string; found: string[] };
+  route: DomainCheck;
+  certificate: DomainCheck;
+}
+
+/** Måler om det egne domenet faktisk virker. Endrer ingenting. */
+export function getDomainStatus(projectId: string): Promise<DomainStatus> {
+  return request(`/api/projects/${projectId}/domain/status`);
+}
+
 /** Et repository brukeren har gitt Snoat tilgang til via GitHub App-en. */
 export interface GithubRepo {
   id: number;

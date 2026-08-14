@@ -28,8 +28,11 @@ export function stripe(): Stripe {
   return client;
 }
 
-/** Planene som faktisk kan kjøpes. `free` krever ingen betaling. */
-export type PaidTier = Exclude<SubscriptionTier, "free">;
+/**
+ * Planene som faktisk kan kjøpes. `free` krever ingen betaling, og `agency`
+ * avtales og faktureres utenfor Stripe – den har ingen price-ID å peke på.
+ */
+export type PaidTier = Exclude<SubscriptionTier, "free" | "agency">;
 
 export function priceIdForPlan(plan: PaidTier): string | null {
   return (plan === "pro" ? config.STRIPE_PRICE_PRO : config.STRIPE_PRICE_BUSINESS) ?? null;

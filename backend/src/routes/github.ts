@@ -101,6 +101,68 @@ githubApi.get("/repos", async (c) => {
   return c.json({ repos });
 });
 
+/**
+ * Registrerer en GitHub App-installasjon på den som kaller.
+ *
+ * Dette er `/github/setup` uten nettleseren. Setup-URL-en får `installation_id`
+ * som en query-parameter i en redirect, og verifiserer avsenderen med en
+ * HMAC-signert `state` – en mekanikk som forutsetter at det finnes en nettleser
+ * å redirecte. En integrasjon som LeadLab kjører installasjonsflyten i *sitt*
+ * eget UI og sitter igjen med ID-en; da mangler den bare et sted å levere den.
+ *
+ * Tilliten hviler her på API-nøkkelen i `Authorization`, ikke på `state`. Vi
+ * spør likevel GitHub om installasjonen faktisk finnes før vi lagrer noe,
+ * nøyaktig som setup-ruten gjør: ID-en kommer utenfra, og en kobling til en
+ * installasjon som ikke er vår ville gitt et repo-oppslag som feiler for alltid.
+ */
+githubApi.post("/installations", async (c) => {
+  if (!github.isConfigured()) {
+    throw new HTTPException(503, { message: "GitHub-integrasjonen er ikke konfigurert" });
+  }
+
+  const body = await c.req.json<{ installationId?: unknown }>().catch(() => null);
+  const installationId = Number(body?.installationId);
+
+  if (!Number.isSafeInteger(installationId) || installationId <= 0) {
+    throw new HTTPException(400, { message: "«installationId» må være et positivt heltall" });
+  }
+
+  const userId = c.get("userId");
+
+  let account: Awaited<ReturnType<typeof github.getInstallation>>;
+  try {
+    account = await github.getInstallation(installationId);
+  } catch (error) {
+    // 404 fra GitHub betyr at installasjonen ikke finnes, eller ikke tilhører
+    // App-en vår. Begge er kallerens feil å rette, ikke vår å feile på.
+    if (error instanceof github.GithubError && error.status === 404) {
+      throw new HTTPException(404, {
+        message: `GitHub kjenner ingen installasjon ${installationId} for denne App-en.`,
+      });
+    }
+    throw error;
+  }
+
+  const { error } = await supabase.from("github_installations").upsert(
+    {
+      user_id: userId,
+      installation_id: account.installationId,
+      account_login: account.accountLogin,
+      account_type: account.accountType,
+    },
+    { onConflict: "user_id,installation_id" },
+  );
+
+  if (error) throw new HTTPException(500, { message: `Databasefeil: ${error.message}` });
+
+  logger.info(
+    { userId, installationId, account: account.accountLogin, via: c.get("authKind") },
+    "GitHub-installasjon registrert over API",
+  );
+
+  return c.json({ installation: account }, 201);
+});
+
 // ---------------------------------------------------------------------------
 // Offentlig endepunkt (monteres på /github)
 // ---------------------------------------------------------------------------
