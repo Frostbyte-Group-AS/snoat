@@ -208,6 +208,7 @@
     "tab_terminal": "Terminal",
     "tab_analytics": "Analytics",
     "tab_dns": "DNS",
+    "tab_mcp": "MCP Server",
     "tab_env": "Environment Variables",
     "tab_settings": "Settings",
     "back_to_projects": "Back to projects",

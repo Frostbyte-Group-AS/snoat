@@ -309,3 +309,33 @@ export function getProjectAnalytics(
   const query = new URLSearchParams({ from: String(from), to: String(to), unit });
   return request(`/api/projects/${projectId}/analytics?${query}`);
 }
+
+export interface ApiKeyItem {
+  id: string;
+  name: string;
+  token_prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+/** Henter alle aktive API-nøkler for brukeren. */
+export function fetchApiKeys(): Promise<{ keys: ApiKeyItem[] }> {
+  return request("/api/api-keys");
+}
+
+/** Oppretter en ny API-nøkkel (f.eks. for MCP server). Tokenet vises kun i svaret! */
+export function createApiKey(name: string = "Snoat MCP Server"): Promise<{ key: ApiKeyItem; token: string }> {
+  return request("/api/api-keys", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+/** Trekker tilbake en API-nøkkel. */
+export function revokeApiKey(keyId: string): Promise<{ success: boolean }> {
+  return request(`/api/api-keys/${keyId}`, {
+    method: "DELETE",
+  });
+}
+

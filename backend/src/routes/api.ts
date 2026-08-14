@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { supabase } from "../lib/supabase.js";
+import { generateApiKey } from "../lib/api-keys.js";
 import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware/auth.js";
 import * as analytics from "../services/analytics.js";
 import { invalidateHostMap } from "../services/analytics-ingest.js";
@@ -354,4 +355,199 @@ api.get("/projects/:projectId/analytics", async (c) => {
 
   return c.json(await analytics.getProjectSummary(project, range));
 });
+
+/**
+ * Henter alle prosjekter for den innloggede brukeren.
+ * Brukes av integrasjoner som MCP-serveren.
+ */
+api.get("/projects", async (c) => {
+  const userId = c.get("userId");
+
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*, deployments(id, status, created_at, url)")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new HTTPException(500, { message: `Kunne ikke hente prosjekter: ${error.message}` });
+  }
+
+  // Normaliser siste deployment per prosjekt
+  const projects = (data || []).map((p: any) => {
+    const sortedDeployments = Array.isArray(p.deployments)
+      ? p.deployments.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      : [];
+    const latestDeployment = sortedDeployments[0] || null;
+    return {
+      ...p,
+      deployments: undefined,
+      latest_deployment: latestDeployment,
+    };
+  });
+
+  return c.json({ projects });
+});
+
+/**
+ * Henter enkeltdetaljer for et prosjekt eiet av brukeren.
+ */
+api.get("/projects/:projectId", async (c) => {
+  const project = await loadOwnedProject(c, c.req.param("projectId"));
+
+  const { data: latestDeployment } = await supabase
+    .from("deployments")
+    .select("id, status, created_at, commit_hash, url")
+    .eq("project_id", project.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return c.json({
+    project,
+    latest_deployment: latestDeployment || null,
+  });
+});
+
+/**
+ * Henter nylige deployments for et prosjekt.
+ */
+api.get("/projects/:projectId/deployments", async (c) => {
+  const project = await loadOwnedProject(c, c.req.param("projectId"));
+
+  const { data, error } = await supabase
+    .from("deployments")
+    .select("*")
+    .eq("project_id", project.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    throw new HTTPException(500, { message: `Kunne ikke hente deployments: ${error.message}` });
+  }
+
+  return c.json({ deployments: data || [] });
+});
+
+/**
+ * Oppdaterer konfigurasjon på et eksisterende prosjekt (byggekommando, env_vars, etc.).
+ */
+api.patch("/projects/:projectId", async (c) => {
+  const project = await loadOwnedProject(c, c.req.param("projectId"));
+
+  const body = await c.req.json<{
+    buildCommand?: unknown;
+    envVars?: unknown;
+    staticOutputDir?: unknown;
+    staticSpaFallback?: unknown;
+  }>().catch(() => null);
+
+  if (!body) throw new HTTPException(400, { message: "Kroppen må være gyldig JSON" });
+
+  const updates: Record<string, any> = {};
+
+  if (body.buildCommand !== undefined) {
+    updates.build_command = typeof body.buildCommand === "string" ? body.buildCommand : null;
+  }
+  if (body.envVars !== undefined && typeof body.envVars === "object" && !Array.isArray(body.envVars)) {
+    updates.env_vars = body.envVars;
+  }
+  if (body.staticOutputDir !== undefined) {
+    updates.static_output_dir = typeof body.staticOutputDir === "string" && body.staticOutputDir.trim()
+      ? body.staticOutputDir.trim()
+      : null;
+  }
+  if (body.staticSpaFallback !== undefined) {
+    updates.static_spa_fallback = body.staticSpaFallback === true;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return c.json({ project });
+  }
+
+  const { data, error } = await supabase
+    .from("projects")
+    .update(updates)
+    .eq("id", project.id)
+    .select("*")
+    .single();
+
+  return c.json({ project: data });
+});
+
+/**
+ * Henter liste over aktive API-nøkler for innlogget bruker.
+ */
+api.get("/api-keys", async (c) => {
+  const userId = c.get("userId");
+
+  const { data, error } = await supabase
+    .from("api_keys")
+    .select("id, name, token_prefix, created_at, last_used_at, revoked_at")
+    .eq("user_id", userId)
+    .is("revoked_at", null)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new HTTPException(500, { message: `Kunne ikke hente API-nøkler: ${error.message}` });
+  }
+
+  return c.json({ keys: data || [] });
+});
+
+/**
+ * Utsteder en ny API-nøkkel for innlogget bruker (f.eks. for Snoat MCP Server).
+ */
+api.post("/api-keys", async (c) => {
+  const userId = c.get("userId");
+  const body = await c.req.json<{ name?: string }>().catch(() => ({ name: "Snoat MCP Server" }));
+
+  const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : "Snoat MCP Server";
+  const key = generateApiKey();
+
+  const { data, error } = await supabase
+    .from("api_keys")
+    .insert({
+      user_id: userId,
+      name,
+      token_prefix: key.tokenPrefix,
+      token_hash: key.tokenHash,
+    })
+    .select("id, name, token_prefix, created_at")
+    .single();
+
+  if (error) {
+    throw new HTTPException(500, { message: `Kunne ikke opprette API-nøkkel: ${error.message}` });
+  }
+
+  logger.info({ userId, keyName: name }, "Ny API-nøkkel utstedt fra dashboardet");
+
+  // Nøkkelen (token) returneres i klartekst kun i dette ene svaret
+  return c.json({
+    key: data,
+    token: key.token,
+  }, 201);
+});
+
+/**
+ * Trekker tilbake en API-nøkkel.
+ */
+api.delete("/api-keys/:keyId", async (c) => {
+  const userId = c.get("userId");
+  const keyId = c.req.param("keyId");
+
+  const { error } = await supabase
+    .from("api_keys")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("id", keyId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new HTTPException(500, { message: `Kunne ikke trekke tilbake API-nøkkel: ${error.message}` });
+  }
+
+  return c.json({ success: true });
+});
+
+
 
