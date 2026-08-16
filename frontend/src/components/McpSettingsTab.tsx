@@ -7,15 +7,12 @@ interface McpSettingsTabProps {
   project: Project;
 }
 
-type ClientTab = "claude" | "cursor" | "windsurf";
-
 export function McpSettingsTab({ project }: McpSettingsTabProps) {
   const queryClient = useQueryClient();
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedConfig, setCopiedConfig] = useState(false);
-  const [selectedClient, setSelectedClient] = useState<ClientTab>("claude");
-  const [keyName, setKeyName] = useState("Snoat MCP Server");
+  const [keyName] = useState("Snoat MCP Server");
 
   // Hent eksisterende API-nøkler
   const keysQuery = useQuery({
@@ -27,7 +24,7 @@ export function McpSettingsTab({ project }: McpSettingsTabProps) {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => createApiKey(keyName || "Snoat MCP Server"),
+    mutationFn: () => createApiKey(keyName),
     onSuccess: (data) => {
       setNewApiKey(data.token);
       setCopiedKey(false);
@@ -42,46 +39,31 @@ export function McpSettingsTab({ project }: McpSettingsTabProps) {
     },
   });
 
-  const activeKeyDisplay = newApiKey || (keysQuery.data && keysQuery.data.length > 0 ? `${keysQuery.data[0].token_prefix}...` : "snoat_ak_din_personlige_api_nokkel");
+  const activeKeyDisplay = newApiKey || "snoat_ak_... (Opprett en nøkkel for å få koden)";
 
   const getClaudeConfig = () => JSON.stringify({
     mcpServers: {
       snoat: {
-        command: "node",
-        args: ["/absolutt/sti/til/snoat/mcp-server/dist/index.js"],
+        command: "npx",
+        args: ["-y", "@snoat/mcp-server"],
         env: {
-          SNOAT_API_KEY: activeKeyDisplay,
-          SNOAT_API_URL: "http://api.snoat.localhost"
+          SNOAT_API_KEY: newApiKey || "DIN_API_NØKKEL_HER"
         }
       }
     }
   }, null, 2);
 
-  const getCursorConfig = () => JSON.stringify({
-    mcpServers: {
-      snoat: {
-        command: "node",
-        args: ["/absolutt/sti/til/snoat/mcp-server/dist/index.js"],
-        env: {
-          SNOAT_API_KEY: activeKeyDisplay,
-          SNOAT_API_URL: "http://api.snoat.localhost"
-        }
-      }
-    }
-  }, null, 2);
-
-  const copyToClipboard = (text: string, type: "key" | "config") => {
-    void navigator.clipboard.writeText(text);
-    if (type === "key") {
-      setCopiedKey(true);
-      setTimeout(() => setCopiedKey(false), 2000);
-    } else {
-      setCopiedConfig(true);
-      setTimeout(() => setCopiedConfig(false), 2000);
-    }
+  const copyConfigToClipboard = () => {
+    void navigator.clipboard.writeText(getClaudeConfig());
+    setCopiedConfig(true);
+    setTimeout(() => setCopiedConfig(false), 2000);
   };
 
-  const currentConfig = selectedClient === "claude" ? getClaudeConfig() : getCursorConfig();
+  const copyKeyToClipboard = (key: string) => {
+    void navigator.clipboard.writeText(key);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
+  };
 
   return (
     <div className="space-y-8">
@@ -97,7 +79,7 @@ export function McpSettingsTab({ project }: McpSettingsTabProps) {
               Koble AI til din Snoat-konto
             </h2>
             <p className="font-body text-body-md text-on-surface-variant max-w-2xl">
-              Opprett en personlig MCP-server for å styre prosjekter, utløse deployments, sjekke byggelogger og trafikkstatistikk direkte fra Claude Desktop, Cursor, Antigravity eller VS Code.
+              Opprett en personlig MCP-server for å styre prosjekter, utløse deployments og lese logger direkte fra Claude Desktop eller Cursor.
             </p>
           </div>
 
@@ -117,15 +99,15 @@ export function McpSettingsTab({ project }: McpSettingsTabProps) {
 
       {/* Nyutstedt Nøkkel Banner */}
       {newApiKey && (
-        <div className="rounded-2xl border border-primary bg-primary/10 p-6 space-y-4 animate-in fade-in-50 duration-300">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-primary font-semibold font-label text-label-lg">
+        <div className="rounded-2xl border border-primary bg-primary/10 p-6 space-y-6 animate-in fade-in-50 duration-300">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-primary font-semibold font-label text-title-md">
               <span className="material-symbols-outlined">check_circle</span>
-              Ny API-nøkkel opprettet!
+              Din MCP-nøkkel er klar!
             </div>
-            <span className="text-body-sm text-on-surface-variant">
-              Vises kun nå – kopier den umiddelbart.
-            </span>
+            <p className="text-body-sm text-on-surface-variant">
+              Kopier nøkkelen din nå, den vises kun én gang. Bruk knappen under for å kopiere oppsettet til Claude Desktop.
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -137,7 +119,7 @@ export function McpSettingsTab({ project }: McpSettingsTabProps) {
             />
             <button
               type="button"
-              onClick={() => copyToClipboard(newApiKey, "key")}
+              onClick={() => copyKeyToClipboard(newApiKey)}
               className="secondary-btn flex items-center gap-2 px-5 py-3 font-label text-label-md flex-shrink-0"
             >
               <span className="material-symbols-outlined icon-sm">
@@ -146,80 +128,25 @@ export function McpSettingsTab({ project }: McpSettingsTabProps) {
               {copiedKey ? "Kopiert!" : "Kopier nøkkel"}
             </button>
           </div>
+
+          <div className="pt-4 border-t border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h4 className="font-semibold text-on-surface">Claude Desktop Oppsett</h4>
+              <p className="text-sm text-on-surface-variant">Limes inn i <code className="font-mono text-xs">claude_desktop_config.json</code></p>
+            </div>
+            <button
+              type="button"
+              onClick={copyConfigToClipboard}
+              className="primary-btn flex items-center gap-2 px-5 py-3 font-label text-label-md flex-shrink-0"
+            >
+              <span className="material-symbols-outlined icon-sm">
+                {copiedConfig ? "check" : "terminal"}
+              </span>
+              {copiedConfig ? "Konfigurasjon kopiert!" : "Kopier Claude-konfigurasjon"}
+            </button>
+          </div>
         </div>
       )}
-
-      {/* Klient Konfigurasjon Form */}
-      <div className="rounded-3xl border border-surface-variant/30 bg-surface-container p-6 md:p-8 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h3 className="font-display text-title-lg text-on-background">
-              Konfigurer din AI-klient
-            </h3>
-            <p className="font-body text-body-sm text-on-surface-variant">
-              Kopier den ferdige konfigurasjonskoden direkte inn i klienten din.
-            </p>
-          </div>
-
-          {/* Client Selector Buttons */}
-          <div className="inline-flex rounded-xl bg-surface p-1 border border-surface-variant/20">
-            <button
-              type="button"
-              onClick={() => setSelectedClient("claude")}
-              className={`px-4 py-2 rounded-lg font-label text-label-md transition-colors ${
-                selectedClient === "claude"
-                  ? "bg-surface-variant text-on-surface font-semibold"
-                  : "text-on-surface-variant hover:text-on-surface"
-              }`}
-            >
-              Claude Desktop
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedClient("cursor")}
-              className={`px-4 py-2 rounded-lg font-label text-label-md transition-colors ${
-                selectedClient === "cursor"
-                  ? "bg-surface-variant text-on-surface font-semibold"
-                  : "text-on-surface-variant hover:text-on-surface"
-              }`}
-            >
-              Cursor / Antigravity
-            </button>
-          </div>
-        </div>
-
-        {/* Instrukser per klient */}
-        <div className="rounded-xl bg-surface/50 p-4 font-body text-body-sm text-on-surface-variant flex items-start gap-3 border border-surface-variant/20">
-          <span className="material-symbols-outlined text-primary icon-sm mt-0.5">info</span>
-          <div>
-            {selectedClient === "claude" && (
-              <p>
-                Lim inn denne koden i <code className="font-mono text-primary">claude_desktop_config.json</code> under <code className="font-mono text-primary">mcpServers</code>.
-              </p>
-            )}
-            {selectedClient === "cursor" && (
-              <p>
-                Lim inn denne koden i din Cursor / Antigravity sin <code className="font-mono text-primary">mcp.json</code> fil eller under innstillinger for MCP Servers.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* JSON Code Box med Kopier Knapp */}
-        <div className="relative rounded-2xl bg-surface p-5 border border-surface-variant/30 font-mono text-body-sm text-on-surface">
-          <button
-            type="button"
-            onClick={() => copyToClipboard(currentConfig, "config")}
-            className="absolute top-4 right-4 secondary-btn flex items-center gap-1.5 px-3 py-1.5 text-label-sm"
-          >
-            <span className="material-symbols-outlined icon-xs">
-              {copiedConfig ? "check" : "content_copy"}
-            </span>
-            {copiedConfig ? "Kopiert!" : "Kopier konfigurasjon"}
-          </button>
-          <pre className="overflow-x-auto pt-2">{currentConfig}</pre>
-        </div>
-      </div>
 
       {/* Aktive API-nøkler Liste */}
       <div className="rounded-3xl border border-surface-variant/30 bg-surface-container p-6 md:p-8 space-y-6">
@@ -250,31 +177,23 @@ export function McpSettingsTab({ project }: McpSettingsTabProps) {
                     )}
                   </div>
                 </div>
-
                 <button
                   type="button"
-                  onClick={() => revokeMutation.mutate(key.id)}
+                  onClick={() => {
+                    if (confirm("Er du sikker på at du vil slette denne nøkkelen? AI-klienten vil miste tilgangen.")) {
+                      revokeMutation.mutate(key.id);
+                    }
+                  }}
                   disabled={revokeMutation.isPending}
-                  className="ghost-btn self-start sm:self-center px-3 py-1.5 text-label-sm text-error hover:bg-error/10"
+                  className="text-error hover:bg-error/10 p-2 rounded-lg transition-colors"
+                  title="Slett nøkkel"
                 >
-                  Trekker tilbake / Slett
+                  <span className="material-symbols-outlined">delete</span>
                 </button>
               </div>
             ))}
           </div>
         )}
-      </div>
-
-      {/* Sikkerhetsinformasjon */}
-      <div className="rounded-2xl border border-surface-variant/20 bg-surface-variant/10 p-5 flex items-start gap-4">
-        <span className="material-symbols-outlined text-primary icon-md mt-0.5">shield</span>
-        <div className="space-y-1 font-body text-body-sm text-on-surface-variant">
-          <p className="font-semibold text-on-surface font-label">Sikkerhet og slette-restriksjoner</p>
-          <p>
-            For å beskytte produksjonsapplikasjonene dine er sletting (<code className="font-mono text-primary">snoat_delete_project</code>) som standard sperret i MCP-serveren. 
-            Serveren krever at miljøvariabelen <code className="font-mono text-primary">ALLOW_DANGEROUS_DELETIONS=true</code> oppgis dersom du vil tillate sletting fra AI-assistenten.
-          </p>
-        </div>
       </div>
     </div>
   );
