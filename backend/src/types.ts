@@ -95,6 +95,52 @@ export interface ApiKey {
   revoked_at: string | null;
 }
 
+/**
+ * En MCP-klient som har registrert seg via `POST /oauth/register`.
+ * Speiler `public.oauth_clients` (migrasjon 0011).
+ *
+ * `client_name` er klientkontrollert tekst. Den vises på samtykkesiden fordi
+ * kunden må kunne se hva hen godkjenner, men den er ikke et bevis på noe.
+ */
+export interface OauthClient {
+  id: string;
+  client_id: string;
+  client_name: string;
+  redirect_uris: string[];
+  created_at: string;
+}
+
+/** Speiler `public.oauth_authorization_codes`. Lever i sekunder. */
+export interface OauthAuthorizationCode {
+  id: string;
+  code_hash: string;
+  client_id: string;
+  user_id: string;
+  redirect_uri: string;
+  code_challenge: string;
+  scope: string;
+  resource: string | null;
+  expires_at: string;
+  consumed_at: string | null;
+  created_at: string;
+}
+
+/** Speiler `public.oauth_tokens`. Klartekstverdien finnes kun ved utstedelse. */
+export interface OauthToken {
+  id: string;
+  token_hash: string;
+  kind: "access" | "refresh";
+  client_id: string;
+  user_id: string;
+  scope: string;
+  resource: string | null;
+  expires_at: string;
+  replaces_token_id: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
 /** Kobling mellom en Snoat-bruker og en GitHub App-installasjon. */
 export interface GithubInstallation {
   id: string;
