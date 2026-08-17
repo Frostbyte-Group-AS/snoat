@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { isApiKey, touchApiKey, verifyApiKey } from "../lib/api-keys.js";
+import { isOauthAccessToken, touchToken, verifyAccessToken } from "../lib/oauth.js";
 import { supabase } from "../lib/supabase.js";
 import type { Project } from "../types.js";
 
@@ -18,13 +19,21 @@ export interface AuthVariables {
    * Hvordan kalleren beviste hvem den er.
    *
    * `session` er et menneske i dashboardet, `api_key` er en integrasjon som
-   * LeadLab. Skillet finnes fordi de to ikke skal ha nøyaktig samme rettigheter
+   * LeadLab, og `oauth` er en MCP-klient kunden har koblet til – i praksis
+   * Claude. Skillet finnes fordi de tre ikke skal ha nøyaktig samme rettigheter
    * i framtiden – en API-nøkkel har f.eks. ingenting med Stripe-kassen å gjøre.
    * Endepunkter som bryr seg leser denne; resten trenger bare `userId`.
    */
-  authKind: "session" | "api_key";
-  /** Nøkkelen kallet kom med. `null` for sesjoner. */
+  authKind: "session" | "api_key" | "oauth";
+  /** Nøkkelen kallet kom med. `null` for sesjoner og OAuth-tokens. */
   apiKeyId: string | null;
+  /**
+   * Klienten OAuth-tokenet er utstedt til. `null` for alt annet.
+   *
+   * Ligger her fordi loggen skal kunne svare på *hvilken* MCP-klient som startet
+   * en deployment, ikke bare at «en connector» gjorde det.
+   */
+  oauthClientId: string | null;
 }
 
 /**
@@ -64,6 +73,38 @@ export const requireAuth: MiddlewareHandler<{ Variables: AuthVariables }> = asyn
     c.set("userEmail", undefined);
     c.set("authKind", "api_key");
     c.set("apiKeyId", key.id);
+    c.set("oauthClientId", null);
+    await next();
+    return;
+  }
+
+  /**
+   * MCP-connectoren.
+   *
+   * Tokenet er utstedt til en klient kunden har godkjent (`lib/oauth.ts`), men
+   * *er* brukeren sin på samme måte som en API-nøkkel: `userId` settes til
+   * eieren, og eierskapssjekker og plangrenser nedenfor oppfører seg nøyaktig
+   * som om vedkommende var innlogget.
+   *
+   * At denne grenen ligger i den delte middlewaren – og ikke bare i
+   * MCP-endepunktet – er det som gjør at *hele* API-et fungerer for en
+   * connector. MCP-verktøyene kaller de vanlige REST-rutene internt
+   * (`services/mcp-tools.ts`), og uten dette ville hvert av dem trengt sin egen
+   * autentiseringssti.
+   */
+  if (isOauthAccessToken(token)) {
+    const accessToken = await verifyAccessToken(token);
+
+    if (!accessToken) {
+      throw new HTTPException(401, { message: "Ugyldig eller utløpt tilgang for MCP-klienten" });
+    }
+
+    touchToken(accessToken.id);
+    c.set("userId", accessToken.user_id);
+    c.set("userEmail", undefined);
+    c.set("authKind", "oauth");
+    c.set("apiKeyId", null);
+    c.set("oauthClientId", accessToken.client_id);
     await next();
     return;
   }
@@ -78,6 +119,7 @@ export const requireAuth: MiddlewareHandler<{ Variables: AuthVariables }> = asyn
   c.set("userEmail", data.user.email);
   c.set("authKind", "session");
   c.set("apiKeyId", null);
+  c.set("oauthClientId", null);
   await next();
 };
 

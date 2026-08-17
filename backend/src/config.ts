@@ -110,8 +110,24 @@ const schema = z.object({
 
   DOCKER_HOST: z.string().default("unix:///var/run/docker.sock"),
 
-  /** Origin dashboardet kjører på – eneste tillatte CORS-origin. */
+  /**
+   * Origin dashboardet kjører på – eneste tillatte CORS-origin.
+   *
+   * Kommaseparert liste. Den **første** er den kanoniske: MCP-connectoren sender
+   * kunden til samtykkesiden der (`lib/public-url.ts`).
+   */
   SNOAT_FRONTEND_ORIGIN: z.string().default("http://localhost:8080"),
+
+  /**
+   * Overstyring av backends egen offentlige URL, f.eks. `https://api.snoat.com`.
+   *
+   * Valgfri, og bør normalt stå tom: uten den leses URL-en ut av `Host` og
+   * `X-Forwarded-Proto` på forespørselen, som er riktig i alle miljøer uten at
+   * noen må huske å sette en variabel. Sett den bare dersom backend står bak noe
+   * som ikke videresender de headerne. Se `lib/public-url.ts` for hvorfor
+   * OAuth-metadataen ikke tåler en feil verdi her.
+   */
+  SNOAT_PUBLIC_API_URL: optionalEnv,
 
   /**
    * Porten brukerapplikasjoner forventes å lytte på inne i containeren.
