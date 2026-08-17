@@ -7,7 +7,6 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { DeploymentStatusBadge } from "@/components/DeploymentStatusBadge";
 import { DnsSettingsTab } from "@/components/DnsSettingsTab";
 import { AnalyticsTab } from "@/components/AnalyticsTab";
-import { McpSettingsTab } from "@/components/McpSettingsTab";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useAuth, displayName, avatarUrl } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
@@ -34,7 +33,6 @@ const TABS: ReadonlyArray<{ id: Tab; icon: string; labelKey: string }> = [
   { id: "terminal", icon: "terminal", labelKey: "project.tab_terminal" },
   { id: "analytics", icon: "analytics", labelKey: "project.tab_analytics" },
   { id: "dns", icon: "dns", labelKey: "project.tab_dns" },
-  { id: "mcp", icon: "smart_toy", labelKey: "project.tab_mcp" },
   { id: "env", icon: "key", labelKey: "project.tab_env" },
   { id: "settings", icon: "settings", labelKey: "project.tab_settings" },
 ];
@@ -337,10 +335,6 @@ function ProjectDetailPage() {
               onSaveDomain={(domain) => domainMutation.mutate(domain)}
               isSaving={domainMutation.isPending}
             />
-          )}
-
-          {activeTab === "mcp" && (
-            <McpSettingsTab project={project} />
           )}
 
           {activeTab === "env" && (

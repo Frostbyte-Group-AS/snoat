@@ -16,8 +16,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
+import { Route as OauthConsentRouteImport } from './routes/oauth.consent'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
 import { Route as SettingsBillingRouteImport } from './routes/settings.billing'
+import { Route as SettingsMcpRouteImport } from './routes/settings.mcp'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -54,6 +56,11 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OauthConsentRoute = OauthConsentRouteImport.update({
+  id: '/oauth/consent',
+  path: '/oauth/consent',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
   id: '/projects/$projectId',
   path: '/projects/$projectId',
@@ -62,6 +69,11 @@ const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
 const SettingsBillingRoute = SettingsBillingRouteImport.update({
   id: '/settings/billing',
   path: '/settings/billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsMcpRoute = SettingsMcpRouteImport.update({
+  id: '/settings/mcp',
+  path: '/settings/mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -73,8 +85,10 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/oauth/consent': typeof OauthConsentRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
+  '/settings/mcp': typeof SettingsMcpRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -84,8 +98,10 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/oauth/consent': typeof OauthConsentRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
+  '/settings/mcp': typeof SettingsMcpRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -96,8 +112,10 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/oauth/consent': typeof OauthConsentRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
+  '/settings/mcp': typeof SettingsMcpRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -109,8 +127,10 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/auth/callback'
+    | '/oauth/consent'
     | '/projects/$projectId'
     | '/settings/billing'
+    | '/settings/mcp'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -120,8 +140,10 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/auth/callback'
+    | '/oauth/consent'
     | '/projects/$projectId'
     | '/settings/billing'
+    | '/settings/mcp'
   id:
     | '__root__'
     | '/'
@@ -131,8 +153,10 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/auth/callback'
+    | '/oauth/consent'
     | '/projects/$projectId'
     | '/settings/billing'
+    | '/settings/mcp'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -143,8 +167,10 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  OauthConsentRoute: typeof OauthConsentRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   SettingsBillingRoute: typeof SettingsBillingRoute
+  SettingsMcpRoute: typeof SettingsMcpRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -198,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/oauth/consent': {
+      id: '/oauth/consent'
+      path: '/oauth/consent'
+      fullPath: '/oauth/consent'
+      preLoaderRoute: typeof OauthConsentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/$projectId': {
       id: '/projects/$projectId'
       path: '/projects/$projectId'
@@ -212,6 +245,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsBillingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/mcp': {
+      id: '/settings/mcp'
+      path: '/settings/mcp'
+      fullPath: '/settings/mcp'
+      preLoaderRoute: typeof SettingsMcpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -223,8 +263,10 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  OauthConsentRoute: OauthConsentRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   SettingsBillingRoute: SettingsBillingRoute,
+  SettingsMcpRoute: SettingsMcpRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

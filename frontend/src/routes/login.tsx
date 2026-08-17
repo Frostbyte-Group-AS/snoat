@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { SnoatLogo } from "@/components/SnoatLogo";
 import { useAuth } from "@/lib/auth";
+import { consumeReturnTo } from "@/lib/return-to";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
@@ -94,8 +95,22 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
 
+  /**
+   * Hvor vi skal etter innlogging.
+   *
+   * Normalt dashboardet, men en bruker som ble sendt hit fra samtykkesiden for en
+   * AI-tilkobling skal tilbake til nettopp den forespørselen – ellers er
+   * tilkoblingen hen prøvde å opprette borte. Se `lib/return-to.ts`.
+   */
+  const goToDestination = async () => {
+    const returnTo = consumeReturnTo();
+    await (returnTo ? navigate({ href: returnTo }) : navigate({ to: "/dashboard" }));
+  };
+
   useEffect(() => {
-    if (!loading && user) void navigate({ to: "/dashboard" });
+    if (!loading && user) void goToDestination();
+    // `goToDestination` leser bare fra sessionStorage, så den trenger ikke stå her.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user, navigate]);
 
   // Automatically show password field if email is valid
@@ -119,14 +134,14 @@ function LoginPage() {
     try {
       if (mode === "signin") {
         await signInWithPassword(email, password);
-        await navigate({ to: "/dashboard" });
+        await goToDestination();
       } else {
         const { needsEmailConfirmation } = await signUpWithPassword(email, password);
         if (needsEmailConfirmation) {
           setAwaitingConfirmation(true);
           return;
         }
-        await navigate({ to: "/dashboard" });
+        await goToDestination();
       }
     } catch (cause) {
       // Adressen er tatt: flytt brukeren over i innlogging med e-posten i behold

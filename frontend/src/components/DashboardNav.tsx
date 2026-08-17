@@ -31,6 +31,14 @@ export function DashboardNav() {
 
         <div className="flex items-center gap-4">
           <Link
+            to="/settings/mcp"
+            className="hidden font-label text-label-md text-on-surface-variant transition-colors hover:text-on-surface sm:inline"
+            activeProps={{ className: "text-primary" }}
+          >
+            {t("nav.mcp")}
+          </Link>
+
+          <Link
             to="/settings/billing"
             className="hidden font-label text-label-md text-on-surface-variant transition-colors hover:text-on-surface sm:inline"
             activeProps={{ className: "text-primary" }}

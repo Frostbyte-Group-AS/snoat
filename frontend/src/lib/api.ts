@@ -80,6 +80,16 @@ async function publicRequest<T>(path: string): Promise<T> {
   return parse<T>(await fetch(`${baseUrl}${path}`), path);
 }
 
+/** Som `publicRequest`, men med en kropp. Brukes av OAuth-avslaget. */
+async function publicPost<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return parse<T>(response, path);
+}
+
 /** Starter en deployment. Svarer så snart raden finnes – bygget kjører videre. */
 export function deployProject(projectId: string): Promise<{ deployment: Deployment }> {
   return request(`/api/projects/${projectId}/deploy`, { method: "POST" });
@@ -337,5 +347,65 @@ export function revokeApiKey(keyId: string): Promise<{ success: boolean }> {
   return request(`/api/api-keys/${keyId}`, {
     method: "DELETE",
   });
+}
+
+/**
+ * URL-en kunden limer inn i Claude for å koble til som custom connector.
+ *
+ * Bygges fra samme `VITE_SNOAT_API_URL` som alle andre kall, slik at den peker på
+ * riktig backend i hvert miljø uten en egen variabel å holde i synk. Er den tom
+ * (frontend og backend på samme vert), faller vi tilbake på nettleserens origin –
+ * ellers ville vi vist kunden en relativ sti hen ikke kan lime inn noe sted.
+ */
+export function mcpConnectorUrl(): string {
+  const base = baseUrl || (typeof window === "undefined" ? "" : window.location.origin);
+  return `${base.replace(/\/+$/, "")}/api/mcp`;
+}
+
+/** En MCP-klient som har tilgang til kontoen. */
+export interface McpConnection {
+  clientId: string;
+  /** Navnet klienten oppgav om seg selv, f.eks. «Claude». */
+  clientName: string;
+  connectedAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string;
+}
+
+export function fetchMcpConnections(): Promise<{ connections: McpConnection[] }> {
+  return request("/api/mcp-connections");
+}
+
+/** Trekker tilbake all tilgang klienten har på kontoen. */
+export function disconnectMcpClient(clientId: string): Promise<{ success: boolean }> {
+  return request(`/api/mcp-connections/${clientId}`, { method: "DELETE" });
+}
+
+/**
+ * Godkjenner en tilkoblingsforespørsel fra en MCP-klient.
+ *
+ * `sealedRequest` er den signerte forespørselen backend la i URL-en da klienten
+ * sendte brukeren til samtykkesiden. Vi sender den tilbake urørt; det er backend
+ * som verifiserer signaturen og avgjør hva den betyr.
+ *
+ * Svaret er en URL nettleseren skal til – ikke en omdirigering vi kan følge her,
+ * for da ville autorisasjonskoden havnet i et `fetch`-svar i stedet for hos
+ * klienten som ba om den.
+ */
+export function approveOauthRequest(sealedRequest: string): Promise<{ redirect_to: string }> {
+  return request("/oauth/approve", {
+    method: "POST",
+    body: JSON.stringify({ request: sealedRequest }),
+  });
+}
+
+/**
+ * Avslår forespørselen, og gir klienten en URL som sier hvorfor.
+ *
+ * Krever ingen innlogging: et avslag gir ingen tilgang, og en bruker som ikke er
+ * innlogget skal kunne avvise en forespørsel hen ikke kjenner seg igjen i.
+ */
+export function denyOauthRequest(sealedRequest: string): Promise<{ redirect_to: string }> {
+  return publicPost("/oauth/deny", { request: sealedRequest });
 }
 

@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { SnoatLogo } from "@/components/SnoatLogo";
 import { useAuth } from "@/lib/auth";
+import { consumeReturnTo } from "@/lib/return-to";
 
 export const Route = createFileRoute("/auth/callback")({
   component: AuthCallback,
@@ -29,7 +30,12 @@ function AuthCallback() {
       return;
     }
 
-    if (!loading && user) void navigate({ to: "/dashboard" });
+    if (!loading && user) {
+      // Kom brukeren fra samtykkesiden for en AI-tilkobling, skal hen tilbake
+      // dit – ikke til dashboardet, der forespørselen er glemt.
+      const returnTo = consumeReturnTo();
+      void (returnTo ? navigate({ href: returnTo }) : navigate({ to: "/dashboard" }));
+    }
   }, [loading, user, navigate]);
 
   return (
