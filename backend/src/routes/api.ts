@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { supabase } from "../lib/supabase.js";
 import { generateApiKey } from "../lib/api-keys.js";
+import { listConnections, revokeClientTokens } from "../lib/oauth.js";
 import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware/auth.js";
 import * as analytics from "../services/analytics.js";
 import { invalidateHostMap } from "../services/analytics-ingest.js";
@@ -527,6 +528,52 @@ api.post("/api-keys", async (c) => {
     key: data,
     token: key.token,
   }, 201);
+});
+
+/**
+ * MCP-klientene som har tilgang til kontoen akkurat nå.
+ *
+ * Ligger på `/mcp-connections` og ikke under `/mcp/…`: sistnevnte er montert som
+ * en egen app i `index.ts`, foran denne, og hadde svart på stien i stedet.
+ *
+ * Bare sesjoner får se dette. En connector skal ikke kunne kartlegge de andre
+ * connectorene på kontoen – eller koble dem fra – og `authKind` er det som
+ * skiller et menneske i dashboardet fra en integrasjon.
+ */
+api.get("/mcp-connections", async (c) => {
+  if (c.get("authKind") !== "session") {
+    throw new HTTPException(403, {
+      message: "Bare en innlogget bruker kan se tilkoblingene på kontoen.",
+    });
+  }
+
+  return c.json({ connections: await listConnections(c.get("userId")) });
+});
+
+/**
+ * Kobler fra en MCP-klient.
+ *
+ * Trekker tilbake alle tokens klienten har på denne kontoen, både access og
+ * refresh. Klienten mister tilgangen ved neste kall, og må gjennom samtykke på
+ * nytt for å få den tilbake.
+ */
+api.delete("/mcp-connections/:clientId", async (c) => {
+  if (c.get("authKind") !== "session") {
+    throw new HTTPException(403, {
+      message: "Bare en innlogget bruker kan koble fra en MCP-klient.",
+    });
+  }
+
+  const userId = c.get("userId");
+  const clientId = c.req.param("clientId");
+
+  // `revokeClientTokens` filtrerer på user_id, så en fremmed client_id treffer
+  // ingenting i stedet for å røre en annen konto.
+  await revokeClientTokens(userId, clientId);
+
+  logger.info({ userId, clientId }, "MCP-tilkobling koblet fra");
+
+  return c.json({ success: true });
 });
 
 /**

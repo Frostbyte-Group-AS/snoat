@@ -10,6 +10,8 @@ import { logger } from "./lib/logger.js";
 import * as supabaseLib from "./lib/supabase.js";
 import { api } from "./routes/api.js";
 import { githubSetup } from "./routes/github.js";
+import { mcp } from "./routes/mcp.js";
+import { oauth, wellKnown } from "./routes/oauth.js";
 import { pricing } from "./routes/pricing.js";
 import { stripeWebhooks } from "./routes/stripe.js";
 import { tlsPermission } from "./routes/tls.js";
@@ -21,11 +23,51 @@ import type { ErrorDetail } from "./types.js";
 
 const app = new Hono();
 
+const dashboardOrigins = config.SNOAT_FRONTEND_ORIGIN.split(",").map((value) => value.trim());
+
+/**
+ * Stiene MCP-connectoren bruker, som må være åpne for alle origins.
+ *
+ * Resten av API-et er kun for dashboardet, og der er en stram allowlist riktig.
+ * Men en MCP-klient er ikke dashboardet vårt: Claude kaller fra sine egne
+ * servere (uten Origin i det hele tatt), og MCP Inspector og nettleserbaserte
+ * klienter kaller fra origins vi umulig kan kjenne på forhånd. En allowlist her
+ * ville betydd at connectoren bare virket fra klienter vi hadde tenkt på.
+ *
+ * Det er trygt fordi disse endepunktene ikke har noe å stjele med en
+ * nettleserforespørsel: de bruker Bearer-tokens, ikke cookies, så en fremmed side
+ * som kaller dem sender ingen legitimasjon med. Nettopp derfor er CORS heller
+ * ikke det som beskytter dem.
+ */
+function isConnectorPath(path: string): boolean {
+  return (
+    path === "/api/mcp" ||
+    path.startsWith("/api/mcp/") ||
+    path.startsWith("/oauth/") ||
+    path.startsWith("/.well-known/")
+  );
+}
+
 app.use(
   "*",
   cors({
-    origin: config.SNOAT_FRONTEND_ORIGIN.split(",").map((value) => value.trim()),
-    allowHeaders: ["Authorization", "Content-Type"],
+    origin: (origin, c) => {
+      if (isConnectorPath(new URL(c.req.url).pathname)) return origin || "*";
+      return dashboardOrigins.includes(origin) ? origin : dashboardOrigins[0]!;
+    },
+    // `Mcp-Protocol-Version` sendes av MCP-klienter etter oppkobling, og
+    // `Mcp-Session-Id`/`Last-Event-ID` av klienter som antar en sesjonsbundet
+    // server. Står de ikke her, stopper preflighten dem før de når oss.
+    allowHeaders: [
+      "Authorization",
+      "Content-Type",
+      "Mcp-Protocol-Version",
+      "Mcp-Session-Id",
+      "Last-Event-ID",
+    ],
+    // Uten denne kan en nettleserbasert MCP-klient ikke lese `WWW-Authenticate`,
+    // og finner dermed aldri fram til OAuth-oppdagelsen.
+    exposeHeaders: ["WWW-Authenticate", "Mcp-Session-Id"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   }),
 );
@@ -104,7 +146,38 @@ app.route("/api/webhooks", stripeWebhooks);
  */
 app.route("/api/pricing", pricing);
 
+/**
+ * MCP-endepunktet – URL-en kunden limer inn i Claude.
+ *
+ * **Samme monteringsregel som webhookene over, og av en beslektet grunn:** `api`
+ * legger `requireAuth` på alt under `/api`, og den svarer 401 med vårt eget
+ * JSON-format. MCP-klienter trenger 401 med en `WWW-Authenticate`-header som
+ * peker på OAuth-oppdagelsen – uten den vet Claude ikke at det finnes en
+ * innlogging å gjennomføre, og connectoren kan ikke kobles til i det hele tatt.
+ * Se `routes/mcp.ts`.
+ */
+app.route("/api/mcp", mcp);
+
 app.route("/api", api);
+
+/**
+ * OAuth-autorisasjonsserveren for MCP-connectoren.
+ *
+ * Utenfor `/api` med vilje: dette er endepunktene som kalles *før* kalleren har
+ * en legitimasjon, så `requireAuth` ville avvist hele flyten. `/oauth/approve` er
+ * unntaket – den krever en innlogget bruker og verifiserer sesjonen selv.
+ * Se `routes/oauth.ts`.
+ */
+app.route("/oauth", oauth);
+
+/**
+ * Oppdagelsesdokumentene MCP-klienter leser før de forsøker å logge inn.
+ *
+ * Må ligge på roten: RFC 8414 og RFC 9728 gir faste stier under
+ * `/.well-known/`, og en klient som ikke finner dem der gir opp uten å spørre
+ * noe annet sted.
+ */
+app.route("/.well-known", wellKnown);
 
 /**
  * Caddys tillatelsessjekk for on-demand TLS.
