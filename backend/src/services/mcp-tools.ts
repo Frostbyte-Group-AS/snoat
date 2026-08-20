@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { repoIdentity } from "../lib/github.js";
 import { redactCredentials } from "../lib/redact.js";
 
 /**
@@ -163,6 +164,102 @@ function record<T>(value: T): Record<string, unknown> {
   return value as unknown as Record<string, unknown>;
 }
 
+// --- GitHub-tilgang ---------------------------------------------------------
+
+interface GithubStatusResponse {
+  configured?: boolean;
+  installations?: Array<{ installationId: number; accountLogin: string }>;
+  installUrl?: string | null;
+}
+
+interface GithubReposResponse {
+  repos?: Array<{ fullName: string; installationId: number }>;
+}
+
+interface ResolvedRepoAccess {
+  installationId: number | null;
+  note: string;
+}
+
+/**
+ * Finner installasjonen som faktisk rekker et repo, før prosjektet opprettes.
+ *
+ * Bakgrunnen er en feil som var lett å gå på og vanskelig å forstå:
+ * `githubInstallationId` ble tatt imot som et hvilket som helst tall og skrevet
+ * rett i raden. Pekte den på en installasjon som ikke rakk repoet – for
+ * eksempel en organisasjons installasjon, når repoet ligger på en personlig
+ * konto – ble prosjektet opprettet uten innvending, og feilen dukket først opp
+ * minutter senere som `remote: Repository not found` i en byggelogg. Ingenting i
+ * meldingen pekte tilbake mot feltet som var galt.
+ *
+ * Modellen i den andre enden hadde heller ingen vei ut. Den kunne ikke se
+ * hvilke kontoer som var koblet til, ikke hvilke repoer vi rakk, og ikke hvor
+ * brukeren måtte sendes for å gi tilgang – bare gjette på nye tall.
+ *
+ * Oppslaget veier tyngre enn parameteren kalleren sendte. Lista fra GitHub er
+ * verifisert kunnskap om hva som kan klones; parameteren er i beste fall et
+ * godt gjett. Blir de uenige, vinner lista, og notatet sier at vi overstyrte.
+ */
+async function resolveRepoAccess(
+  ctx: McpToolContext,
+  repoUrl: string,
+  options: { explicitInstallationId?: number; allowUnverifiedRepo?: boolean },
+): Promise<ResolvedRepoAccess> {
+  const { explicitInstallationId, allowUnverifiedRepo } = options;
+  const identity = repoIdentity(repoUrl);
+
+  const status = (await callOrThrow(ctx, "GET", "/github/status")) as GithubStatusResponse;
+
+  // Er App-en ikke satt opp på denne instansen, finnes det ingen liste å slå
+  // opp i. Da skal vi ikke blokkere: offentlige repoer klones fint uten token.
+  if (!status.configured) {
+    return {
+      installationId: explicitInstallationId ?? null,
+      note: "GitHub-integrasjonen er ikke konfigurert på denne instansen, så tilgangen kunne ikke verifiseres. Repoet må være offentlig.",
+    };
+  }
+
+  const { repos = [] } = (await callOrThrow(ctx, "GET", "/github/repos")) as GithubReposResponse;
+  const match = identity ? repos.find((repo) => repoIdentity(repo.fullName) === identity) : undefined;
+
+  if (match) {
+    const overridden =
+      explicitInstallationId !== undefined && explicitInstallationId !== match.installationId;
+
+    return {
+      installationId: match.installationId,
+      note: overridden
+        ? `Brukte installasjon ${match.installationId}, som er den som faktisk rekker ${match.fullName}. Den oppgitte ID-en ${explicitInstallationId} gjør det ikke, og ble ignorert.`
+        : `Bekreftet tilgang til ${match.fullName} gjennom installasjon ${match.installationId}.`,
+    };
+  }
+
+  // Herfra vet vi at Snoat ikke rekker repoet. Et offentlig repo klones likevel
+  // fint, så kalleren skal kunne overstyre – men det må være et valg. Uten
+  // flagget er stillhet det verste svaret vi kan gi.
+  if (allowUnverifiedRepo) {
+    return {
+      installationId: explicitInstallationId ?? null,
+      note: `Snoat har ikke tilgang til ${identity ?? repoUrl} gjennom noen tilkoblet konto. Fortsetter fordi allowUnverifiedRepo er satt – kloningen virker bare hvis repoet er offentlig.`,
+    };
+  }
+
+  const accounts = (status.installations ?? []).map((row) => row.accountLogin);
+
+  throw new Error(
+    [
+      `Snoat har ikke tilgang til ${identity ?? repoUrl}, så prosjektet ble ikke opprettet.`,
+      accounts.length
+        ? `Tilkoblede GitHub-kontoer: ${accounts.join(", ")}. Repoet er ikke blant de ${repos.length} repoene disse rekker.`
+        : "Ingen GitHub-kontoer er koblet til denne Snoat-brukeren ennå.",
+      status.installUrl
+        ? `Slik løses det: åpne ${status.installUrl}, velg kontoen repoet ligger under, og gi Snoat tilgang. Bekreft deretter med snoat_list_github_repos.`
+        : "Installasjons-URL-en er utilgjengelig – sjekk GitHub-integrasjonen i dashbordet.",
+      "Er repoet offentlig, kan allowUnverifiedRepo: true brukes i stedet.",
+    ].join("\n\n"),
+  );
+}
+
 // --- Katalogen -----------------------------------------------------------
 
 export const MCP_TOOLS: McpTool[] = [
@@ -215,8 +312,11 @@ export const MCP_TOOLS: McpTool[] = [
     name: "snoat_create_project",
     title: "Opprett prosjekt",
     description:
-      "Oppretter et nytt prosjekt fra et GitHub-repository. Prosjektet bygges ikke automatisk – " +
-      "kall snoat_trigger_deployment etterpå for å rulle det ut.",
+      "Oppretter et nytt prosjekt fra et GitHub-repository. Slår selv opp hvilken GitHub " +
+      "App-installasjon som rekker repoet, så githubInstallationId trenger normalt ikke oppgis. " +
+      "Har Snoat ingen tilgang til repoet, feiler kallet med en gang og oppgir URL-en brukeren må " +
+      "åpne for å gi tilgang. Prosjektet bygges ikke automatisk – kall snoat_trigger_deployment " +
+      "etterpå for å rulle det ut.",
     inputSchema: {
       type: "object",
       properties: {
@@ -240,15 +340,22 @@ export const MCP_TOOLS: McpTool[] = [
         },
         githubInstallationId: {
           type: "number",
-          description: "GitHub App-installasjonens ID. Påkrevd for private repoer.",
+          description:
+            "Valgfri GitHub App-installasjons-ID. Utledes automatisk fra repoet, og oppslaget vinner hvis de er uenige. Bruk snoat_list_github_repos for å se gyldige ID-er.",
         },
         staticOutputDir: {
           type: "string",
-          description: "Mappen med ferdigbygde filer dersom dette er en ren statisk side, f.eks. «dist».",
+          description:
+            "Mappen med ferdigbygde filer dersom dette er en ren statisk side, f.eks. «out» eller «dist». Da serverer Caddy filene direkte, og ingen container startes. Utelates den for et prosjekt uten fungerende «npm start», svarer siden 502.",
         },
         staticSpaFallback: {
           type: "boolean",
           description: "Sett true for at en statisk side skal falle tilbake til index.html (SPA-ruting).",
+        },
+        allowUnverifiedRepo: {
+          type: "boolean",
+          description:
+            "Hopper over tilgangssjekken mot GitHub. Kun for offentlige repoer, som klones uten token.",
         },
       },
       required: ["name", "repoUrl"],
@@ -265,15 +372,32 @@ export const MCP_TOOLS: McpTool[] = [
           githubInstallationId: z.number().optional(),
           staticOutputDir: z.string().optional(),
           staticSpaFallback: z.boolean().optional(),
+          allowUnverifiedRepo: z.boolean().optional(),
         })
         .parse(args);
 
-      const data = await callOrThrow(ctx, "POST", "/projects", parsed);
+      const { allowUnverifiedRepo, githubInstallationId, ...project } = parsed;
+
+      // Tilgangen avgjøres før raden skrives. Rekkefølgen er hele poenget: et
+      // prosjekt som peker på et repo vi ikke rekker, feiler først ved neste
+      // deployment – og da med en melding om git, ikke om konfigurasjonen som
+      // var gal.
+      const access = await resolveRepoAccess(ctx, project.repoUrl, {
+        explicitInstallationId: githubInstallationId,
+        allowUnverifiedRepo,
+      });
+
+      const data = await callOrThrow(ctx, "POST", "/projects", {
+        ...project,
+        ...(access.installationId !== null
+          ? { githubInstallationId: access.installationId }
+          : {}),
+      });
       const result = data as { project?: { id?: string; name?: string }; created?: boolean };
 
       return {
         summary: result.created
-          ? `Prosjektet «${result.project?.name}» er opprettet (ID ${result.project?.id}). Det er ikke bygget ennå.`
+          ? `Prosjektet «${result.project?.name}» er opprettet (ID ${result.project?.id}). ${access.note} Det er ikke bygget ennå.`
           : `Prosjektet «${result.project?.name}» fantes allerede (ID ${result.project?.id}).`,
         data,
       };
@@ -297,8 +421,13 @@ export const MCP_TOOLS: McpTool[] = [
           description: "Hele settet med miljøvariabler. Erstatter det som ligger der.",
           additionalProperties: { type: "string" },
         },
-        staticOutputDir: { type: "string", description: "Ny mappe for statiske filer." },
+        staticOutputDir: { type: "string", description: "Ny mappe for statiske filer, f.eks. «out»." },
         staticSpaFallback: { type: "boolean", description: "SPA-fallback av eller på." },
+        githubInstallationId: {
+          type: ["number", "null"],
+          description:
+            "Ny GitHub App-installasjons-ID, eller null for å klone uten token. Retter en feil kobling uten at prosjektet må slettes og opprettes på nytt.",
+        },
       },
       required: ["projectId"],
       additionalProperties: false,
@@ -312,6 +441,7 @@ export const MCP_TOOLS: McpTool[] = [
           envVars: z.record(z.string()).optional(),
           staticOutputDir: z.string().optional(),
           staticSpaFallback: z.boolean().optional(),
+          githubInstallationId: z.number().nullable().optional(),
         })
         .parse(args);
 
@@ -323,6 +453,92 @@ export const MCP_TOOLS: McpTool[] = [
 
       return {
         summary: `Prosjektet er oppdatert. Endringen gjelder fra neste deployment – kall snoat_trigger_deployment for å ta den i bruk nå.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_list_github_repos",
+    title: "List GitHub-repoer",
+    description:
+      "Viser hvilke GitHub-kontoer som er koblet til kontoen, og hvilke repoer Snoat kan klone. " +
+      "Hvert repo oppgir installasjons-ID-en som rekker det. Er ingenting koblet til, returneres " +
+      "URL-en brukeren må åpne for å gi tilgang. Kall dette først når du er i tvil om et repo kan deployes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoUrl: {
+          type: "string",
+          description: "Valgfritt. Sjekk bare ett repo. Godtar både full URL og «eier/repo».",
+        },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    async run(args, ctx) {
+      const { repoUrl } = z.object({ repoUrl: z.string().optional() }).parse(args ?? {});
+
+      const status = (await callOrThrow(ctx, "GET", "/github/status")) as GithubStatusResponse;
+
+      if (!status.configured) {
+        return {
+          summary:
+            "GitHub-integrasjonen er ikke konfigurert på denne instansen. Kun offentlige repoer kan deployes.",
+        };
+      }
+
+      const { repos = [] } = (await callOrThrow(ctx, "GET", "/github/repos")) as GithubReposResponse;
+      const identity = repoUrl ? repoIdentity(repoUrl) : null;
+      const shown = identity
+        ? repos.filter((repo) => repoIdentity(repo.fullName) === identity)
+        : repos;
+
+      // Et tomt filtrert resultat er ikke «ingen data» – det er svaret på
+      // «kan dette repoet deployes?», og svaret er nei. Da hører
+      // installasjons-URL-en med, ellers står kalleren fast igjen.
+      const summary =
+        identity && shown.length === 0
+          ? `Snoat har ingen tilgang til ${identity}. Åpne ${status.installUrl ?? "GitHub-innstillingene i dashbordet"} og gi Snoat tilgang til repoet.`
+          : identity
+            ? `Snoat rekker ${identity} gjennom installasjon ${shown[0]!.installationId}.`
+            : `${repos.length} repo(er) tilgjengelig, fordelt på ${(status.installations ?? []).length} tilkoblet konto(er).`;
+
+      return {
+        summary,
+        data: { accounts: status.installations ?? [], installUrl: status.installUrl, repos: shown },
+      };
+    },
+  },
+
+  {
+    name: "snoat_connect_github",
+    title: "Koble til GitHub-installasjon",
+    description:
+      "Registrerer en GitHub App-installasjon på kontoen, slik at repoene den rekker blir tilgjengelige. " +
+      "Brukes når installasjonen er gjort på github.com utenfor dashbordet: ID-en står til slutt i URL-en " +
+      "github.com/settings/installations/<ID>. Selve installasjonen kan ikke gjøres herfra – GitHub krever " +
+      "at et menneske godkjenner den – så be brukeren åpne installUrl fra snoat_list_github_repos først.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        installationId: {
+          type: "number",
+          description: "GitHub App-installasjonens ID, f.eks. 150187645.",
+        },
+      },
+      required: ["installationId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    async run(args, ctx) {
+      const { installationId } = z.object({ installationId: z.number() }).parse(args);
+
+      const data = await callOrThrow(ctx, "POST", "/github/installations", { installationId });
+      const account = (data as { installation?: { accountLogin?: string } }).installation;
+
+      return {
+        summary: `Installasjon ${installationId} (${account?.accountLogin ?? "ukjent konto"}) er koblet til. Kall snoat_list_github_repos for å se hvilke repoer den gir tilgang til.`,
         data,
       };
     },

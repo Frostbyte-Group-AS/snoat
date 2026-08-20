@@ -34,6 +34,47 @@ export class SnoatClient {
     return data as T;
   }
 
+  /**
+   * Statusen dashboardet bruker for å tegne repo-velgeren.
+   *
+   * `installUrl` er den viktigste delen for en MCP-klient: det er den ene
+   * lenken som lar brukeren gi tilgang, og uten den kan en modell bare be om
+   * at noen «fikser GitHub».
+   */
+  async githubStatus() {
+    return this.request<{
+      configured: boolean;
+      connected: boolean;
+      installations: Array<{ installationId: number; accountLogin: string; accountType: string }>;
+      installUrl: string | null;
+    }>("/api/github/status");
+  }
+
+  /** Repoene Snoat faktisk rekker, hvert med installasjonen som rekker det. */
+  async githubRepos() {
+    const { repos } = await this.request<{
+      repos: Array<{
+        fullName: string;
+        private: boolean;
+        cloneUrl: string;
+        defaultBranch: string;
+        installationId: number;
+        updatedAt: string | null;
+      }>;
+    }>("/api/github/repos");
+    return repos;
+  }
+
+  /** Knytter en installasjon som er gjort utenfor dashbordet til brukeren. */
+  async connectGithubInstallation(installationId: number) {
+    return this.request<{
+      installation: { installationId: number; accountLogin: string; accountType: string };
+    }>("/api/github/installations", {
+      method: "POST",
+      body: JSON.stringify({ installationId }),
+    });
+  }
+
   async listProjects() {
     return this.request<{ projects: any[] }>("/api/projects");
   }
@@ -65,6 +106,8 @@ export class SnoatClient {
       envVars?: Record<string, string>;
       staticOutputDir?: string;
       staticSpaFallback?: boolean;
+      /** `null` fjerner koblingen, slik at repoet klones uten token. */
+      githubInstallationId?: number | null;
     }
   ) {
     return this.request<{ project: any }>(`/api/projects/${projectId}`, {

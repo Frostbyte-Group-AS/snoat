@@ -1,164 +1,16 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { SnoatClient } from "../client.js";
+import { resolveRepoAccess } from "./github.js";
 
-export function registerProjectTools(server: Server, client: SnoatClient, allowDangerousDeletions: boolean) {
-  // Liste over verktøy
-  server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-    // Hvis vi har eksisterende verktøy registrert, kan de slås sammen
-    return {
-      tools: [
-        {
-          name: "snoat_list_projects",
-          description: "Henter en oversikt over alle prosjekter registrert på din Snoat-bruker.",
-          inputSchema: {
-            type: "object",
-            properties: {},
-          },
-        },
-        {
-          name: "snoat_get_project",
-          description: "Henter detaljert informasjon om et spesifikt Snoat-prosjekt basert på prosjekt-ID.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              projectId: {
-                type: "string",
-                description: "Unik ID for prosjektet i Snoat.",
-              },
-            },
-            required: ["projectId"],
-          },
-        },
-        {
-          name: "snoat_create_project",
-          description: "Oppretter og registrerer et nytt prosjekt i Snoat fra et GitHub-repository.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              name: {
-                type: "string",
-                description: "URL-vennlig navneslug for subdomenet (f.eks. 'min-app'). Kun små bokstaver, tall og bindestrek.",
-              },
-              repoUrl: {
-                type: "string",
-                description: "Full URL til GitHub-repository (f.eks. 'https://github.com/eier/repo').",
-              },
-              buildCommand: {
-                type: "string",
-                description: "Valgfri overstyring av byggekommando (f.eks. 'npm run build').",
-              },
-              envVars: {
-                type: "object",
-                description: "Nøkkel-verdi par med miljøvariabler for applikasjonen.",
-                additionalProperties: { type: "string" },
-              },
-              githubInstallationId: {
-                type: "number",
-                description: "GitHub App installasjons-ID dersom repoet er privat.",
-              },
-              staticOutputDir: {
-                type: "string",
-                description: "Valgfri mappe for statiske filer dersom det er en ren statisk side (f.eks. 'dist').",
-              },
-              staticSpaFallback: {
-                type: "boolean",
-                description: "Sett til true dersom statisk side skal bruke index.html fallback (SPA).",
-              },
-            },
-            required: ["name", "repoUrl"],
-          },
-        },
-        {
-          name: "snoat_update_project",
-          description: "Oppdaterer konfigurasjonen (miljøvariabler, byggekommando osv.) for et prosjekt.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              projectId: {
-                type: "string",
-                description: "Unik ID for prosjektet.",
-              },
-              buildCommand: {
-                type: "string",
-                description: "Ny byggekommando.",
-              },
-              envVars: {
-                type: "object",
-                description: "Oppdaterte miljøvariabler.",
-                additionalProperties: { type: "string" },
-              },
-              staticOutputDir: {
-                type: "string",
-                description: "Ny statisk ut-mappe.",
-              },
-              staticSpaFallback: {
-                type: "boolean",
-                description: "Statisk SPA fallback flagg.",
-              },
-            },
-            required: ["projectId"],
-          },
-        },
-        {
-          name: "snoat_stop_project",
-          description: "Stopper kjørende container og fjerner Caddy-ruten for et prosjekt (uten å slette prosjektet).",
-          inputSchema: {
-            type: "object",
-            properties: {
-              projectId: {
-                type: "string",
-                description: "Unik ID for prosjektet som skal stoppes.",
-              },
-            },
-            required: ["projectId"],
-          },
-        },
-        {
-          name: "snoat_set_custom_domain",
-          description: "Kobler eller oppdaterer et eget tilpasset domene (f.eks. 'app.mittdomene.no') for prosjektet.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              projectId: {
-                type: "string",
-                description: "Unik ID for prosjektet.",
-              },
-              customDomain: {
-                type: "string",
-                description: "Domenenavnet som skal kobles til prosjektet, eller null/tom streng for å fjerne.",
-              },
-            },
-            required: ["projectId", "customDomain"],
-          },
-        },
-        {
-          name: "snoat_delete_project",
-          description: "SLETTER et Snoat-prosjekt permanent, fjerner containere og ruter. (KREVER EKSPLISITT BEKREFTELSE OG SIKKERHETSFLAGG).",
-          inputSchema: {
-            type: "object",
-            properties: {
-              projectId: {
-                type: "string",
-                description: "Unik ID for prosjektet som skal slettes.",
-              },
-              confirmProjectName: {
-                type: "string",
-                description: "Prosjektets navn eller slug for å bekrefte at du sletter riktig prosjekt.",
-              },
-              confirmPermanentDeletion: {
-                type: "boolean",
-                description: "Må settes eksplisitt til true for at sletting skal gjennomføres.",
-              },
-            },
-            required: ["projectId", "confirmProjectName", "confirmPermanentDeletion"],
-          },
-        },
-      ],
-    };
-  });
-}
+/**
+ * Håndterere for prosjektverktøyene.
+ *
+ * Skjemaene ligger i `index.ts`, som er der `ListTools` faktisk svarer fra.
+ * Denne filen hadde tidligere sin egen `registerProjectTools()` med en komplett
+ * kopi av alle skjemaene, men den ble aldri kalt – `index.ts` bygde lista
+ * inline. To sannheter om samme verktøy er verre enn én på et upraktisk sted:
+ * skjemaene her hadde alt begynt å avvike fra dem som ble sendt til klienten.
+ */
 
 export async function handleProjectToolCall(
   name: string,
@@ -202,15 +54,34 @@ export async function handleProjectToolCall(
           githubInstallationId: z.number().optional(),
           staticOutputDir: z.string().optional(),
           staticSpaFallback: z.boolean().optional(),
+          allowUnverifiedRepo: z.boolean().optional(),
         })
         .parse(args);
 
-      const res = await client.createProject(parsed);
+      const { allowUnverifiedRepo, githubInstallationId, ...project } = parsed;
+
+      // Tilgangen avgjøres *før* prosjektet opprettes. Rekkefølgen er hele
+      // poenget: et prosjekt som peker på et repo vi ikke rekker, feiler
+      // først ved neste deployment, og da med en melding om git – ikke om
+      // konfigurasjonen som var gal. `resolveRepoAccess` kaster i stedet en
+      // feil som sier hva som mangler og hvor tilgangen gis.
+      const access = await resolveRepoAccess(client, project.repoUrl, {
+        explicitInstallationId: githubInstallationId,
+        allowUnverifiedRepo,
+      });
+
+      const res = await client.createProject({
+        ...project,
+        ...(access.installationId !== null
+          ? { githubInstallationId: access.installationId }
+          : {}),
+      });
+
       return {
         content: [
           {
             type: "text",
-            text: `Prosjekt "${res.project.name}" ble opprettet! ID: ${res.project.id}`,
+            text: `Prosjekt "${res.project.name}" ble opprettet! ID: ${res.project.id}\n${access.note}`,
           },
           {
             type: "text",
@@ -228,6 +99,7 @@ export async function handleProjectToolCall(
           envVars: z.record(z.string()).optional(),
           staticOutputDir: z.string().optional(),
           staticSpaFallback: z.boolean().optional(),
+          githubInstallationId: z.number().nullable().optional(),
         })
         .parse(args);
 
@@ -249,7 +121,7 @@ export async function handleProjectToolCall(
 
     case "snoat_stop_project": {
       const { projectId } = z.object({ projectId: z.string() }).parse(args);
-      const res = await client.stopProject(projectId);
+      await client.stopProject(projectId);
       return {
         content: [
           {
@@ -316,7 +188,7 @@ export async function handleProjectToolCall(
         );
       }
 
-      const res = await client.deleteProject(projectId);
+      await client.deleteProject(projectId);
       return {
         content: [
           {

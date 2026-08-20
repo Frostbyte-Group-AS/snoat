@@ -32,6 +32,60 @@ api.route("/github", githubApi);
 api.route("/billing", billing);
 
 /**
+ * Bekrefter at en GitHub-installasjon faktisk tilhører kalleren.
+ *
+ * ID-en kommer utenfra, og fram til nå ble den skrevet rett i raden. Det er
+ * verdt å merke seg hva som da skjer når den er feil: prosjektet opprettes
+ * uten innvending, og bommen dukker først opp som «Repository not found» i en
+ * byggelogg minutter senere – på et tidspunkt der ingenting peker tilbake mot
+ * feltet som var galt. En installasjon som tilhører en *annen* konto er verre
+ * enn ubrukelig: den gir kloningen et token for repoer eieren aldri har delt
+ * med oss.
+ *
+ * Sjekken er et oppslag i `github_installations`, som er tabellen
+ * installasjonsflyten skriver til. Er ID-en ikke der, har brukeren ikke koblet
+ * til den kontoen ennå, og feilmeldingen sier hvor det gjøres.
+ *
+ * `undefined` betyr «feltet var ikke med» og skal ikke røre noe. `null` betyr
+ * «fjern koblingen», som er lovlig – offentlige repoer klones uten token.
+ */
+async function verifiedInstallationId(
+  userId: string,
+  value: unknown,
+): Promise<number | null> {
+  if (value === null) return null;
+
+  const installationId = Number(value);
+
+  if (!Number.isSafeInteger(installationId) || installationId <= 0) {
+    throw new HTTPException(400, {
+      message:
+        "«githubInstallationId» må være et positivt heltall, eller null for å fjerne koblingen.",
+    });
+  }
+
+  const { data, error } = await supabase
+    .from("github_installations")
+    .select("installation_id")
+    .eq("user_id", userId)
+    .eq("installation_id", installationId)
+    .maybeSingle();
+
+  if (error) throw new HTTPException(500, { message: `Databasefeil: ${error.message}` });
+
+  if (!data) {
+    throw new HTTPException(400, {
+      message:
+        `Installasjon ${installationId} er ikke koblet til denne kontoen. ` +
+        "Hent gyldige ID-er fra GET /api/github/status, eller kjør " +
+        "installasjonsflyten på «installUrl» derfra for å gi Snoat tilgang til repoet.",
+    });
+  }
+
+  return installationId;
+}
+
+/**
  * Oppretter et prosjekt.
  *
  * Dashboardet trenger ikke dette – det skriver raden rett i Supabase med sin
@@ -99,7 +153,12 @@ api.post("/projects", async (c) => {
     if (existing) return c.json({ project: existing, created: false }, 200);
   }
 
-  const installationId = Number(body.githubInstallationId);
+  // Verifiseres før raden skrives. Se `verifiedInstallationId()` for hvorfor det
+  // er bedre å svare 400 nå enn å la kloningen feile om et kvarter.
+  const installationId =
+    body.githubInstallationId === undefined
+      ? null
+      : await verifiedInstallationId(userId, body.githubInstallationId);
 
   const insert = {
     user_id: userId,
@@ -118,8 +177,7 @@ api.post("/projects", async (c) => {
     static_spa_fallback: body.staticSpaFallback === true,
     // Uten denne kan repoet ikke være privat: kloningen har da ingen
     // installasjon å be om et token fra. Se `authenticatedCloneUrl()`.
-    github_installation_id:
-      Number.isSafeInteger(installationId) && installationId > 0 ? installationId : null,
+    github_installation_id: installationId,
     // Prosjektet arver kontoens plan. `resourcesFor()` foretrekker prosjektets
     // egen plan framfor kontoens, så uten dette ville en byråkonto fått
     // gratisplanens 256 MB på hver container den startet.
@@ -441,11 +499,23 @@ api.patch("/projects/:projectId", async (c) => {
     envVars?: unknown;
     staticOutputDir?: unknown;
     staticSpaFallback?: unknown;
+    githubInstallationId?: unknown;
   }>().catch(() => null);
 
   if (!body) throw new HTTPException(400, { message: "Kroppen må være gyldig JSON" });
 
   const updates: Record<string, any> = {};
+
+  // Uten dette feltet var en feil installasjon bare reparerbar ved å slette
+  // prosjektet og opprette det på nytt – med nytt subdomene, ny historikk og
+  // tapte miljøvariabler. Koblingen er konfigurasjon, og skal kunne rettes som
+  // konfigurasjon.
+  if (body.githubInstallationId !== undefined) {
+    updates.github_installation_id = await verifiedInstallationId(
+      c.get("userId"),
+      body.githubInstallationId,
+    );
+  }
 
   if (body.buildCommand !== undefined) {
     updates.build_command = typeof body.buildCommand === "string" ? body.buildCommand : null;

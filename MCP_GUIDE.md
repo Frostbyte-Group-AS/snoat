@@ -121,12 +121,22 @@ Byggelogger klippes til de siste 20 000 tegnene og kjøres gjennom `redactCreden
 | `snoat_get_deployment_logs` | lesende | Bygge- og kjøretidslogg for én deployment. |
 | `snoat_get_analytics` | lesende | Besøkstall, responstider, statuskoder, toppstier. |
 | `snoat_get_domain_status` | lesende | DNS, Caddy-rute og TLS-sertifikat for eget domene. |
+| `snoat_list_github_repos` | lesende | Tilkoblede GitHub-kontoer og repoene Snoat kan klone, med installasjons-ID per repo. |
 | `snoat_create_project` | skrivende | Nytt prosjekt fra en GitHub-repo. Bygger ikke automatisk. |
-| `snoat_update_project` | skrivende | Byggekommando, miljøvariabler, statiske innstillinger. |
+| `snoat_update_project` | skrivende | Byggekommando, miljøvariabler, statiske innstillinger, GitHub-installasjon. |
+| `snoat_connect_github` | skrivende | Registrerer en GitHub App-installasjon på kontoen. |
 | `snoat_trigger_deployment` | skrivende | Legger et bygg i kø. |
 | `snoat_set_custom_domain` | skrivende | Kobler eller fjerner eget domene. |
 | `snoat_stop_project` | destruktiv | Stopper appen. Prosjektet beholdes. |
 | `snoat_delete_project` | destruktiv | Permanent sletting. Krever bekreftelse. |
+
+### GitHub-tilgang avgjøres før prosjektet opprettes
+
+`snoat_create_project` slår opp `GET /api/github/repos` og finner selv installasjonen som rekker repoet. `githubInstallationId` trenger derfor normalt ikke oppgis, og oppgis den likevel feil, vinner oppslaget.
+
+Rekker ingen tilkoblet konto repoet, feiler kallet **før** raden skrives, med kontoene som er koblet til og `installUrl` brukeren må åpne. Tidligere ble prosjektet opprettet uten innvending, og feilen kom først minutter senere som `remote: Repository not found` i en byggelogg – en melding om git, ikke om feltet som var galt.
+
+Selve installasjonen kan ikke gjøres over MCP: GitHub krever at et menneske godkjenner den. Det MCP kan er å oppdage at den mangler, si hvor den gjøres, og registrere ID-en etterpå med `snoat_connect_github`. Er repoet offentlig, hopper `allowUnverifiedRepo: true` over sjekken.
 
 ---
 
@@ -135,6 +145,7 @@ Byggelogger klippes til de siste 20 000 tegnene og kjøres gjennom `redactCreden
 - *«Vis meg alle prosjektene mine på Snoat og om de kjører.»*
 - *«Hvorfor feilet siste deployment av mittvel? Hent loggen.»*
 - *«Lag prosjektet min-demo fra github.com/meg/min-demo og deploy det.»*
+- *«Hvilke GitHub-repoer har Snoat tilgang til?»*
 - *«Hvor mange unike besøkende har appen hatt det siste døgnet?»*
 - *«Peker DNS-en for app.mittdomene.no riktig? Sjekk sertifikatet også.»*
 
@@ -149,6 +160,8 @@ Byggelogger klippes til de siste 20 000 tegnene og kjøres gjennom `redactCreden
 | Innloggingen ender på dashboardet | Samtykkesiden mistet returadressen (`lib/return-to.ts` bruker `sessionStorage`, som privat nettlesermodus kan nekte). Start tilkoblingen på nytt fra klienten. |
 | Klienten mistet tilgangen brått | Et rotert refresh-token ble brukt om igjen, eller kunden koblet fra. Begge krever ny godkjenning – det er tilsiktet. |
 | Verktøykall svarer «Prosjektet finnes ikke» | Prosjektet tilhører en annen konto. Vi svarer 404 og ikke 403, slik at et ID-gjett ikke avslører at raden finnes. |
+| «Snoat har ikke tilgang til eier/repo» ved opprettelse | App-en er ikke installert på kontoen repoet ligger under, eller repoet er ikke valgt i installasjonen. Åpne `installUrl` fra `snoat_list_github_repos`. En installasjon på en organisasjon dekker ikke repoer på en personlig konto. |
+| Bygget lykkes, men siden svarer 502 | Prosjektet ble opprettet uten `staticOutputDir`, så Snoat startet en container og kjørte `npm start`. Har repoet ingen server å starte (f.eks. Next.js med `output: "export"`), sett `staticOutputDir` med `snoat_update_project` og deploy på nytt. |
 
 ---
 

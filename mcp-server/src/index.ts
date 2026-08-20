@@ -5,7 +5,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import dotenv from "dotenv";
 import { SnoatClient } from "./client.js";
 import { registerDeploymentToolSchemas, handleDeploymentToolCall } from "./tools/deployments.js";
-import { registerProjectTools, handleProjectToolCall } from "./tools/projects.js";
+import { registerGithubToolSchemas, handleGithubToolCall } from "./tools/github.js";
+import { handleProjectToolCall } from "./tools/projects.js";
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ const server = new Server(
 // Håndter ListToolsRequest
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   const deploymentTools = registerDeploymentToolSchemas();
+  const githubTools = registerGithubToolSchemas();
 
   const projectTools = [
     {
@@ -63,7 +65,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     },
     {
       name: "snoat_create_project",
-      description: "Oppretter og registrerer et nytt prosjekt i Snoat fra et GitHub-repository.",
+      description:
+        "Oppretter og registrerer et nytt prosjekt i Snoat fra et GitHub-repository. " +
+        "Slår selv opp hvilken GitHub App-installasjon som rekker repoet, så «githubInstallationId» " +
+        "trenger normalt ikke oppgis. Har Snoat ingen tilgang til repoet, feiler kallet med en gang " +
+        "og oppgir URL-en brukeren må åpne for å gi tilgang \u2013 i stedet for å opprette et prosjekt " +
+        "som først feiler ved neste deployment.",
       inputSchema: {
         type: "object",
         properties: {
@@ -86,15 +93,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           githubInstallationId: {
             type: "number",
-            description: "GitHub App installasjons-ID dersom repoet er privat.",
+            description:
+              "Valgfri GitHub App installasjons-ID. Utledes automatisk fra repoet, og oppslaget vinner hvis de er uenige. Bruk «snoat_list_github_repos» for å se gyldige ID-er.",
           },
           staticOutputDir: {
             type: "string",
-            description: "Valgfri mappe for statiske filer dersom det er en ren statisk side (f.eks. 'dist').",
+            description:
+              "Mappe med ferdigbygde statiske filer (f.eks. 'out' eller 'dist'). Settes for rene statiske sider \u2013 da serverer Caddy filene direkte, og ingen container startes. Utelates den for et prosjekt som ikke har en fungerende 'npm start', svarer siden 502.",
           },
           staticSpaFallback: {
             type: "boolean",
             description: "Sett til true dersom statisk side skal bruke index.html fallback (SPA).",
+          },
+          allowUnverifiedRepo: {
+            type: "boolean",
+            description:
+              "Hopper over tilgangssjekken mot GitHub. Kun for offentlige repoer, som klones uten token.",
           },
         },
         required: ["name", "repoUrl"],
@@ -121,11 +135,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           staticOutputDir: {
             type: "string",
-            description: "Ny statisk ut-mappe.",
+            description: "Ny statisk ut-mappe, f.eks. 'out'. Gjør prosjektet statisk.",
           },
           staticSpaFallback: {
             type: "boolean",
             description: "Statisk SPA fallback flagg.",
+          },
+          githubInstallationId: {
+            type: "number",
+            description:
+              "Ny GitHub App installasjons-ID, eller null for å klone uten token. Brukes til å rette en feil kobling uten å slette prosjektet.",
           },
         },
         required: ["projectId"],
@@ -188,7 +207,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   ];
 
   return {
-    tools: [...projectTools, ...deploymentTools],
+    tools: [...projectTools, ...githubTools, ...deploymentTools],
   };
 });
 
@@ -199,6 +218,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     const projectResult = await handleProjectToolCall(name, args, client, allowDangerousDeletions);
     if (projectResult) return projectResult;
+
+    const githubResult = await handleGithubToolCall(name, args, client);
+    if (githubResult) return githubResult;
 
     const deploymentResult = await handleDeploymentToolCall(name, args, client);
     if (deploymentResult) return deploymentResult;
