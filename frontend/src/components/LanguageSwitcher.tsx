@@ -1,45 +1,41 @@
 import { useTranslation } from "react-i18next";
 
+/**
+ * Språkvelger som to bokstavpar i stedet for flagg.
+ *
+ * Flaggbildene var det siste ikonet på siden, og et flagg er dessuten et
+ * dårlig språkvalg: Union Jack er ikke «engelsk», det er Storbritannia.
+ * Aktivt språk er understreket med den gule håndstreken fra designet.
+ */
 export function LanguageSwitcher() {
   const { i18n } = useTranslation();
 
-  const changeLanguage = (lng: string) => {
-    i18n.changeLanguage(lng);
-  };
-
-  // i18next-browser-languagedetector can sometimes return 'en-US' or 'nb-NO'
   const isNorwegian =
     i18n.language?.startsWith("no") ||
     i18n.language?.startsWith("nb") ||
     i18n.language?.startsWith("nn");
 
+  const options = [
+    { code: "no", label: "NO", title: "Bytt til norsk", active: isNorwegian },
+    { code: "en", label: "EN", title: "Switch to English", active: !isNorwegian },
+  ];
+
   return (
-    <div className="flex items-center">
-      {isNorwegian ? (
+    <div className="flex items-center gap-[10px]">
+      {options.map((option) => (
         <button
-          onClick={() => changeLanguage("en")}
-          className="flex items-center justify-center transition-transform hover:scale-110 active:scale-95"
-          title="Switch to English"
+          key={option.code}
+          type="button"
+          onClick={() => void i18n.changeLanguage(option.code)}
+          title={option.title}
+          aria-current={option.active ? "true" : undefined}
+          className={`font-body text-[15px] leading-none tracking-[0.06em] transition-opacity ${
+            option.active ? "font-bold text-ink" : "font-normal text-ink/45 hover:text-ink"
+          }`}
         >
-          <img
-            src="/flag-en.png"
-            alt="British flag"
-            className="h-5 w-auto object-cover"
-          />
+          {option.label}
         </button>
-      ) : (
-        <button
-          onClick={() => changeLanguage("no")}
-          className="flex items-center justify-center transition-transform hover:scale-110 active:scale-95"
-          title="Bytt til Norsk"
-        >
-          <img
-            src="/flag-no.png"
-            alt="Norsk flagg"
-            className="h-5 w-auto object-cover"
-          />
-        </button>
-      )}
+      ))}
     </div>
   );
 }

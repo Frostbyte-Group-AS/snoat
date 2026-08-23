@@ -7,6 +7,15 @@ import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 export const Route = createFileRoute("/login")({
+  /**
+   * `?email=` lar CTA-feltet nederst på landingssiden bære adressen hit, slik
+   * at brukeren ikke må skrive den to ganger. Ugyldig input ignoreres framfor
+   * å kaste – en rar query-parameter skal ikke gi 404 på innloggingssiden.
+   */
+  validateSearch: (search: Record<string, unknown>): { email?: string } => {
+    const email = typeof search.email === "string" ? search.email.trim() : "";
+    return email ? { email } : {};
+  },
   head: () => ({
     meta: [
       { title: "Logg inn — Snoat" },
@@ -64,16 +73,10 @@ function getFriendlyErrorMessage(cause: unknown, t: (key: string) => string): st
   if (message.includes("Email not confirmed")) {
     return t("login.error_email_unconfirmed");
   }
-  if (
-    message.includes("User already registered") ||
-    message.includes("already been registered")
-  ) {
+  if (message.includes("User already registered") || message.includes("already been registered")) {
     return t("login.error_user_exists");
   }
-  if (
-    message.includes("rate limit") ||
-    message.includes("too many requests")
-  ) {
+  if (message.includes("rate limit") || message.includes("too many requests")) {
     return t("login.error_rate_limit");
   }
 
@@ -85,8 +88,10 @@ function LoginPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
 
+  const { email: emailFromSearch } = Route.useSearch();
+
   const [mode, setMode] = useState<Mode>("signin");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(emailFromSearch ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -186,25 +191,22 @@ function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-x-hidden">
-      <div className="pointer-events-none absolute inset-0 z-[-1] flex items-start justify-center opacity-20">
-        <div className="mt-[-200px] h-[700px] w-[700px] rounded-full bg-primary blur-[150px] mix-blend-screen" />
-      </div>
-
-      <header className="mx-auto w-full max-w-container-max flex items-center justify-between px-margin-mobile py-6 md:px-gutter">
-        <Link to="/" className="inline-flex">
-          <SnoatLogo />
+    <div className="flex min-h-screen flex-col bg-paper">
+      <header className="mx-auto flex w-full max-w-[1334px] items-center justify-between px-5 py-6 lg:px-0 lg:pt-[48px]">
+        <Link to="/" className="inline-flex text-ink" aria-label="Snoat">
+          <SnoatLogo size={36} />
         </Link>
         <LanguageSwitcher />
       </header>
 
-      <main className="flex flex-grow items-center justify-center px-margin-mobile py-stack-lg">
+      <main className="flex flex-grow items-center justify-center px-5 py-12">
         {awaitingConfirmation ? (
-          <div className="floating-card w-full max-w-md p-8 md:p-10 text-center">
-            <h1 className="mb-2 font-headline text-headline-lg text-on-surface">
+          <div className="ink-card-lg w-full max-w-[520px] px-[30px] py-[32px] text-center">
+            <h1 className="font-display text-[32px] font-bold leading-[1.15] text-ink">
               {t("login.confirm_sent_title")}
             </h1>
-            <p className="mb-stack-md font-body text-body-md text-on-surface-variant">
+            <span className="swoosh mx-auto mt-[6px]" aria-hidden="true" />
+            <p className="mt-[18px] font-body text-[17px] font-light leading-[1.55] text-ink">
               {t("login.confirm_sent_desc", { email })}
             </p>
             <button
@@ -215,210 +217,180 @@ function LoginPage() {
                 setPassword("");
                 setConfirmPassword("");
               }}
-              className="w-full font-label text-label-md text-on-surface-variant transition-colors hover:text-on-surface"
+              className="btn-outline mt-[24px] h-[52px] w-full font-display text-[16px]"
             >
               {t("login.back_to_signin")}
             </button>
           </div>
         ) : (
-        <div className="floating-card w-full max-w-md p-8 md:p-10">
-          <h1 className="mb-2 font-headline text-headline-lg text-on-surface text-center">
-            {mode === "signin" ? t("login.title_signin") : t("login.title_signup")}
-          </h1>
-          <p className="mb-stack-md font-body text-body-md text-on-surface-variant text-center">
-            {mode === "signin" ? t("login.desc_signin") : t("login.desc_signup")}
-          </p>
+          <div className="ink-card-lg w-full max-w-[520px] px-[30px] py-[32px]">
+            <h1 className="text-center font-display text-[32px] font-bold leading-[1.15] text-ink">
+              {mode === "signin" ? t("login.title_signin") : t("login.title_signup")}
+            </h1>
+            <span className="swoosh mx-auto mt-[6px]" aria-hidden="true" />
+            <p className="mt-[14px] text-center font-body text-[17px] font-light leading-[1.5] text-ink">
+              {mode === "signin" ? t("login.desc_signin") : t("login.desc_signup")}
+            </p>
 
-          <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
-            <label className="flex flex-col gap-2">
-              <span className="font-label text-label-md text-on-surface-variant">{t("login.email_label")}</span>
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-                autoComplete="email"
-                placeholder={t("login.email_placeholder")}
-                className="rounded-xl bg-surface-container px-4 py-3 font-body text-body-md text-on-surface outline-none ring-primary/60 placeholder:text-on-surface-variant/40 focus:ring-2 transition-all"
-              />
-            </label>
-
-            {/* Password input with smooth slide-down animation */}
-            <div
-              className={`transition-all duration-500 ease-in-out overflow-hidden px-1 -mx-1 ${
-                showPassword
-                  ? mode === "signup"
-                    ? "max-h-[240px] opacity-100 mt-2 py-1 -my-1"
-                    : "max-h-[130px] opacity-100 mt-2 py-1 -my-1"
-                  : "max-h-0 opacity-0 pointer-events-none mt-0"
-              }`}
-            >
-              <label className="flex flex-col gap-2">
-                <span className="font-label text-label-md text-on-surface-variant">{t("login.password_label")}</span>
+            <form onSubmit={handleFormSubmit} className="mt-[26px] flex flex-col gap-[16px]">
+              <label className="flex flex-col gap-[8px]">
+                <span className="font-body text-[15px] font-normal text-ink">
+                  {t("login.email_label")}
+                </span>
                 <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required={showPassword}
-                  minLength={6}
-                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                  className="rounded-xl bg-surface-container px-4 py-3 font-body text-body-md text-on-surface outline-none ring-primary/60 focus:ring-2"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                  autoComplete="email"
+                  placeholder={t("login.email_placeholder")}
+                  className="field-ink h-[52px] px-[16px] font-body text-[17px] font-normal outline-none placeholder:text-ink/40"
                 />
               </label>
 
-              {mode === "signup" && (
-                <label className="flex flex-col gap-2 mt-4">
-                  <span className="font-label text-label-md text-on-surface-variant">{t("login.confirm_password_label")}</span>
+              {/* Passordfeltet glir ned først når e-posten ser gyldig ut. */}
+              <div
+                className={`-mx-1 overflow-hidden px-1 transition-all duration-500 ease-in-out ${
+                  showPassword
+                    ? mode === "signup"
+                      ? "-my-1 max-h-[280px] py-1 opacity-100"
+                      : "-my-1 max-h-[160px] py-1 opacity-100"
+                    : "pointer-events-none max-h-0 opacity-0"
+                }`}
+              >
+                <label className="flex flex-col gap-[8px]">
+                  <span className="font-body text-[15px] font-normal text-ink">
+                    {t("login.password_label")}
+                  </span>
                   <input
                     type="password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    required={showPassword && mode === "signup"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    required={showPassword}
                     minLength={6}
-                    autoComplete="new-password"
-                    className="rounded-xl bg-surface-container px-4 py-3 font-body text-body-md text-on-surface outline-none ring-primary/60 focus:ring-2"
+                    autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                    className="field-ink h-[52px] px-[16px] font-body text-[17px] font-normal outline-none"
                   />
                 </label>
+
+                {mode === "signup" && (
+                  <label className="mt-[16px] flex flex-col gap-[8px]">
+                    <span className="font-body text-[15px] font-normal text-ink">
+                      {t("login.confirm_password_label")}
+                    </span>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      required={showPassword && mode === "signup"}
+                      minLength={6}
+                      autoComplete="new-password"
+                      className="field-ink h-[52px] px-[16px] font-body text-[17px] font-normal outline-none"
+                    />
+                  </label>
+                )}
+              </div>
+
+              {mode === "signin" && showPassword && (
+                <Link
+                  to="/forgot-password"
+                  search={{ email: email || undefined }}
+                  className="self-end font-body text-[15px] font-normal text-ink underline-offset-[4px] hover:underline"
+                >
+                  {t("login.forgot_password")}
+                </Link>
               )}
-            </div>
 
-            {mode === "signin" && showPassword && (
-              <Link
-                to="/forgot-password"
-                search={{ email: email || undefined }}
-                className="-mt-1 self-end font-label text-label-md text-on-surface-variant transition-colors hover:text-on-surface"
-              >
-                {t("login.forgot_password")}
-              </Link>
-            )}
+              {notice && (
+                <p
+                  role="status"
+                  className="bg-sun px-[14px] py-[10px] text-center font-body text-[15px] font-normal text-ink"
+                >
+                  {notice}
+                </p>
+              )}
 
-            {notice && (
-              <p role="status" className="font-body text-body-md text-on-surface text-center mt-2">
-                {notice}
-              </p>
-            )}
+              {error && (
+                <p
+                  role="alert"
+                  className="border-2 border-error px-[14px] py-[10px] text-center font-body text-[15px] font-normal text-error"
+                >
+                  {error}
+                </p>
+              )}
 
-            {error && (
-              <p role="alert" className="font-body text-body-md text-error text-center mt-2">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={pending}
-              className="primary-btn mt-2 w-full py-3.5 font-label text-label-md disabled:opacity-50"
-            >
-              {pending
-                ? t("login.loading")
-                : showPassword
-                ? mode === "signin"
-                  ? t("login.btn_signin")
-                  : t("login.btn_signup")
-                : t("login.btn_continue_email")}
-            </button>
-          </form>
-
-          <div className="my-6 flex items-center gap-4">
-            <span className="h-px flex-grow bg-surface-variant/30" />
-            <span className="font-label text-label-md text-on-surface-variant/50">{t("login.divider_or")}</span>
-            <span className="h-px flex-grow bg-surface-variant/30" />
-          </div>
-
-          <div className="flex flex-col gap-3">
-            {/* GitHub - ACTIVE */}
-            <div className="relative w-full">
-              <span className="absolute -top-2.5 right-4 z-10 bg-primary text-primary-foreground text-[9px] uppercase font-black tracking-widest px-2 py-0.5 rounded-sm shadow-md transform rotate-3 select-none pointer-events-none">
-                {t("login.badge_last_used")}
-              </span>
               <button
-                type="button"
-                onClick={handleGitHub}
+                type="submit"
                 disabled={pending}
-                className="flex w-full items-center justify-center gap-3 rounded-xl bg-surface-container/60 hover:bg-surface-container px-6 py-3.5 font-label text-label-md text-on-surface transition-all disabled:opacity-50"
+                className="btn-ink mt-[4px] h-[52px] w-full font-display text-[17px]"
               >
-                <svg viewBox="0 0 16 16" aria-hidden="true" className="h-5 w-5" fill="currentColor">
-                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-                </svg>
-                {t("login.btn_github")}
+                {pending
+                  ? t("login.loading")
+                  : showPassword
+                    ? mode === "signin"
+                      ? t("login.btn_signin")
+                      : t("login.btn_signup")
+                    : t("login.btn_continue_email")}
               </button>
+            </form>
+
+            <div className="my-[24px] flex items-center gap-[14px]">
+              <span className="h-px flex-grow bg-hair" />
+              <span className="font-body text-[15px] font-light text-ink">
+                {t("login.divider_or")}
+              </span>
+              <span className="h-px flex-grow bg-hair" />
             </div>
 
-            {/* Google - COMING SOON */}
+            <div className="flex flex-col gap-[12px]">
+              <div className="relative">
+                <span className="absolute -top-[11px] right-[14px] z-10 select-none bg-sun px-[8px] py-[2px] font-body text-[11px] font-bold uppercase tracking-[0.12em] text-ink">
+                  {t("login.badge_last_used")}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleGitHub}
+                  disabled={pending}
+                  className="btn-outline h-[52px] w-full font-display text-[16px]"
+                >
+                  {t("login.btn_github")}
+                </button>
+              </div>
+
+              {/* Leverandører som ennå ikke er koblet på. De står synlige med
+                  vilje – da vet brukeren at de kommer, og velger e-post nå. */}
+              {(["btn_google", "btn_apple", "btn_passkey"] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  disabled
+                  className="flex h-[52px] w-full items-center justify-between border-2 border-hair px-[16px] font-body text-[16px] font-normal text-ink/40"
+                >
+                  <span>{t(`login.${key}`)}</span>
+                  <span className="font-body text-[11px] uppercase tracking-[0.12em]">
+                    {t("login.badge_coming_soon")}
+                  </span>
+                </button>
+              ))}
+            </div>
+
             <button
               type="button"
-              disabled
-              className="flex w-full items-center justify-between rounded-xl bg-surface-container/20 border border-transparent px-6 py-3.5 font-label text-label-md text-on-surface-variant/40 cursor-not-allowed"
+              onClick={() => {
+                setMode(mode === "signin" ? "signup" : "signin");
+                setError(null);
+                setNotice(null);
+                setConfirmPassword("");
+              }}
+              className="mt-[24px] w-full text-center font-body text-[15px] font-normal text-ink underline-offset-[4px] hover:underline"
             >
-              <div className="flex items-center gap-3">
-                <svg className="h-5 w-5 fill-current opacity-40" viewBox="0 0 24 24">
-                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                </svg>
-                {t("login.btn_google")}
-              </div>
-              <span className="text-[10px] font-medium bg-surface-variant/50 text-on-surface-variant/40 px-2 py-0.5 rounded">
-                {t("login.badge_coming_soon")}
-              </span>
+              {mode === "signin" ? t("login.toggle_signup") : t("login.toggle_signin")}
             </button>
 
-            {/* Apple - COMING SOON */}
-            <button
-              type="button"
-              disabled
-              className="flex w-full items-center justify-between rounded-xl bg-surface-container/20 border border-transparent px-6 py-3.5 font-label text-label-md text-on-surface-variant/40 cursor-not-allowed"
-            >
-              <div className="flex items-center gap-3">
-                <svg className="h-5 w-5 fill-current opacity-40" viewBox="0 0 24 24">
-                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 4.17c.66-.81 1.11-1.93.99-3.06-1 .04-2.22.67-2.94 1.51-.64.73-1.2 1.87-1.05 2.97 1.12.09 2.27-.58 3-1.42Z" />
-                </svg>
-                {t("login.btn_apple")}
-              </div>
-              <span className="text-[10px] font-medium bg-surface-variant/50 text-on-surface-variant/40 px-2 py-0.5 rounded">
-                {t("login.badge_coming_soon")}
-              </span>
-            </button>
-
-            {/* Passkey - COMING SOON */}
-            <button
-              type="button"
-              disabled
-              className="flex w-full items-center justify-between rounded-xl bg-surface-container/20 border border-transparent px-6 py-3.5 font-label text-label-md text-on-surface-variant/40 cursor-not-allowed"
-            >
-              <div className="flex items-center gap-3">
-                <svg className="h-5 w-5 stroke-current opacity-40" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="7.5" cy="15.5" r="5.5" />
-                  <path d="m21 2-9.6 9.6" />
-                  <path d="m15.5 7.5 3 3" />
-                  <path d="M17.5 5.5 20 8" />
-                </svg>
-                {t("login.btn_passkey")}
-              </div>
-              <span className="text-[10px] font-medium bg-surface-variant/50 text-on-surface-variant/40 px-2 py-0.5 rounded">
-                {t("login.badge_coming_soon")}
-              </span>
-            </button>
+            <p className="mt-[24px] text-center font-body text-[15px] font-light text-ink/70">
+              {t("login.data_safety")}
+            </p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setMode(mode === "signin" ? "signup" : "signin");
-              setError(null);
-              setNotice(null);
-              setConfirmPassword("");
-            }}
-            className="mt-6 w-full font-label text-label-md text-on-surface-variant transition-colors hover:text-on-surface text-center"
-          >
-            {mode === "signin" ? t("login.toggle_signup") : t("login.toggle_signin")}
-          </button>
-
-          <p className="mt-8 text-center font-body text-body-md text-on-surface-variant/60">
-            {t("login.data_safety")}
-          </p>
-        </div>
         )}
       </main>
     </div>

@@ -4,6 +4,66 @@ Denne filen dokumenterer nye funksjonaliteter og forbedringer som er innført i 
 
 ---
 
+## 0b. MCP som custom connector, og kontoinnstillinger bak profilbildet
+
+* **Den lokale stdio-serveren er slettet.** `mcp-server/` (npm-pakken
+  `@snoat/mcp-server`) var den forrige veien inn og krevde installasjon og en
+  `snoat_ak_…`-nøkkel i en JSON-fil. Pakken ble aldri publisert, så oppsettet
+  dashboardet delte ut kunne uansett ikke virke. Den hostede connectoren på
+  `/api/mcp` er nå den eneste veien inn.
+* **Metadata-dokumentet svarer på to stier.** I tillegg til
+  `/.well-known/oauth-authorization-server` svarer vi nå på
+  `/.well-known/oauth-authorization-server/api/mcp`. Vår `issuer` har ingen sti,
+  så den korte formen er den RFC 8414 krever – men flere klienter bygger
+  oppslaget av *ressursens* sti, og en klient som får 404 på første forsøk gir
+  gjerne opp med «could not connect» før den prøver den korte. Samme grep som
+  `/.well-known/oauth-protected-resource/api/mcp` allerede hadde.
+* **Connectoren er per bruker, og siden sier det nå.** URL-en er lik for alle,
+  men tilgangen oppstår først ved godkjenning og tokenet er bundet til brukeren.
+  Én konto kan ha flere connectorer samtidig, én per klient, og hver kan kobles
+  fra for seg.
+* **Kontoinnstillingene ligger bak profilbildet.** `AI-tilkobling` og
+  `Abonnement` lå som løse lenker i toppraden, ved siden av dashboardets egen
+  navigasjon – to nivåer i samme rad. Nå: `components/UserMenu.tsx` (avatar →
+  nedtrekk) og en felles ramme i `routes/settings.tsx` med sidemeny,
+  overskrift og innloggingssjekk ett sted. `/settings` omdirigerer til
+  `/settings/mcp`.
+
+---
+
+## 0. Totalredesign: «Ink & Sun» (august 2026)
+
+Hele frontenden er tegnet på nytt fra bunnen av mot Figma-fila
+[Website Hosting Landing Page (Community)](https://www.figma.com/design/m3BEhOsDc9QQoKLFAllvHt/Website-Hosting-Landing-Page--Community-),
+node `0:1683`, hentet med Figma MCP. Detaljene står i `05_design_system.md`;
+her er hva som faktisk endret seg:
+
+* **Fra mørkt til lyst.** `oklch`-paletten, isblå primærfarge og alle skygger er
+  fjernet. Nå: hvitt papir, svart strek, `#FFED88` som eneste aksent.
+* **Ramme erstatter skygge.** `.floating-card` er borte; `.ink-card` /
+  `.ink-card-lg` / `.ink-card-xl` har 2–2,6 px svart ramme og ingen `box-shadow`.
+  Den gamle regelen «ingen borders, kun skygge» er altså snudd på hodet.
+* **Firkantede knapper og felt, rundede kort.** `.btn-ink`, `.btn-outline`,
+  `.btn-sun`, `.btn-quiet` og `.field-ink` har radius 0.
+* **Alle ikoner er fjernet.** Material Symbols-stilarket er ute av `__root.tsx`,
+  og de 53 ikonbrukene i app-koden er byttet mot typografi: den gule håndstreken,
+  `<Mark />` (`✓`/`✕` i en skive), tilstandsruter, `+`/`–` og `←`.
+  `lucide-react` brukes nå bare av ubrukte shadcn-komponenter.
+* **Ny typografi.** Helvetica/Arial gjennomgående, Clash Display i footeren.
+  Space Grotesk og DM Sans er ute.
+* **Landingssiden er bygget om seksjon for seksjon** mot malen, med
+  skalafaktoren 1440/937 = 1,5368 på hver eneste px-verdi.
+* **Prisekortene leser reelle grenser** fra `PlanOption.limits` i stedet for
+  håndskrevne funksjonslister, slik at prissiden ikke kan komme i utakt med
+  `PLAN_LIMITS`.
+* **`/login` godtar `?email=`,** slik at CTA-feltet nederst på landingssiden
+  kan bære adressen inn i registreringen.
+
+Kjent avvik fra malen, med vilje: malens kundesitat er byttet mot etterprøvbare
+fakta om plattformen. Vi publiserer ikke en oppdiktet anmeldelse.
+
+---
+
 ## 1. Byggetidsporing (Build Duration Tracking)
 
 For å gi brukeren full innsikt i hvor lang tid hver deployment tar:

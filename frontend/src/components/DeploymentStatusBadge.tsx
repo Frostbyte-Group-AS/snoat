@@ -1,14 +1,38 @@
 import type { DeploymentStatus } from "@/lib/database.types";
 
-const presentation: Record<
-  DeploymentStatus | "none",
-  { label: string; dot: string; text: string }
-> = {
-  success: { label: "Live", dot: "bg-secondary", text: "text-secondary" },
-  building: { label: "Bygger", dot: "bg-primary animate-pulse", text: "text-primary" },
-  queued: { label: "I kø", dot: "bg-on-surface-variant", text: "text-on-surface-variant" },
-  failed: { label: "Feilet", dot: "bg-error", text: "text-error" },
-  none: { label: "Ikke deployet", dot: "bg-surface-variant", text: "text-on-surface-variant" },
+/**
+ * Status som firkantet merkelapp.
+ *
+ * Designet har ingen ikoner og bare tre flater å spille på – svart, gult og
+ * grått – så statusen bæres av *fyllet*, ikke av en farget prikk:
+ *
+ *   Live      svart flate    (den sterkeste tilstanden får den sterkeste flaten)
+ *   Bygger    gul flate      (noe pågår)
+ *   I kø      hvit m/ramme   (venter, ingenting skjer ennå)
+ *   Feilet    rød ramme      (eneste stedet rødt brukes i systemet)
+ *   Hviler    grå flate      (stoppet, fullført, aldri deployet)
+ *
+ * Prikkene fra forrige generasjon er borte med vilje: en 6 px sirkel i farge
+ * var det eneste som skilte «Bygger» fra «Feilet» for en fargeblind bruker.
+ * Nå skiller fyllet dem, og teksten sier det uansett.
+ */
+
+type Tone = "live" | "work" | "wait" | "fail" | "rest";
+
+const TONES: Record<Tone, string> = {
+  live: "bg-ink text-paper border-ink",
+  work: "bg-sun text-ink border-ink",
+  wait: "bg-paper text-ink border-ink",
+  fail: "bg-paper text-error border-error",
+  rest: "bg-ash text-ink border-ash",
+};
+
+const BY_STATUS: Record<DeploymentStatus | "none", { label: string; tone: Tone }> = {
+  success: { label: "Live", tone: "live" },
+  building: { label: "Bygger", tone: "work" },
+  queued: { label: "I kø", tone: "wait" },
+  failed: { label: "Feilet", tone: "fail" },
+  none: { label: "Ikke deployet", tone: "rest" },
 };
 
 export function DeploymentStatusBadge({
@@ -24,14 +48,10 @@ export function DeploymentStatusBadge({
   /** Stopp-forespørselen pågår akkurat nå. */
   stopping?: boolean;
 }) {
-  let info = presentation[status ?? "none"];
+  let info = BY_STATUS[status ?? "none"];
 
   if (status === "success" && !isLive) {
-    info = {
-      label: "Fullført",
-      dot: "bg-on-surface-variant/60",
-      text: "text-on-surface-variant",
-    };
+    info = { label: "Fullført", tone: "rest" };
   }
 
   // Rekkefølgen er meningsbærende.
@@ -41,25 +61,16 @@ export function DeploymentStatusBadge({
   // som pågår: starter man en ny deployment på et stoppet prosjekt, er «Bygger»
   // det riktige svaret – backend nullstiller `stopped_at` i samme øyeblikk.
   if (stopping) {
-    info = { label: "Stenger …", dot: "bg-on-surface-variant animate-pulse", text: "text-on-surface-variant" };
+    info = { label: "Stenger …", tone: "work" };
   } else if (stopped && status !== "building" && status !== "queued") {
-    info = { label: "Stoppet", dot: "bg-on-surface-variant/60", text: "text-on-surface-variant" };
-  }
-
-  const { label, dot, text } = info;
-
-  if (label === "Live") {
-    return (
-      <span className="font-label text-label-md text-secondary underline decoration-secondary underline-offset-4 font-semibold px-1">
-        Live
-      </span>
-    );
+    info = { label: "Stoppet", tone: "rest" };
   }
 
   return (
-    <span className="inline-flex items-center gap-2 rounded-full bg-surface-container px-3 py-1.5">
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-      <span className={`font-label text-label-md ${text}`}>{label}</span>
+    <span
+      className={`inline-flex shrink-0 items-center border-2 px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] ${TONES[info.tone]}`}
+    >
+      {info.label}
     </span>
   );
 }

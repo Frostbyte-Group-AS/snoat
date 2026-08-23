@@ -1,9 +1,8 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { DashboardNav } from "@/components/DashboardNav";
 import {
   createBillingPortal,
   createCheckout,
@@ -45,18 +44,16 @@ function Meter({
   const maxed = used >= limit;
 
   return (
-    <div className="flex flex-col gap-2 rounded-2xl bg-surface-container p-5">
+    <div className="flex flex-col gap-2 rounded-[12px] bg-muted p-5">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="font-label text-label-md text-on-surface">{label}</span>
-        <span
-          className={`font-mono text-label-md ${maxed ? "text-error" : "text-on-surface-variant"}`}
-        >
+        <span className="font-body text-[15px] text-ink">{label}</span>
+        <span className={`font-mono text-[15px] ${maxed ? "text-error" : "text-ink/70"}`}>
           {used} / {limit}
         </span>
       </div>
 
       <div
-        className="h-1.5 overflow-hidden rounded-full bg-surface-variant"
+        className="h-1.5 overflow-hidden rounded-none bg-muted"
         role="progressbar"
         aria-valuenow={used}
         aria-valuemin={0}
@@ -64,12 +61,12 @@ function Meter({
         aria-label={label}
       >
         <div
-          className={`h-full rounded-full transition-all duration-500 ${maxed ? "bg-error" : "bg-primary"}`}
+          className={`h-full rounded-none transition-all duration-500 ${maxed ? "bg-error" : "bg-ink"}`}
           style={{ width: `${share * 100}%` }}
         />
       </div>
 
-      <p className="font-body text-body-sm text-on-surface-variant">{hint}</p>
+      <p className="font-body text-[14px] text-ink/70">{hint}</p>
     </div>
   );
 }
@@ -106,31 +103,26 @@ function PlanCard({
   const isCurrent = billing.billedPlan === plan.id;
 
   return (
-    <div
-      className={`floating-card flex flex-col gap-5 p-6 ${isCurrent ? "shadow-[0_0_0_2px_var(--color-primary)_inset]" : ""}`}
-    >
+    <div className={`ink-card-lg flex flex-col gap-5 p-6 ${isCurrent ? "bg-sun-soft" : ""}`}>
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
-          <h3 className="font-display text-title-lg text-on-surface">
+          <h3 className="font-display text-[22px] font-bold text-ink">
             {t(`billing.plan_${plan.id}`)}
           </h3>
           {isCurrent && (
-            <span className="rounded-full bg-primary/15 px-3 py-1 font-label text-label-sm text-primary">
+            <span className="border-2 border-ink bg-ink px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] text-paper">
               {t("billing.current")}
             </span>
           )}
         </div>
 
         {plan.price === 0 ? (
-          <p className="font-display text-headline-sm text-on-surface">{t("billing.free_price")}</p>
+          <p className="font-display text-[26px] font-bold text-ink">{t("billing.free_price")}</p>
         ) : (
           <>
-            <p className="font-display text-headline-sm text-on-surface">
+            <p className="font-display text-[26px] font-bold text-ink">
               {format.money(plan.price, plan.currency)}
-              <span className="font-body text-body-md text-on-surface-variant">
-                {" "}
-                {t("billing.per_month")}
-              </span>
+              <span className="font-body text-[16px] text-ink/70"> {t("billing.per_month")}</span>
             </p>
             {/* Prisopplysningsforskriften: pris mot forbruker skal vises inkl.
                 mva. Mange av kundene våre er soloutviklere, altså forbrukere.
@@ -141,15 +133,13 @@ function PlanCard({
                 i kassen, framfor å vise et tall som er feil for alle utenom ett
                 land. Det er samme forskrift som krever begge deler. */}
             {plan.priceIncludingVat !== null ? (
-              <p className="font-body text-body-sm text-on-surface-variant">
+              <p className="font-body text-[14px] text-ink/70">
                 {t("billing.incl_vat", {
                   price: format.money(plan.priceIncludingVat, plan.currency),
                 })}
               </p>
             ) : (
-              <p className="font-body text-body-sm text-on-surface-variant">
-                {t("billing.vat_at_checkout")}
-              </p>
+              <p className="font-body text-[14px] text-ink/70">{t("billing.vat_at_checkout")}</p>
             )}
           </>
         )}
@@ -157,11 +147,8 @@ function PlanCard({
 
       <ul className="flex flex-col gap-2">
         {planFeatures(plan, t).map((feature) => (
-          <li
-            key={feature}
-            className="flex items-start gap-2.5 font-body text-body-sm text-on-surface-variant"
-          >
-            <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+          <li key={feature} className="flex items-start gap-2.5 font-body text-[14px] text-ink/70">
+            <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-none bg-ink" />
             {feature}
           </li>
         ))}
@@ -169,26 +156,20 @@ function PlanCard({
 
       <div className="mt-auto">
         {isCurrent ? (
-          <p className="font-body text-body-sm text-on-surface-variant">
-            {t("billing.current_hint")}
-          </p>
+          <p className="font-body text-[14px] text-ink/70">{t("billing.current_hint")}</p>
         ) : plan.id === "free" ? (
-          <p className="font-body text-body-sm text-on-surface-variant">
-            {t("billing.downgrade_hint")}
-          </p>
+          <p className="font-body text-[14px] text-ink/70">{t("billing.downgrade_hint")}</p>
         ) : plan.purchasable ? (
           <button
             type="button"
             disabled={pending}
             onClick={() => onSelect(plan.id as "pro" | "business")}
-            className="primary-btn w-full px-6 py-3 font-label text-label-md disabled:opacity-50"
+            className="btn-ink w-full px-6 py-3 font-body text-[15px] disabled:opacity-50"
           >
             {pending ? t("billing.opening") : t("billing.upgrade")}
           </button>
         ) : (
-          <p className="font-body text-body-sm text-on-surface-variant">
-            {t("billing.not_purchasable")}
-          </p>
+          <p className="font-body text-[14px] text-ink/70">{t("billing.not_purchasable")}</p>
         )}
       </div>
     </div>
@@ -197,8 +178,7 @@ function PlanCard({
 
 function BillingPage() {
   const { t } = useTranslation();
-  const { user, loading } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const format = useFormatters();
   const errorMessage = useApiErrorMessage();
   // Markedet visningsspråket tilsier. Et *ønske* – har kunden et abonnement,
@@ -207,10 +187,6 @@ function BillingPage() {
   const requestedMarket = useRequestedMarket();
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!loading && !user) void navigate({ to: "/login" });
-  }, [loading, user, navigate]);
 
   // Stripe sender kunden tilbake hit med ?checkout=. Planen settes av webhooken,
   // ikke av denne redirecten – derfor kan raden fortsatt si «free» et øyeblikk
@@ -249,208 +225,188 @@ function BillingPage() {
     onError: (mutationError: unknown) => setError(errorMessage(mutationError)),
   });
 
-  if (loading || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="font-body text-body-md text-on-surface-variant">{t("login.loading")}</p>
-      </div>
-    );
-  }
-
   const state = billing.data;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <DashboardNav />
+    <div className="flex flex-col">
+      <div className="mb-[24px] flex flex-col gap-2">
+        <h2 className="font-display text-[28px] font-bold text-ink">{t("billing.title")}</h2>
+        <p className="font-body text-[16px] text-ink/70">{t("billing.subtitle")}</p>
+      </div>
 
-      <main className="mx-auto w-full max-w-container-max flex-grow px-margin-mobile py-stack-lg md:px-gutter">
-        <div className="mb-stack-md flex flex-col gap-2">
-          <Link
-            to="/dashboard"
-            className="font-label text-label-md text-on-surface-variant transition-opacity hover:opacity-70"
-          >
-            ← {t("billing.back")}
-          </Link>
-          <h1 className="font-display text-headline-lg text-on-background">{t("billing.title")}</h1>
-          <p className="font-body text-body-md text-on-surface-variant">{t("billing.subtitle")}</p>
+      {notice && (
+        <div
+          role="status"
+          className="mb-[24px] border-2 border-ink bg-sun px-[18px] py-[14px] duration-300 animate-in fade-in-50 slide-in-from-top-2"
+        >
+          <p className="font-body text-[16px] font-normal text-ink">{notice}</p>
         </div>
+      )}
 
-        {notice && (
-          <div
-            role="status"
-            className="mb-stack-md rounded-xl bg-surface-container px-5 py-4 animate-in fade-in-50 slide-in-from-top-2 duration-300"
-          >
-            <p className="font-body text-body-md text-on-surface-variant">{notice}</p>
-          </div>
-        )}
+      {error && (
+        <div role="alert" className="mb-[24px] border-2 border-error px-[18px] py-[14px]">
+          <p className="font-body text-[16px] text-error">{error}</p>
+        </div>
+      )}
 
-        {error && (
-          <div role="alert" className="mb-stack-md rounded-xl bg-error/10 px-5 py-4">
-            <p className="font-body text-body-md text-error">{error}</p>
-          </div>
-        )}
+      {billing.isLoading && (
+        <p className="font-body text-[16px] text-ink/70">{t("billing.loading")}</p>
+      )}
 
-        {billing.isLoading && (
-          <p className="font-body text-body-md text-on-surface-variant">{t("billing.loading")}</p>
-        )}
+      {billing.isError && (
+        <div role="alert" className="border-2 border-error px-[18px] py-[14px]">
+          <p className="font-body text-[16px] text-error">{errorMessage(billing.error)}</p>
+        </div>
+      )}
 
-        {billing.isError && (
-          <div role="alert" className="rounded-xl bg-error/10 px-5 py-4">
-            <p className="font-body text-body-md text-error">{errorMessage(billing.error)}</p>
-          </div>
-        )}
+      {state && (
+        <div className="flex flex-col gap-[24px]">
+          {/* Betalingen har feilet. Skal stå øverst og si hva som skjer når. */}
+          {(state.status === "past_due" || state.status === "unpaid") && (
+            <div role="alert" className="ink-card-lg flex flex-col gap-3 p-6 md:p-8">
+              <h2 className="font-display text-[22px] font-bold text-error">
+                {t("billing.payment_failed_title")}
+              </h2>
+              <p className="font-body text-[16px] text-ink/70">
+                {state.downgraded
+                  ? t("billing.downgraded_body", { plan: t(`billing.plan_${state.billedPlan}`) })
+                  : t("billing.grace_body", {
+                      plan: t(`billing.plan_${state.billedPlan}`),
+                      date: format.date(state.graceEndsAt),
+                    })}
+              </p>
+              {state.portalAvailable && (
+                <button
+                  type="button"
+                  disabled={portal.isPending}
+                  onClick={() => portal.mutate()}
+                  className="btn-ink self-start px-6 py-3 font-body text-[15px] disabled:opacity-50"
+                >
+                  {t("billing.fix_payment")}
+                </button>
+              )}
+            </div>
+          )}
 
-        {state && (
-          <div className="flex flex-col gap-stack-md">
-            {/* Betalingen har feilet. Skal stå øverst og si hva som skjer når. */}
-            {(state.status === "past_due" || state.status === "unpaid") && (
-              <div role="alert" className="floating-card flex flex-col gap-3 p-6 md:p-8">
-                <h2 className="font-display text-title-lg text-error">
-                  {t("billing.payment_failed_title")}
-                </h2>
-                <p className="font-body text-body-md text-on-surface-variant">
-                  {state.downgraded
-                    ? t("billing.downgraded_body", { plan: t(`billing.plan_${state.billedPlan}`) })
-                    : t("billing.grace_body", {
-                        plan: t(`billing.plan_${state.billedPlan}`),
-                        date: format.date(state.graceEndsAt),
-                      })}
-                </p>
-                {state.portalAvailable && (
-                  <button
-                    type="button"
-                    disabled={portal.isPending}
-                    onClick={() => portal.mutate()}
-                    className="primary-btn self-start px-6 py-3 font-label text-label-md disabled:opacity-50"
-                  >
-                    {t("billing.fix_payment")}
-                  </button>
+          {/* Nåværende plan og forbruk */}
+          <section className="ink-card-lg flex flex-col gap-6 p-6 md:p-8">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="font-body text-[13px] uppercase tracking-wide text-ink/70">
+                  {t("billing.current_plan")}
+                </span>
+                <span className="font-display text-[26px] font-bold text-ink">
+                  {t(`billing.plan_${state.billedPlan}`)}
+                </span>
+
+                {state.cancelAtPeriodEnd && state.currentPeriodEnd ? (
+                  <span className="font-body text-[14px] text-ink/70">
+                    {t("billing.cancels_on", { date: format.date(state.currentPeriodEnd) })}
+                  </span>
+                ) : state.currentPeriodEnd && state.billedPlan !== "free" ? (
+                  <span className="font-body text-[14px] text-ink/70">
+                    {t("billing.renews_on", { date: format.date(state.currentPeriodEnd) })}
+                  </span>
+                ) : null}
+
+                {state.source === "invoice" && (
+                  <span className="font-body text-[14px] text-ink/70">{t("billing.invoiced")}</span>
                 )}
               </div>
+
+              {state.portalAvailable && (
+                <button
+                  type="button"
+                  disabled={portal.isPending}
+                  onClick={() => portal.mutate()}
+                  className="btn-outline px-5 py-2.5 font-body text-[15px] disabled:opacity-50"
+                >
+                  {portal.isPending ? t("billing.opening") : t("billing.manage")}
+                </button>
+              )}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Meter
+                label={t("billing.usage_apps")}
+                hint={t("billing.usage_apps_hint")}
+                used={state.usage.runningProjects}
+                limit={state.limits.maxRunningProjects}
+              />
+              <Meter
+                label={t("billing.usage_build_minutes")}
+                hint={t("billing.usage_build_minutes_hint")}
+                used={state.usage.buildMinutesUsed}
+                limit={state.limits.buildMinutesPerMonth}
+              />
+            </div>
+
+            <p className="font-body text-[14px] text-ink/70">
+              {t("billing.usage_static", { count: state.usage.staticProjects })}
+            </p>
+          </section>
+
+          {/* Planvalg */}
+          <section className="flex flex-col gap-4">
+            <h2 className="font-display text-[22px] font-bold text-ink">{t("billing.plans")}</h2>
+
+            {!state.stripeConfigured && (
+              <p className="border-2 border-hair px-[18px] py-[14px] font-body text-[16px] text-ink/70">
+                {t("billing.stripe_missing")}
+              </p>
             )}
 
-            {/* Nåværende plan og forbruk */}
-            <section className="floating-card flex flex-col gap-6 p-6 md:p-8">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                  <span className="font-label text-label-sm uppercase tracking-wide text-on-surface-variant">
-                    {t("billing.current_plan")}
-                  </span>
-                  <span className="font-display text-headline-sm text-on-surface">
-                    {t(`billing.plan_${state.billedPlan}`)}
-                  </span>
-
-                  {state.cancelAtPeriodEnd && state.currentPeriodEnd ? (
-                    <span className="font-body text-body-sm text-on-surface-variant">
-                      {t("billing.cancels_on", { date: format.date(state.currentPeriodEnd) })}
-                    </span>
-                  ) : state.currentPeriodEnd && state.billedPlan !== "free" ? (
-                    <span className="font-body text-body-sm text-on-surface-variant">
-                      {t("billing.renews_on", { date: format.date(state.currentPeriodEnd) })}
-                    </span>
-                  ) : null}
-
-                  {state.source === "invoice" && (
-                    <span className="font-body text-body-sm text-on-surface-variant">
-                      {t("billing.invoiced")}
-                    </span>
-                  )}
-                </div>
-
-                {state.portalAvailable && (
-                  <button
-                    type="button"
-                    disabled={portal.isPending}
-                    onClick={() => portal.mutate()}
-                    className="ghost-btn px-5 py-2.5 font-label text-label-md disabled:opacity-50"
-                  >
-                    {portal.isPending ? t("billing.opening") : t("billing.manage")}
-                  </button>
-                )}
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Meter
-                  label={t("billing.usage_apps")}
-                  hint={t("billing.usage_apps_hint")}
-                  used={state.usage.runningProjects}
-                  limit={state.limits.maxRunningProjects}
+            <div className="grid gap-4 md:grid-cols-3">
+              {state.plans.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  billing={state}
+                  format={format}
+                  pending={checkout.isPending}
+                  onSelect={(selected: Exclude<SubscriptionTier, "free">) => {
+                    setError(null);
+                    checkout.mutate(selected);
+                  }}
                 />
-                <Meter
-                  label={t("billing.usage_build_minutes")}
-                  hint={t("billing.usage_build_minutes_hint")}
-                  used={state.usage.buildMinutesUsed}
-                  limit={state.limits.buildMinutesPerMonth}
-                />
-              </div>
+              ))}
+            </div>
 
-              <p className="font-body text-body-sm text-on-surface-variant">
-                {t("billing.usage_static", { count: state.usage.staticProjects })}
-              </p>
-            </section>
-
-            {/* Planvalg */}
-            <section className="flex flex-col gap-4">
-              <h2 className="font-display text-title-lg text-on-surface">{t("billing.plans")}</h2>
-
-              {!state.stripeConfigured && (
-                <p className="rounded-xl bg-surface-container px-5 py-4 font-body text-body-md text-on-surface-variant">
-                  {t("billing.stripe_missing")}
-                </p>
-              )}
-
-              <div className="grid gap-4 md:grid-cols-3">
-                {state.plans.map((plan) => (
-                  <PlanCard
-                    key={plan.id}
-                    plan={plan}
-                    billing={state}
-                    format={format}
-                    pending={checkout.isPending}
-                    onSelect={(selected: Exclude<SubscriptionTier, "free">) => {
-                      setError(null);
-                      checkout.mutate(selected);
-                    }}
-                  />
-                ))}
-              </div>
-
-              {/* Noten er markedsspesifikk. Den norske sier «norske kroner,
+            {/* Noten er markedsspesifikk. Den norske sier «norske kroner,
                   norsk mva»; euro-noten kan ikke love en sats, bare at Stripe
                   regner den i kassen etter kundens land. */}
-              <p className="font-body text-body-sm text-on-surface-variant">
-                {t(`billing.vat_note_${state.market.id}`)}
-              </p>
+            <p className="font-body text-[14px] text-ink/70">
+              {t(`billing.vat_note_${state.market.id}`)}
+            </p>
 
-              {/* Valutaen er låst av et eksisterende abonnement, så språkbyttet
+            {/* Valutaen er låst av et eksisterende abonnement, så språkbyttet
                   endret ikke prisene. Uten denne linjen ser det ut som en feil. */}
-              {state.marketLocked && (
-                <p className="font-body text-body-sm text-on-surface-variant">
-                  {t("billing.currency_locked", {
-                    currency: state.market.currency.toUpperCase(),
-                  })}
-                </p>
-              )}
-            </section>
+            {state.marketLocked && (
+              <p className="font-body text-[14px] text-ink/70">
+                {t("billing.currency_locked", {
+                  currency: state.market.currency.toUpperCase(),
+                })}
+              </p>
+            )}
+          </section>
 
-            {/* Fakturering utenom kort.
+          {/* Fakturering utenom kort.
 
                 EHF er en norsk standard og et tilbud som bare gir mening for
                 norske bedrifter og offentlig sektor. En kunde i Berlin skal ha
                 e-postfaktura-varianten, ikke en oppfordring om å sende
                 organisasjonsnummeret sitt til Peppol. `invoiceChannel` kommer
                 fra markedet i backend, ikke fra en test på språket her. */}
-            <section className="floating-card flex flex-col gap-3 p-6 md:p-8">
-              <h2 className="font-display text-title-lg text-on-surface">
-                {t(`billing.invoice_${state.market.invoiceChannel}_title`)}
-              </h2>
-              <p className="font-body text-body-md text-on-surface-variant">
-                {t(`billing.invoice_${state.market.invoiceChannel}_body`)}
-              </p>
-            </section>
-          </div>
-        )}
-      </main>
+          <section className="ink-card-lg flex flex-col gap-3 p-6 md:p-8">
+            <h2 className="font-display text-[22px] font-bold text-ink">
+              {t(`billing.invoice_${state.market.invoiceChannel}_title`)}
+            </h2>
+            <p className="font-body text-[16px] text-ink/70">
+              {t(`billing.invoice_${state.market.invoiceChannel}_body`)}
+            </p>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

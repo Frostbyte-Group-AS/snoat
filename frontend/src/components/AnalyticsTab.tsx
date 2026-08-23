@@ -27,12 +27,12 @@ const TIME_RANGES: Array<{ key: TimeRangeKey; label: string }> = [
   { key: "all", label: "Alt" },
 ];
 
-const DIMENSION_TABS: Array<{ key: AnalyticsDimension; label: string; icon: string }> = [
-  { key: "path", label: "Mest besøkt", icon: "link" },
-  { key: "referrer", label: "Trafikkilder", icon: "output" },
-  { key: "browser", label: "Nettlesere", icon: "public" },
-  { key: "device", label: "Enheter", icon: "devices" },
-  { key: "country", label: "Land", icon: "flag" },
+const DIMENSION_TABS: Array<{ key: AnalyticsDimension; label: string }> = [
+  { key: "path", label: "Mest besøkt" },
+  { key: "referrer", label: "Trafikkilder" },
+  { key: "browser", label: "Nettlesere" },
+  { key: "device", label: "Enheter" },
+  { key: "country", label: "Land" },
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -87,28 +87,25 @@ function formatDuration(ms: number): string {
 
 function KpiCard({
   label,
-  icon,
   value,
   suffix,
   loading,
 }: {
   label: string;
-  icon: string;
   value: string;
   suffix: string;
   loading: boolean;
 }) {
   return (
-    <div className="floating-card p-6 flex flex-col justify-between">
-      <div className="flex items-center justify-between">
-        <span className="font-label text-label-md text-on-surface-variant">{label}</span>
-        <span className="material-symbols-outlined icon-sm text-on-surface-variant">{icon}</span>
-      </div>
-      <div className="mt-4">
-        <span className="font-display text-headline-lg text-on-surface font-bold">
+    <div className="ink-card flex flex-col justify-between px-[23px] py-[25px]">
+      <span className="font-body text-[15px] font-normal uppercase tracking-[0.08em] text-ink/70">
+        {label}
+      </span>
+      <div className="mt-[14px] flex items-baseline gap-[8px]">
+        <span className="font-display text-[36px] font-bold leading-none text-ink">
           {loading ? "…" : value}
         </span>
-        <span className="ml-2 font-body text-xs text-on-surface-variant">{suffix}</span>
+        <span className="font-body text-[13px] font-normal text-ink/70">{suffix}</span>
       </div>
     </div>
   );
@@ -175,28 +172,26 @@ export function AnalyticsTab({ project }: { project: Project }) {
   return (
     <div className="flex flex-col gap-8">
       {/* Overskrift og tidsfilter */}
-      <div className="floating-card p-6 md:p-8 flex flex-wrap items-center justify-between gap-4">
+      <div className="ink-card-lg p-6 md:p-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="font-headline text-headline-md text-on-surface flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">analytics</span>
-            Trafikkanalyse
-          </h2>
-          <p className="mt-1 font-body text-body-md text-on-surface-variant">
+          <h2 className="font-display text-[26px] font-bold text-ink">Trafikkanalyse</h2>
+          <span className="swoosh mt-[6px]" aria-hidden="true" />
+          <p className="mt-1 font-body text-[16px] text-ink/70">
             Måles automatisk for {project.name}. Ingen sporingskode i appen din, ingen cookies,
             ingen IP-adresser lagret.
           </p>
         </div>
 
-        <div className="inline-flex rounded-xl bg-surface-container p-1">
+        <div className="inline-flex border-2 border-ink">
           {TIME_RANGES.map((r) => (
             <button
               key={r.key}
               type="button"
               onClick={() => setSelectedRange(r.key)}
-              className={`rounded-lg px-3.5 py-1.5 font-label text-xs md:text-label-md transition-all ${
+              className={`border-r-2 border-ink px-[14px] py-[7px] font-body text-[13px] transition-colors last:border-r-0 md:text-[15px] ${
                 selectedRange === r.key
-                  ? "bg-surface text-primary shadow-sm font-semibold"
-                  : "text-on-surface-variant hover:text-on-surface"
+                  ? "bg-ink font-bold text-paper"
+                  : "bg-paper text-ink hover:bg-sun"
               }`}
             >
               {r.label}
@@ -206,31 +201,27 @@ export function AnalyticsTab({ project }: { project: Project }) {
       </div>
 
       {/* Nøkkeltall */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-[16px] sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           label="Unike besøkende"
-          icon="group"
           value={format.number(query.data?.visitors ?? 0)}
           suffix="personer"
           loading={query.isLoading}
         />
         <KpiCard
           label="Sidevisninger"
-          icon="visibility"
           value={format.number(totals?.pageviews ?? 0)}
           suffix="visninger"
           loading={query.isLoading}
         />
         <KpiCard
           label="Visninger per besøk"
-          icon="auto_graph"
           value={viewsPerVisit}
           suffix="sider / besøk"
           loading={query.isLoading}
         />
         <KpiCard
           label="Responstid"
-          icon="timer"
           value={formatDuration(totals?.avg_duration_ms ?? 0)}
           suffix="i snitt"
           loading={query.isLoading}
@@ -238,68 +229,52 @@ export function AnalyticsTab({ project }: { project: Project }) {
       </div>
 
       {/* Driftstall – dette ser en logg, men aldri et sporingsskript. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-[16px] lg:grid-cols-4">
         {[
-          { label: "Forespørsler", value: format.number(totals?.requests ?? 0), icon: "swap_vert" },
-          {
-            label: "Båndbredde",
-            value: formatBytes(totals?.bytes_out ?? 0),
-            icon: "cloud_download",
-          },
-          { label: "Serverfeil (5xx)", value: `${errorRate} %`, icon: "error" },
-          {
-            label: "Robottrafikk",
-            value: format.number(totals?.bot_requests ?? 0),
-            icon: "smart_toy",
-          },
+          { label: "Forespørsler", value: format.number(totals?.requests ?? 0) },
+          { label: "Båndbredde", value: formatBytes(totals?.bytes_out ?? 0) },
+          { label: "Serverfeil (5xx)", value: `${errorRate} %` },
+          { label: "Robottrafikk", value: format.number(totals?.bot_requests ?? 0) },
         ].map((stat) => (
-          <div
-            key={stat.label}
-            className="rounded-2xl bg-surface-container p-4 flex items-center gap-3"
-          >
-            <span className="material-symbols-outlined icon-sm text-on-surface-variant">
-              {stat.icon}
-            </span>
-            <div className="min-w-0">
-              <p className="font-mono text-sm font-bold text-on-surface truncate">
-                {query.isLoading ? "…" : stat.value}
-              </p>
-              <p className="font-label text-xs text-on-surface-variant truncate">{stat.label}</p>
-            </div>
+          <div key={stat.label} className="border-2 border-ink px-[16px] py-[14px]">
+            <p className="truncate font-mono text-[15px] font-bold text-ink">
+              {query.isLoading ? "…" : stat.value}
+            </p>
+            <p className="truncate font-body text-[12px] uppercase tracking-[0.08em] text-ink/70">
+              {stat.label}
+            </p>
           </div>
         ))}
       </div>
 
       {/* Graf */}
-      <div className="floating-card p-6 md:p-8 flex flex-col gap-6">
+      <div className="ink-card-lg p-6 md:p-8 flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <h3 className="font-headline text-title-lg text-on-surface">Besøk over tid</h3>
-          <div className="flex items-center gap-4 text-xs font-label">
+          <h3 className="font-display text-[22px] font-bold text-ink">Besøk over tid</h3>
+          <div className="flex items-center gap-4 text-xs font-body">
             <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-primary" />
-              <span className="text-on-surface-variant">Sidevisninger</span>
+              <span className="h-3 w-3 rounded-none bg-ink" />
+              <span className="text-ink/70">Sidevisninger</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-secondary" />
-              <span className="text-on-surface-variant">Besøk</span>
+              <span className="h-3 w-3 rounded-none bg-sun" />
+              <span className="text-ink/70">Besøk</span>
             </div>
           </div>
         </div>
 
         <div className="h-64 w-full relative flex items-end gap-2 pt-6 pb-8">
           {query.isLoading ? (
-            <div className="absolute inset-0 flex items-center justify-center font-body text-body-md text-on-surface-variant">
+            <div className="absolute inset-0 flex items-center justify-center font-body text-[16px] text-ink/70">
               Laster statistikk…
             </div>
           ) : series.length === 0 ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
-              <span className="material-symbols-outlined icon-lg text-on-surface-variant/40 mb-2">
-                bar_chart
-              </span>
-              <p className="font-body text-body-md text-on-surface-variant">
+              <span className="swoosh mb-[10px]" aria-hidden="true" />
+              <p className="font-body text-[16px] text-ink/70">
                 Ingen registrerte besøk i valgt periode.
               </p>
-              <p className="font-body text-xs text-on-surface-variant/70 mt-1">
+              <p className="font-body text-xs text-ink/60 mt-1">
                 Målingen er allerede aktiv – tallene kommer så snart noen besøker siden.
               </p>
             </div>
@@ -310,26 +285,24 @@ export function AnalyticsTab({ project }: { project: Project }) {
                   key={point.t}
                   className="group relative flex-1 h-full flex flex-col justify-end items-center"
                 >
-                  <div className="absolute -top-12 z-20 hidden group-hover:flex flex-col items-center rounded-lg bg-surface-container-highest px-3 py-1.5 shadow-xl text-xs font-mono pointer-events-none whitespace-nowrap">
-                    <span className="text-on-surface font-semibold">{labelFor(point.t)}</span>
-                    <span className="text-primary">
-                      {format.number(point.pageviews)} sidevisninger
-                    </span>
-                    <span className="text-secondary">{format.number(point.visits)} besøk</span>
+                  <div className="absolute -top-12 z-20 hidden group-hover:flex flex-col items-center rounded-none bg-mutedest px-3 py-1.5 text-xs font-mono pointer-events-none whitespace-nowrap">
+                    <span className="text-ink font-semibold">{labelFor(point.t)}</span>
+                    <span className="text-ink">{format.number(point.pageviews)} sidevisninger</span>
+                    <span className="text-ink">{format.number(point.visits)} besøk</span>
                   </div>
 
                   <div className="w-full flex items-end justify-center gap-0.5 h-full">
                     <div
-                      className="w-full max-w-[12px] bg-primary/80 rounded-t-sm transition-all group-hover:bg-primary"
+                      className="w-full max-w-[12px] bg-sun rounded-t-sm transition-all group-hover:bg-ink"
                       style={{ height: `${Math.max(2, (point.pageviews / maxValue) * 100)}%` }}
                     />
                     <div
-                      className="w-full max-w-[12px] bg-secondary/70 rounded-t-sm transition-all group-hover:bg-secondary"
+                      className="w-full max-w-[12px] bg-sun rounded-t-sm transition-all group-hover:bg-sun"
                       style={{ height: `${Math.max(0, (point.visits / maxValue) * 100)}%` }}
                     />
                   </div>
 
-                  <span className="absolute -bottom-6 text-[10px] font-mono text-on-surface-variant/60 truncate max-w-full">
+                  <span className="absolute -bottom-6 text-[10px] font-mono text-ink/60 truncate max-w-full">
                     {idx % labelEvery === 0 ? labelFor(point.t) : ""}
                   </span>
                 </div>
@@ -340,22 +313,21 @@ export function AnalyticsTab({ project }: { project: Project }) {
       </div>
 
       {/* Dimensjoner */}
-      <div className="floating-card p-6 md:p-8 flex flex-col gap-6">
+      <div className="ink-card-lg p-6 md:p-8 flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <h3 className="font-headline text-title-lg text-on-surface">Målinger og trafikkilder</h3>
+          <h3 className="font-display text-[22px] font-bold text-ink">Målinger og trafikkilder</h3>
           <div className="flex flex-wrap gap-2">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => setDimension(tab.key)}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-label text-xs md:text-label-md transition-all ${
+                className={`border-2 border-ink px-[12px] py-[6px] font-body text-[13px] transition-colors md:text-[15px] ${
                   dimension === tab.key
-                    ? "bg-surface-variant text-on-surface font-semibold"
-                    : "text-on-surface-variant hover:text-on-surface"
+                    ? "bg-ink font-bold text-paper"
+                    : "bg-paper text-ink hover:bg-sun"
                 }`}
               >
-                <span className="material-symbols-outlined icon-sm">{tab.icon}</span>
                 {tab.label}
               </button>
             ))}
@@ -363,37 +335,35 @@ export function AnalyticsTab({ project }: { project: Project }) {
         </div>
 
         {query.isLoading ? (
-          <p className="font-body text-body-md text-on-surface-variant">Laster målinger…</p>
+          <p className="font-body text-[16px] text-ink/70">Laster målinger…</p>
         ) : items.length === 0 ? (
-          <p className="font-body text-body-md text-on-surface-variant">
-            Ingen data i denne kategorien ennå.
-          </p>
+          <p className="font-body text-[16px] text-ink/70">Ingen data i denne kategorien ennå.</p>
         ) : (
           <div className="flex flex-col gap-3">
             {items.map((item, idx) => (
               <div
                 key={item.value}
-                className="relative overflow-hidden rounded-xl bg-surface-container p-3 flex items-center justify-between gap-3"
+                className="relative overflow-hidden rounded-[12px] bg-muted p-3 flex items-center justify-between gap-3"
               >
                 <div
-                  className="absolute inset-y-0 left-0 bg-primary/10 rounded-xl transition-all duration-500 pointer-events-none"
+                  className="absolute inset-y-0 left-0 bg-sun rounded-[12px] transition-all duration-500 pointer-events-none"
                   style={{ width: `${Math.round((item.hits / maxHits) * 100)}%` }}
                 />
 
                 <div className="relative z-10 flex items-center gap-3 min-w-0">
-                  <span className="font-mono text-xs font-semibold text-on-surface-variant/60 w-5 shrink-0">
+                  <span className="font-mono text-xs font-semibold text-ink/60 w-5 shrink-0">
                     #{idx + 1}
                   </span>
-                  <span className="font-body text-body-md text-on-surface font-medium break-all">
+                  <span className="font-body text-[16px] text-ink font-medium break-all">
                     {item.value}
                   </span>
                 </div>
 
                 <div className="relative z-10 flex items-center gap-2 shrink-0">
-                  <span className="font-mono text-sm font-bold text-on-surface">
+                  <span className="font-mono text-sm font-bold text-ink">
                     {format.number(item.hits)}
                   </span>
-                  <span className="font-body text-xs text-on-surface-variant">visninger</span>
+                  <span className="font-body text-xs text-ink/70">visninger</span>
                 </div>
               </div>
             ))}
@@ -401,9 +371,7 @@ export function AnalyticsTab({ project }: { project: Project }) {
         )}
 
         {dimension === "country" && (
-          <p className="font-body text-xs text-on-surface-variant/70">
-            IP-geolokalisering fra DB-IP
-          </p>
+          <p className="font-body text-xs text-ink/60">IP-geolokalisering fra DB-IP</p>
         )}
       </div>
     </div>

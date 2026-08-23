@@ -2,21 +2,27 @@
 
 Snoat kan kobles direkte til AI-assistenter via **Model Context Protocol (MCP)**. Da kan assistenten se prosjektene dine, starte deployments, lese byggelogger og hente trafikkstatistikk – på din konto, og bare din.
 
-Tilkoblingen er en **hostet MCP-server**: én URL, ingen installasjon, ingen nøkkel å lime inn.
+Tilkoblingen er en **hostet MCP-server som legges til som en «custom connector»** i Claude: én URL, ingen installasjon, ingen nøkkel å lime inn.
 
 ```
 https://api.snoat.com/api/mcp
 ```
 
-Kunden finner URL-en i dashboardet under **Innstillinger → AI-tilkobling** (`/settings/mcp`).
+Kunden finner URL-en i dashboardet bak **profilbildet → AI-tilkobling** (`/settings/mcp`).
+
+## Connectoren er per bruker
+
+URL-en er den samme for alle, men **tilgangen er personlig**. Den oppstår først når en innlogget bruker godkjenner forespørselen i samtykkeflyten, og tokenet som utstedes er bundet til nettopp den brukeren (`oauth_access_tokens.user_id`). To personer som limer inn samme URL får hver sin connector, mot hver sin konto, og ser bare sine egne prosjekter.
+
+Én bruker kan ha flere connectorer samtidig – Claude på jobb-maskinen, Claude Code i terminalen, Claude på nett – fordi hver klient registrerer seg selv med sin egen `client_id`. Alle vises under **Dine tilkoblinger**, og kan kobles fra hver for seg.
 
 ---
 
 ## 1. Koble til fra Claude
 
-1. Åpne Claude → **Innstillinger → Connectors**.
-2. Velg **«Legg til egendefinert connector»**.
-3. Lim inn connector-URL-en, og trykk **«Legg til»**.
+1. Åpne Claude → **Settings → Connectors**.
+2. Trykk **«Add custom connector»**.
+3. Lim inn connector-URL-en som «Remote MCP server URL», og trykk **«Add»**.
 4. Logg inn hos Snoat i vinduet som åpner seg, og trykk **«Godkjenn»**.
 
 Det er alt. Claude registrerer seg selv, forhandler tilgangen med OAuth, og fornyer den etterpå uten at kunden gjør noe.
@@ -31,7 +37,7 @@ Klienten åpner nettleseren for innlogging første gang, akkurat som Claude-appe
 
 ### Klienter uten OAuth-støtte
 
-Har klienten ingen OAuth-flyt, kan en API-nøkkel (`snoat_ak_…`) sendes som `Authorization: Bearer …` mot samme URL. Nøkler opprettes under **Innstillinger → AI-tilkobling → Andre klienter og kommandolinje**.
+Har klienten ingen OAuth-flyt, kan en API-nøkkel (`snoat_ak_…`) sendes som `Authorization: Bearer …` mot samme URL. Nøkler opprettes bak **profilbildet → AI-tilkobling → Andre klienter og kommandolinje**.
 
 Nøkkelen utløper aldri av seg selv og gir full tilgang til kontoen, så bruk OAuth der klienten klarer det.
 
@@ -54,6 +60,7 @@ Flyten, sett fra klienten:
 POST /api/mcp                                 →  401 + WWW-Authenticate: … resource_metadata="…"
 GET  /.well-known/oauth-protected-resource    →  hvem utsteder tokens for denne ressursen
 GET  /.well-known/oauth-authorization-server  →  hvor endepunktene ligger
+     (også som …/oauth-authorization-server/api/mcp – se under)
 POST /oauth/register                          →  client_id (ingen client_secret – offentlig klient, PKCE påkrevd)
 GET  /oauth/authorize                         →  302 til /oauth/consent i dashboardet
 POST /oauth/approve                           →  brukeren godkjente; kode til registrert redirect_uri
@@ -66,6 +73,16 @@ POST /api/mcp                                 →  tools/list, tools/call …
 `services/mcp-tools.ts` kaller `api.fetch()` mot vårt eget API i stedet for å snakke med databasen. Hvert verktøykall går dermed gjennom `requireAuth`, `loadOwnedProject`, plangrensene og oppryddingen – nøyaktig samme vei som dashboardets egne kall.
 
 Konsekvensen er verdt å huske: **et nytt sperrepunkt i et REST-endepunkt gjelder automatisk for MCP også**, og en AI-klient kan aldri gjøre noe kunden ikke kunne gjort selv i dashboardet.
+
+### To stier for det samme metadata-dokumentet
+
+Vår `issuer` har ingen sti, så RFC 8414 sier at metadataen ligger på
+`/.well-known/oauth-authorization-server`. Men flere connector-klienter bygger
+oppslaget ved å sette inn *ressursens* sti i stedet for issuerens, og spør etter
+`/.well-known/oauth-authorization-server/api/mcp`. Vi svarer med samme dokument
+på begge. Grunnen er praktisk: en klient som får 404 på sitt første oppslag
+rekker ofte å gi opp med «could not connect» før den prøver den korte formen.
+Det samme gjelder `/.well-known/oauth-protected-resource[/api/mcp]`.
 
 ### Hva som ikke krever konfigurasjon
 
@@ -87,7 +104,7 @@ Tabellene ligger i `supabase/migrations/0011_mcp_connector.sql`, som `db-migrate
 - **Koder lever i 60 sekunder** og kan brukes én gang. Et andre forsøk trekker tilbake alt klienten har – en gjenbrukt kode betyr at den kan være avlyttet.
 - **Refresh-tokens roteres.** Brukes et rotert token om igjen, faller hele familien bort.
 - **Alt lagres som sha256-hash.** Verken koder eller tokens kan leses ut av en databasedump.
-- **Kunden kan koble fra** under Innstillinger → AI-tilkobling. Klienten mister tilgangen ved neste kall.
+- **Kunden kan koble fra** bak profilbildet → AI-tilkobling. Klienten mister tilgangen ved neste kall.
 - **Bare sesjoner kan administrere tilkoblinger.** En connector kan ikke kartlegge eller koble fra de andre connectorene på kontoen.
 
 ### Miljøvariabler maskeres mot modellen
@@ -165,8 +182,8 @@ Selve installasjonen kan ikke gjøres over MCP: GitHub krever at et menneske god
 
 ---
 
-## 7. Om `mcp-server/`-katalogen
+## 7. Den gamle stdio-serveren er fjernet
 
-**Utgått.** Den lokale stdio-serveren (`@snoat/mcp-server`) var den forrige måten å koble til på: kunden måtte installere en npm-pakke og lime en `snoat_ak_…`-nøkkel inn i en JSON-fil. Pakken ble aldri publisert til npm, så konfigurasjonen dashboardet delte ut (`npx -y @snoat/mcp-server`) kunne ikke fungere.
+`mcp-server/` – en lokal stdio-server distribuert som npm-pakken `@snoat/mcp-server` – var den forrige måten å koble til på: kunden måtte installere en pakke og lime en `snoat_ak_…`-nøkkel inn i en JSON-fil. Pakken ble aldri publisert til npm, så konfigurasjonen dashboardet delte ut (`npx -y @snoat/mcp-server`) kunne uansett ikke fungere.
 
-Katalogen er beholdt for referanse, men brukes ikke lenger noe sted, og verktøydefinisjonene i den er erstattet av `backend/src/services/mcp-tools.ts`. Den kan slettes.
+Katalogen er **slettet**. Verktøydefinisjonene lever videre i `backend/src/services/mcp-tools.ts`, og den hostede connectoren er nå den eneste veien inn. Finner du en referanse til `@snoat/mcp-server` et sted, er den utdatert.

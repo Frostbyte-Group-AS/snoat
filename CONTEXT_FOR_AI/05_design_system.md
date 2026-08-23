@@ -1,97 +1,189 @@
-# 05. Design System & Styling (Stilguide)
+# 05. Design System & Styling — «Ink & Sun»
 
-Denne filen dokumenterer design- og styling-reglene basert på forsiden. Disse reglene utgjør den overordnede standarden for hele plattformen (inkludert Dashboard, Autentisering og fremtidige komponenter).
+Snoat er redesignet fra bunnen av. Kilden er Figma-fila
+[Website Hosting Landing Page (Community)](https://www.figma.com/design/m3BEhOsDc9QQoKLFAllvHt/Website-Hosting-Landing-Page--Community-),
+node `0:1683`, hentet gjennom Figma MCP. Alle verdiene i denne filen er målt
+der, ikke gjettet.
 
-## ⚠️ Grunnleggende Prinsipp: Ingen Borders, Kun Skygge
-Et av de absolutt viktigste kjennetegnene ved Snoat sitt design er at vi **ikke bruker tradisjonelle borders (kanter)** for å separere elementer eller definere kort. I stedet skaper vi dybde, struktur og hierarki utelukkende ved hjelp av avanserte skygger (box-shadows) og subtile overflatefarger.
+> **Det gamle systemet er borte.** Mørkt tema, isblå primærfarge, `oklch`-paletten,
+> `.floating-card`, lagdelte skygger, Space Grotesk/DM Sans og Material Symbols
+> finnes ikke lenger i kodebasen. Ser du dem i en gammel gren eller et gammelt
+> utdrag: det er ikke lenger gjeldende.
 
-1. **Ingen Borders:** I `styles.css` har alle elementer `border-color: transparent;` som standard i `@layer base`. Du skal unngå bruk av Tailwind border-klasser (f.eks. `border`, `border-gray-200`, `border-white/10`) for layout og paneler. 
-2. **Lagdelte Skygger:** For å fremheve elementer (som kort, modaler, og sticky headere), bruker vi lagdelte skygger:
-   - *Inner shadow (Inset):* Skaper en subtil "edge" eller highlight på toppen av mørke flater, for eksempel: `inset 0 1px 0 0 oklch(1 0 0 / 5%)`.
-   - *Outer shadows:* Brukes for å skape myk og organisk dybde. For eksempel, headere eller kort benytter kombinasjoner som `0 2px 8px -2px oklch(...)` og `0 28px 70px -35px oklch(...)`.
+## Skalafaktoren — les denne først
 
-## Grunnleggende Byggeklosser
-Stilen fra forsiden definerer følgende utilities og designmønstre som skal gjenbrukes:
+Figma-artboardet er **937 px bredt**, men er en nedskalert **1440 px**
+desktop-layout. Skalafaktoren er derfor
 
-### Kort og Paneler (`.floating-card`)
-Kort og widgets skal føles som om de flyter på bakgrunnen. Vi bruker `.floating-card`-utility-klassen (eller lignende mønstre). 
-- Stor border-radius (`rounded-2xl` eller `rounded-3xl`).
-- En bakgrunn basert på `surface` (ofte svakt gjennomsiktig via `color-mix` eller `bg-surface/90`).
-- Markante skygger (ingen borders!).
+```
+1440 / 937 = 1,5368
+```
 
-### Knapper
-- **Primary (`.primary-btn`):** Sterkt avrundet (`rounded-full`), fylt med den isblå/elektriske primærfargen. Skaper sterk kontrast.
-- **Ghost (`.ghost-btn`):** Knapper for sekundære handlinger som blender inn i grensesnittet uten rammer, kun med hover-effekter.
+Den er verifisert mot noder som treffer runde tall etter oppskalering:
+52,042 → 80 · 39,031 → 60 · 20,926 → 32 · 15,613 → 24 · 1,301 → 2 · 7,806 → 12.
 
-### Typografi (Fonter)
-- **Overskrifter:** `Space Grotesk` (`font-display`, `font-headline`). Gir plattformen den karakteristiske, moderne "tech-viben".
-- **Lese- og brødtekst:** `DM Sans` (`font-body`, `font-label`). Ren, geometrisk og høyst lesbar for tette brukergrensesnitt som dashboards.
+**Alle px-verdier i `styles.css` og på landingssiden er Figma-tallet ganget med
+1,5368.** Skal du hente en ny verdi fra fila, gjør det samme – ikke les tallet
+rått ut av Figma-panelet.
 
-### Fargesystem (OKLCH & CSS Variables)
-Vi bruker semantiske farger basert på OKLCH for å sikre et levende og konsistent Dark Mode:
-- **`--background` / `bg-background`:** Den aller dypeste bakgrunnen (brukes typisk på `body`).
-- **`--surface` / `bg-surface`:** Grunnfargen for kort og overflater som ligger ett lag over bakgrunnen.
-- **`--surface-container` / `bg-surface-container`:** Elementer inne i kort, for eksempel innholdsbokser eller input-felt-bakgrunner.
-- **Tekstfarger:** Bruk `text-on-background`, `text-on-surface` (primærtekst), og `text-on-surface-variant` (dempet/sekundær tekst).
+Der kilden er slurvete – hero-teksten står på 68 px, rutenettet på 64 og
+footeren på 61, altså tre «samme» venstremarg – er alt samlet på **én rail**:
+innholdsbredden **1334 px sentrert** (`--container-container-max`), som er den
+bredeste faktiske blokken i designet.
+
+## ⚠️ Tre regler som bærer hele uttrykket
+
+### 1. Svart strek, ikke skygge
+Flater defineres av **2 px ramme i ren svart**. Det finnes ikke én `box-shadow`
+i systemet. (Dette er motsatt av forrige generasjon, som forbød borders og
+løste alt med skygge.) `@layer base` setter `border-color: var(--border)`, som
+er `#000000` — en `border`-klasse uten fargeangivelse blir altså svart.
+
+### 2. Firkantet handling, rundet innhold
+- **Knapper og skjemafelt: `border-radius: 0`.**
+- **Kort: 12 / 16 / 18 px** (Figma 7,806 / 10,123 / 11,059 × 1,5368).
+
+Kontrasten er poenget: en handling kan aldri forveksles med innhold.
+
+### 3. Én aksentfarge
+`#FFED88` er **gul markør**, aldri en knapp og aldri en flate å lese lang tekst
+på. Den brukes til håndstreken, til aktiv/pågående tilstand og til å løfte ett
+enkelt element.
+
+## Farger
+
+| Token | Verdi | Rolle |
+| --- | --- | --- |
+| `--color-ink` | `#000000` | Tekst, rammer, primærknapp |
+| `--color-ink-soft` | `#171717` | Streken i illustrasjonene |
+| `--color-paper` | `#FFFFFF` | Bakgrunn, kortflate |
+| `--color-sun` | `#FFED88` | Aksent, markør, «pågår» |
+| `--color-sun-soft` | `#FFF8D1` | Hover/fokus på felt og rader |
+| `--color-ash` | `#D9D9D9` | Hvilende tilstand, inaktiv indikator |
+| `--color-hair` | `rgba(0,0,0,.1)` | Eneste skillelinje |
+| `--error` | `#D81E06` | **Kun feil.** Aldri dekor. |
+
+De semantiske shadcn-navnene lever videre, men peker inn i denne paletten:
+`--primary` er svart (handling), `--secondary` er gul (markør), `--muted` er
+`#F5F5F5` (rolig innerflate).
+
+**Rødt er en bevisst utvidelse av det tofargede designet.** Et dashboard må
+kunne si «dette feilet» før brukeren rekker å lese teksten. Det er den eneste
+funksjonelle fargen vi har lagt til, og den brukes ingen andre steder.
+
+## Ingen ikoner
+
+Plattformen har **null ikoner**. Ikke Material Symbols, ikke `lucide-react`,
+ikke merkevaremerker i knappene. Der et ikon sto, står nå typografi:
+
+| Var | Er nå |
+| --- | --- |
+| Ikon over korttittel | Den gule håndstreken (`.swoosh`) |
+| `check` / `close` i lister | `<Mark on />` – svart skive med `✓`/`✕` som tekst |
+| Statusikon (bygger/live/feilet) | 20–28 px rute der **fyllet** bærer tilstanden |
+| Chevron i trekkspill | `+` / `–` i en rute |
+| Flaggbilder i språkvelgeren | `NO` / `EN` som tekst |
+| `arrow_back` | `←` |
+| Kopi-, lenke- og repo-ikoner | Etiketten alene, den sa det allerede |
+
+Tilstand skal aldri bæres av farge alene. `DeploymentStatusBadge` og
+`DomainCheckRow` skiller **fylt svart / hvit med ramme / rød ramme / grå** –
+fire ulike former, ikke fire nyanser.
+
+## Typografi
+
+- **`--font-display` / `--font-body`:** `"Helvetica Neue", Helvetica, Arial, sans-serif`.
+  Figma spesifiserer Helvetica Bold/Regular/Light. Arial er metrisk kompatibel
+  og dekker Windows og Linux uten webfont-nedlasting.
+- **`--font-meta`:** `Clash Display` (Fontshare), lastet i `__root.tsx`. Brukes
+  **kun i footeren**, akkurat som i malen.
+- **`--font-mono`:** tekniske verdier – IP-er, domener, kommandoer, repo-navn,
+  miljøvariabler.
+
+Vektene er meningsbærende: **overskrifter er Bold (700)**, **korttitler er
+Regular (400)** og **brødtekst på markedsflater er Light (300)**. En korttittel
+i bold er feil selv om den ser «viktigere» ut.
+
+Typeskalaen (1440 px, `clamp()` ned mot mobil):
+
+| Token | 1440 px | Bruk |
+| --- | --- | --- |
+| `text-display` | 80 | Hero-H1 |
+| `text-headline-lg` | 60 | Seksjonsoverskrift |
+| `text-headline-md` | 45 | CTA-overskrift, dashboard-H1 |
+| `text-title-lg` | 31,6 | Korttittel i funksjonsrutenettet |
+| `text-title-md` | 28,7 | Korttittel i løftekortene |
+| `text-body-lg` | 32 | Hero- og seksjonsbrødtekst |
+| `text-body-md` | 24 | Sitat/faktatekst |
+| `text-body-sm` | 21 | Brødtekst i kort |
+| `text-label-md` | 15 | Etiketter, prislinjer |
+
+Dashboardet bruker en tettere skala satt direkte i px (14–24). Markedsskalaen
+er for markedsflater; et prosjektpanel med 32 px brødtekst er ikke lesbart.
+
+## Byggeklosser (`styles.css`)
+
+| Utility | Hva |
+| --- | --- |
+| `.ink-card` | Hvit flate, 2 px svart ramme, radius 12 |
+| `.ink-card-lg` | Samme, 2,6 px ramme, radius 16 |
+| `.ink-card-xl` | Samme, 2 px ramme, radius 18 (prisekort) |
+| `.btn-ink` | Svart fylt, hvit tekst, radius 0. Hover inverterer. |
+| `.btn-outline` | Hvit med svart ramme, radius 0. Hover inverterer. |
+| `.btn-sun` | Gul fylt med svart ramme |
+| `.btn-quiet` | Uten flate; hover legger på gult |
+| `.field-ink` | Skjemafelt: radius 0, 2 px ramme, gul-svak ved fokus |
+| `.hairline` | Den eneste skillelinja: svart 10 % |
+| `.numeral` | Konturtall (`#1`…`#6`): 86 px, transparent fyll, 2,3 px svart kontur |
+| `.swoosh` | Den håndtegnede gule understrekingen, 74 × 10 px |
+
+## Illustrasjoner
+
+`frontend/public/illustrations/` inneholder de to SVG-ene fra malen
+(`hero-launch.svg`, `growth-chart.svg`) og `swoosh.svg`. De er tegnet i
+`#171717` og `#FFED88`, altså samme palett som resten. De er **dekor** og skal
+alltid ha `alt=""` og `aria-hidden`.
+
+## Landingssidens seksjoner
+
+Rekkefølgen følger malen: header → hero → tre løfter → «Sikker hosting» →
+seks nummererte funksjoner → «Hvorfor Snoat» → planer → avslutnings-CTA →
+footer.
+
+To bevisste avvik fra malen:
+
+1. **Ikonene i de tre løftekortene er erstattet av håndstreken** (se over).
+2. **Malens kundesitat er byttet mot etterprøvbare fakta.** Vi dikter ikke opp
+   en anmeldelse fra en kunde som ikke finnes. Layouten – overskrift og tekst
+   til venstre, innrammet kort til høyre – er beholdt.
+
+Prisekortene bygges av **reelle grenser** fra `/api/pricing` (`PlanOption.limits`),
+ikke av håndskrevne funksjonslister. Da kan ikke prissiden komme i utakt med
+`PLAN_LIMITS` i backend. Midtkortet er større og løftet 20 px, som i malen.
 
 ## Mønstre i dashboardet
 
-Forsiden definerer grunnstilen. Dashboardet har i tillegg noen gjentakende
-mønstre som skal gjenbrukes framfor å finnes opp på nytt. Referanse-
-implementasjonene ligger i `components/DnsSettingsTab.tsx` og
-`routes/projects.$projectId.tsx`.
-
 ### Kopiering til utklippstavle
-Tekniske verdier (IP-er, vertsnavn, kommandoer, tokens) skal kunne kopieres med
-ett klikk:
-
-- **Hele feltet er knappen**, ikke et lite ikon ved siden av. Verdien vises i
-  `font-mono` på `bg-surface`, med kopi-ikonet til høyre.
-- Ved klikk byttes ikonet til **«Kopiert! ✓» i `text-secondary`** (den grønne),
-  og faller tilbake etter ~1,8 sekunder.
-- Clipboard-API-et krever secure context. Feiler kallet, skal knappen si
-  **«Feilet» i `text-error`** – aldri se ut som om den lyktes.
-- Statusen dupliseres i en `sr-only`-node med `aria-live="polite"`, og knappen
-  har `aria-label` med både etikett og verdi.
-
-### Fargenes rollefordeling
-- `text-primary` (isblå, #00F0FF): aksent, handling, aktiv tilstand, lenker.
-- `text-secondary` (grønn): bekreftelse og suksess – «Kopiert!», «Live».
-- `text-error`: feil.
-- `text-on-surface-variant`: alt dempet, inkludert hvilende ikoner.
-
-Blandes disse, mister den isblå fargen betydningen sin. Suksess er aldri blå.
-
-### Heksagon som detalj
-Logoens heksagon gjentas som en liten merkevaredetalj – som nummererte
-stegmarkører (`HexStep`) og som stor, nesten usynlig vannmerke-polygon i hjørnet
-av en statusboks (`text-primary/[0.07]`, `pointer-events-none`). Det er dekor:
-alltid `aria-hidden`, aldri bærer av informasjon.
+Hele feltet er knappen, verdien står i `font-mono`, og knappen sier «Kopiert»
+i klartekst – ikke med et ikon som bytter form. Feiler `navigator.clipboard`
+(usikker kontekst), skal knappen si det, aldri se ut som om den lyktes.
 
 ### Segmentert fanelinje
-Fanene ligger i en `bg-surface-container`-pille, og den aktive fanen markeres av
-et lag som animeres i posisjon (`transition-all` + `cubic-bezier(0.2,0.8,0.2,1)`).
-Indikatoren posisjoneres i piksler ut fra den aktive knappen, og **må lese både
-`offsetTop`/`offsetHeight` og `offsetLeft`/`offsetWidth`** – med flere faner
+Fanene ligger i en boks med 2 px svart ramme. Den aktive fanen er en **svart
+flate som glir på plass** (`transition-all` + `cubic-bezier(0.2,0.8,0.2,1)`),
+og etiketten blir hvit. Indikatoren posisjoneres i piksler og **må lese både
+`offsetTop`/`offsetHeight` og `offsetLeft`/`offsetWidth`** – med seks faner
 brekker raden på mobil, og en indikator som bare kjenner `left` blir liggende
 igjen på første linje. Posisjonen regnes på nytt ved `resize`.
 
-Fanene defineres i en `TABS`-liste og rendres i en `map`, ikke som ett
-kopiert blokk per fane.
+### Statusmerker
+Firkantet, 2 px ramme, versaler med `tracking`. Fyllet er tilstanden:
+svart = live, gul = pågår, hvit = venter, rød ramme = feilet, grå = hviler.
 
-### Innholdsbokser og lister uten skillelinjer
-Rader som ellers ville fått en `divide-y`, skal heller være egne kort på
-`bg-surface-container` med `gap` imellom. Trekkspill (accordion) bygges på samme
-måte: `bg-surface-container`, hover på `bg-surface-variant/30`, og en chevron som
-roterer 180°. `aria-expanded` og `aria-controls` skal alltid være på plass.
+## Oppsummering for utvikling
 
-### Monospace for tekniske verdier
-IP-adresser, vertsnavn, kommandoer, miljøvariabler og commit-hasher settes i
-`font-mono`. Brødtekst og etiketter forblir DM Sans. Det gjør det umiddelbart
-tydelig hva som er noe brukeren skal kopiere ordrett.
-
-## Oppsummering for Utvikling
-Når du implementerer nye sider (f.eks. Dashboard-view for prosjekter):
-1. **IKKE BRUK BORDERS** for å ramme inn innhold. Bruk skygge og bakgrunnskontrast.
-2. Sørg for romslig padding og luft (Nordisk minimalisme).
-3. Respekter det mørke temaet – unngå plutselige hvite flater. Alt skal bygges fra `oklch`-fargene definert i `.css`-filen.
+1. **Bruk ramme, ikke skygge.** Det finnes ingen `box-shadow` i systemet.
+2. **Knapper og felt er firkantede. Kort er rundet.**
+3. **Ingen ikoner.** Trenger du et symbol, er svaret typografi eller en rute.
+4. **Gul er markør, svart er handling, rød er feil.** Ingen fjerde farge.
+5. **Nye mål hentes fra Figma og ganges med 1,5368.**

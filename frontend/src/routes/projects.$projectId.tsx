@@ -4,13 +4,25 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SnoatLogo } from "@/components/SnoatLogo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { Mark } from "@/components/Mark";
 import { DeploymentStatusBadge } from "@/components/DeploymentStatusBadge";
 import { DnsSettingsTab } from "@/components/DnsSettingsTab";
 import { AnalyticsTab } from "@/components/AnalyticsTab";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { useAuth, displayName, avatarUrl } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { createCheckout, deployProject, getPricing, stopProject, updateCustomDomain } from "@/lib/api";
+import {
+  createCheckout,
+  deployProject,
+  getPricing,
+  stopProject,
+  updateCustomDomain,
+} from "@/lib/api";
 import { useApiErrorMessage } from "@/lib/errors";
 import { useFormatters } from "@/lib/format";
 import { useRequestedMarket } from "@/lib/market";
@@ -28,13 +40,13 @@ export const Route = createFileRoute("/projects/$projectId")({
 type Tab = "deployments" | "terminal" | "analytics" | "dns" | "mcp" | "env" | "settings";
 
 /** Fanene i prosjektvisningen, i den rekkefølgen de vises. */
-const TABS: ReadonlyArray<{ id: Tab; icon: string; labelKey: string }> = [
-  { id: "deployments", icon: "history", labelKey: "project.tab_deployments" },
-  { id: "terminal", icon: "terminal", labelKey: "project.tab_terminal" },
-  { id: "analytics", icon: "analytics", labelKey: "project.tab_analytics" },
-  { id: "dns", icon: "dns", labelKey: "project.tab_dns" },
-  { id: "env", icon: "key", labelKey: "project.tab_env" },
-  { id: "settings", icon: "settings", labelKey: "project.tab_settings" },
+const TABS: ReadonlyArray<{ id: Tab; labelKey: string }> = [
+  { id: "deployments", labelKey: "project.tab_deployments" },
+  { id: "terminal", labelKey: "project.tab_terminal" },
+  { id: "analytics", labelKey: "project.tab_analytics" },
+  { id: "dns", labelKey: "project.tab_dns" },
+  { id: "env", labelKey: "project.tab_env" },
+  { id: "settings", labelKey: "project.tab_settings" },
 ];
 
 function ProjectDetailPage() {
@@ -90,7 +102,8 @@ function ProjectDetailPage() {
   const project = projectQuery.data;
   const deployments = deploymentsQuery.data ?? [];
   const latestDeployment = deployments[0] ?? null;
-  const isBuilding = latestDeployment?.status === "queued" || latestDeployment?.status === "building";
+  const isBuilding =
+    latestDeployment?.status === "queued" || latestDeployment?.status === "building";
   /** Brukeren har slått av appen. Backend nullstiller feltet ved neste deployment. */
   const isStopped = Boolean(project?.stopped_at);
 
@@ -130,20 +143,20 @@ function ProjectDetailPage() {
 
   if (loading || projectQuery.isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="font-body text-body-md text-on-surface-variant">Laster prosjekt…</p>
+      <div className="flex min-h-screen items-center justify-center bg-paper">
+        <p className="font-body text-[16px] text-ink/70">Laster prosjekt…</p>
       </div>
     );
   }
 
   if (projectQuery.isError || !project) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
-        <h1 className="font-headline text-headline-md text-on-surface">Prosjektet ble ikke funnet</h1>
-        <p className="mt-2 font-body text-body-md text-on-surface-variant">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-paper px-4">
+        <h1 className="font-display text-[22px] font-bold text-ink">Prosjektet ble ikke funnet</h1>
+        <p className="mt-2 font-body text-[16px] text-ink/70">
           Prosjektet kan ha blitt slettet eller du har ikke tilgang.
         </p>
-        <Link to="/dashboard" className="primary-btn mt-6 px-6 py-2.5 font-label text-label-md">
+        <Link to="/dashboard" className="btn-ink mt-6 px-6 py-2.5 font-body text-[15px]">
           {t("project.back_to_projects")}
         </Link>
       </div>
@@ -155,20 +168,20 @@ function ProjectDetailPage() {
     .replace(/\.git$/, "");
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-paper">
       {/* Top Navigation */}
-      <header className="sticky top-0 z-40 bg-background/80 shadow-[0_8px_30px_-20px_oklch(0_0_0/0.9)] backdrop-blur-xl">
-        <div className="mx-auto flex max-w-container-max items-center justify-between px-margin-mobile py-4 md:px-gutter">
+      <header className="sticky top-0 z-40 bg-ink/40">
+        <div className="mx-auto flex max-w-[1334px] items-center justify-between px-5 py-4 lg:px-0">
           <div className="flex items-center gap-6">
             <Link to="/" className="inline-flex">
               <SnoatLogo />
             </Link>
-            <span className="h-4 w-px bg-surface-variant/40" />
+            <span className="h-4 w-px bg-muted" />
             <Link
               to="/dashboard"
-              className="flex items-center gap-1.5 font-label text-label-md text-on-surface-variant transition-colors hover:text-on-surface"
+              className="flex items-center gap-1.5 font-body text-[15px] text-ink/70 transition-colors hover:text-ink"
             >
-              <span className="material-symbols-outlined icon-sm">arrow_back</span>
+              <span aria-hidden="true">←</span>
               {t("project.back_to_projects")}
             </Link>
           </div>
@@ -181,20 +194,20 @@ function ProjectDetailPage() {
                   <img
                     src={avatarUrl(user)!}
                     alt=""
-                    className="h-8 w-8 rounded-full object-cover"
+                    className="h-8 w-8 rounded-none object-cover"
                   />
                 ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-variant font-label text-label-md text-on-surface">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-none bg-muted font-body text-[15px] text-ink">
                     {displayName(user)[0]?.toUpperCase()}
                   </div>
                 )}
-                <span className="hidden font-body text-body-md text-on-surface md:inline">
+                <span className="hidden font-body text-[16px] text-ink md:inline">
                   {displayName(user)}
                 </span>
                 <button
                   type="button"
                   onClick={() => void signOut().then(() => navigate({ to: "/" }))}
-                  className="font-label text-label-md text-on-surface-variant transition-colors hover:text-on-surface"
+                  className="font-body text-[15px] text-ink/70 transition-colors hover:text-ink"
                 >
                   {t("project.logout")}
                 </button>
@@ -205,12 +218,12 @@ function ProjectDetailPage() {
       </header>
 
       {/* Main Content */}
-      <main className="mx-auto w-full max-w-container-max flex-grow px-margin-mobile py-stack-lg md:px-gutter">
+      <main className="mx-auto w-full max-w-[1334px] flex-grow px-5 py-[48px] lg:px-0">
         {/* Project Header */}
         <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="font-display text-headline-lg text-on-background">{project.name}</h1>
+              <h1 className="font-display text-[32px] font-bold text-ink">{project.name}</h1>
               <DeploymentStatusBadge
                 status={latestDeployment?.status ?? null}
                 stopped={isStopped}
@@ -218,14 +231,13 @@ function ProjectDetailPage() {
               />
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-4 text-body-md">
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-[16px]">
               <a
                 href={project.repo_url}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-on-surface-variant transition-colors hover:text-on-surface"
+                className="inline-flex items-center gap-1.5 text-ink/70 transition-colors hover:text-ink"
               >
-                <span className="material-symbols-outlined icon-sm">code</span>
                 {repoLabel}
               </a>
 
@@ -240,9 +252,8 @@ function ProjectDetailPage() {
                     href={latestDeployment.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-primary transition-opacity hover:opacity-80 font-medium"
+                    className="inline-flex items-center gap-1.5 text-ink transition-opacity hover:opacity-80 font-medium"
                   >
-                    <span className="material-symbols-outlined icon-sm">link</span>
                     {latestDeployment.url.replace(/^https?:\/\//, "")}
                   </a>
 
@@ -251,16 +262,14 @@ function ProjectDetailPage() {
                       href={`https://${project.custom_domain}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-primary transition-opacity hover:opacity-80 font-medium"
+                      className="inline-flex items-center gap-1.5 text-ink transition-opacity hover:opacity-80 font-medium"
                     >
-                      <span className="material-symbols-outlined icon-sm">link</span>
                       {project.custom_domain}
                     </a>
                   )}
                 </>
               ) : (
-                <span className="inline-flex items-center gap-1.5 text-on-surface-variant/60">
-                  <span className="material-symbols-outlined icon-sm">link_off</span>
+                <span className="inline-flex items-center gap-1.5 text-ink/60">
                   {t("project.no_live_url")}
                 </span>
               )}
@@ -276,7 +285,7 @@ function ProjectDetailPage() {
                 type="button"
                 onClick={() => stopMutation.mutate()}
                 disabled={stopMutation.isPending}
-                className="ghost-btn px-4 py-2.5 font-label text-label-md text-error hover:bg-error/10"
+                className="btn-outline border-error px-[16px] py-[10px] font-body text-[15px] text-error hover:bg-error hover:text-paper"
               >
                 {stopMutation.isPending ? t("project_details.stopping") : t("project.stop_project")}
               </button>
@@ -286,7 +295,7 @@ function ProjectDetailPage() {
               type="button"
               onClick={() => deployMutation.mutate()}
               disabled={deployMutation.isPending || isBuilding || stopMutation.isPending}
-              className="primary-btn px-6 py-2.5 font-label text-label-md disabled:opacity-50"
+              className="btn-ink px-6 py-2.5 font-body text-[15px] disabled:opacity-50"
             >
               {isBuilding
                 ? t("project.deploying")
@@ -298,7 +307,10 @@ function ProjectDetailPage() {
         </div>
 
         {error && (
-          <div role="alert" className="mb-6 rounded-xl bg-error/10 p-4 font-body text-body-md text-error">
+          <div
+            role="alert"
+            className="mb-6 border-2 border-error px-[18px] py-[14px] font-body text-[16px] text-error"
+          >
             {error}
           </div>
         )}
@@ -325,9 +337,7 @@ function ProjectDetailPage() {
             <TerminalTab latestDeployment={latestDeployment} isBuilding={isBuilding} />
           )}
 
-          {activeTab === "analytics" && (
-            <AnalyticsTab project={project} />
-          )}
+          {activeTab === "analytics" && <AnalyticsTab project={project} />}
 
           {activeTab === "dns" && (
             <DnsSettingsTab
@@ -337,13 +347,9 @@ function ProjectDetailPage() {
             />
           )}
 
-          {activeTab === "env" && (
-            <EnvTab project={project} />
-          )}
+          {activeTab === "env" && <EnvTab project={project} />}
 
-          {activeTab === "settings" && (
-            <SettingsTab project={project} />
-          )}
+          {activeTab === "settings" && <SettingsTab project={project} />}
         </div>
       </main>
     </div>
@@ -391,11 +397,11 @@ function SegmentedTabBar({
   }, [activeTab]);
 
   return (
-    <div className="relative mb-8 inline-flex flex-wrap items-center gap-1.5 rounded-2xl bg-surface-container p-1.5 shadow-[inset_0_1px_0_0_oklch(1_0_0/5%)]">
-      {/* Sliding Active Pill Highlight */}
+    <div className="relative mb-8 inline-flex flex-wrap items-center border-2 border-ink">
+      {/* Den aktive fanen er en svart flate som glir på plass. */}
       {indicator.width > 0 && (
         <div
-          className="absolute rounded-xl bg-surface shadow-[0_4px_16px_-4px_oklch(0_0_0/60%),0_1px_0_0_oklch(1_0_0/8%)_inset] transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] pointer-events-none"
+          className="pointer-events-none absolute bg-ink transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
           style={{
             left: `${indicator.left}px`,
             top: `${indicator.top}px`,
@@ -413,16 +419,16 @@ function SegmentedTabBar({
           }}
           type="button"
           onClick={() => setActiveTab(tab.id)}
-          className={`relative z-10 flex items-center gap-2 rounded-xl px-5 py-2.5 font-label text-label-md transition-colors duration-200 active:scale-[0.98] ${
-            activeTab === tab.id
-              ? "text-primary font-semibold"
-              : "text-on-surface-variant hover:text-on-surface"
+          className={`relative z-10 flex items-center gap-2 px-[20px] py-[10px] font-body text-[15px] transition-colors duration-200 ${
+            activeTab === tab.id ? "font-bold text-paper" : "text-ink hover:bg-sun"
           }`}
         >
-          <span className="material-symbols-outlined icon-sm">{tab.icon}</span>
           {t(tab.labelKey)}
           {tab.id === "terminal" && isBuilding && (
-            <span className="ml-1 flex h-2 w-2 rounded-full bg-primary animate-pulse" />
+            <span
+              aria-hidden="true"
+              className={`ml-1 h-2 w-2 animate-pulse ${activeTab === tab.id ? "bg-sun" : "bg-ink"}`}
+            />
           )}
         </button>
       ))}
@@ -511,7 +517,10 @@ function BuildStageCard({ deployment }: { deployment: Deployment | null }) {
   // Parse current stage line from logs
   let stageText = "Klargjør repository og miljø...";
   if (deployment.logs) {
-    const lines = deployment.logs.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = deployment.logs
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     if (lines.length > 0) {
       const lastLine = lines[lines.length - 1];
       stageText = lastLine.replace(/^\[.*\]\s*/, "");
@@ -522,40 +531,49 @@ function BuildStageCard({ deployment }: { deployment: Deployment | null }) {
     <div className="flex flex-col gap-3 transition-all">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          {isBuilding ? (
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
-              <span className="material-symbols-outlined icon-sm text-primary animate-spin">progress_activity</span>
-            </div>
-          ) : isSuccess ? (
-            <div className="flex h-7 w-7 items-center justify-center text-secondary">
-              <span className="material-symbols-outlined icon-md">check</span>
-            </div>
-          ) : isFailed ? (
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-error/15">
-              <span className="material-symbols-outlined icon-sm text-error">cancel</span>
-            </div>
-          ) : (
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-variant/40">
-              <span className="material-symbols-outlined icon-sm text-on-surface-variant">info</span>
-            </div>
-          )}
+          {/* Tilstanden som en 28 px rute: fylt gul mens noe skjer, fylt svart
+              når det gikk bra, rød ramme når det feilet, grå når den hviler.
+              Formen skiller dem, ikke bare fargen. */}
+          <span
+            aria-hidden="true"
+            className={`flex h-7 w-7 shrink-0 items-center justify-center border-2 font-body text-[14px] font-bold leading-none ${
+              isBuilding
+                ? "animate-pulse border-ink bg-sun text-ink"
+                : isSuccess
+                  ? "border-ink bg-ink text-paper"
+                  : isFailed
+                    ? "border-error bg-paper text-error"
+                    : "border-ash bg-ash text-ink"
+            }`}
+          >
+            {isBuilding ? "·" : isSuccess ? "✓" : isFailed ? "✕" : "–"}
+          </span>
 
           <div className="flex flex-col">
-            <span className="font-label text-label-md text-on-surface font-semibold">
-              {isBuilding ? "Bygging og publisering pågår" : isSuccess ? "Bygging fullført" : isFailed ? "Bygging feilet" : "Status"}
+            <span className="font-body text-[15px] text-ink font-semibold">
+              {isBuilding
+                ? "Bygging og publisering pågår"
+                : isSuccess
+                  ? "Bygging fullført"
+                  : isFailed
+                    ? "Bygging feilet"
+                    : "Status"}
             </span>
-            <span className="font-body text-xs text-on-surface-variant">
+            <span className="font-body text-xs text-ink/70">
               {isBuilding
                 ? stageText
                 : isSuccess
-                ? (buildDuration ? `Kjører og svarer på forespørsler • Byggetid: ${buildDuration}` : "Kjører og svarer på forespørsler")
-                : isFailed
-                ? (buildDuration ? `Feilet etter ${buildDuration}. Sjekk terminalen for detaljert feillogg.` : "Sjekk terminalen for detaljert feillogg")
-                : "Ingen aktiv bygging"}
+                  ? buildDuration
+                    ? `Kjører og svarer på forespørsler • Byggetid: ${buildDuration}`
+                    : "Kjører og svarer på forespørsler"
+                  : isFailed
+                    ? buildDuration
+                      ? `Feilet etter ${buildDuration}. Sjekk terminalen for detaljert feillogg.`
+                      : "Sjekk terminalen for detaljert feillogg"
+                    : "Ingen aktiv bygging"}
             </span>
           </div>
         </div>
-
       </div>
     </div>
   );
@@ -584,28 +602,33 @@ function DeploymentsTab({
   return (
     <div className="flex flex-col gap-8">
       {/* Latest Deployment Summary Card */}
-      <div className="floating-card p-6 md:p-8 flex flex-col gap-6">
-        <h2 className="font-headline text-headline-md text-on-surface">{t("project_details.latest_deployment")}</h2>
+      <div className="ink-card-lg p-6 md:p-8 flex flex-col gap-6">
+        <h2 className="font-display text-[22px] font-bold text-ink">
+          {t("project_details.latest_deployment")}
+        </h2>
         {latest ? (
           <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-surface-container p-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-[12px] bg-muted p-4">
               <div className="flex items-center gap-3">
                 <DeploymentStatusBadge
                   status={latest.status}
                   isLive={latest.id === latestSuccessId}
                 />
-                <span className="font-mono text-sm text-on-surface-variant">
-                  {latest.commit_hash ? latest.commit_hash.slice(0, 7) : t("project_details.manual_build")}
+                <span className="font-mono text-sm text-ink/70">
+                  {latest.commit_hash
+                    ? latest.commit_hash.slice(0, 7)
+                    : t("project_details.manual_build")}
                 </span>
               </div>
               <div className="flex items-center gap-4">
                 {latestBuildDuration && (
-                  <span className="inline-flex items-center gap-1.5 font-mono text-sm text-primary bg-primary/10 px-3 py-1 rounded-full font-medium">
-                    <span className="material-symbols-outlined icon-sm">timer</span>
-                    {isBuilding ? t("project_details.building_duration", { duration: latestBuildDuration }) : t("project_details.build_duration", { duration: latestBuildDuration })}
+                  <span className="inline-flex items-center gap-1.5 font-mono text-sm text-ink bg-sun px-3 py-1 rounded-none font-medium">
+                    {isBuilding
+                      ? t("project_details.building_duration", { duration: latestBuildDuration })
+                      : t("project_details.build_duration", { duration: latestBuildDuration })}
                   </span>
                 )}
-                <span className="font-body text-body-md text-on-surface-variant">
+                <span className="font-body text-[16px] text-ink/70">
                   {format.dateTime(latest.created_at)}
                 </span>
               </div>
@@ -618,47 +641,50 @@ function DeploymentsTab({
               <button
                 type="button"
                 onClick={onOpenTerminal}
-                className="ghost-btn flex items-center gap-2 px-4 py-2 font-label text-label-md"
+                className="btn-outline flex items-center gap-2 px-4 py-2 font-body text-[15px]"
               >
-                <span className="material-symbols-outlined icon-sm">terminal</span>
                 {t("project_details.view_logs")}
               </button>
             </div>
           </div>
         ) : (
-          <p className="font-body text-body-md text-on-surface-variant">{t("project_details.no_deployments")}</p>
+          <p className="font-body text-[16px] text-ink/70">{t("project_details.no_deployments")}</p>
         )}
       </div>
 
       {/* Deployment History Table */}
-      <div className="floating-card p-6 md:p-8">
-        <h2 className="mb-6 font-headline text-headline-md text-on-surface">
+      <div className="ink-card-lg p-6 md:p-8">
+        <h2 className="mb-6 font-display text-[22px] font-bold text-ink">
           {t("project.deployment_history")}
         </h2>
 
         {deployments.length === 0 ? (
-          <p className="font-body text-body-md text-on-surface-variant">{t("project_details.no_history")}</p>
+          <p className="font-body text-[16px] text-ink/70">{t("project_details.no_history")}</p>
         ) : (
-          <div className="flex flex-col divide-y divide-surface-variant/20">
+          <div className="flex flex-col divide-y divide-hair">
             {deployments.map((d) => {
               const duration = getDeploymentDuration(d);
               const isLive = d.id === latestSuccessId;
               return (
-                <div key={d.id} className="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
+                <div
+                  key={d.id}
+                  className="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
+                >
                   <div className="flex items-center gap-4">
                     <DeploymentStatusBadge status={d.status} isLive={isLive} />
-                    <span className="font-mono text-sm text-on-surface">
-                      {d.commit_hash ? d.commit_hash.slice(0, 7) : t("project_details.manual_deploy")}
+                    <span className="font-mono text-sm text-ink">
+                      {d.commit_hash
+                        ? d.commit_hash.slice(0, 7)
+                        : t("project_details.manual_deploy")}
                     </span>
                   </div>
                   <div className="flex items-center gap-6">
                     {duration && (
-                      <span className="inline-flex items-center gap-1 font-mono text-xs text-on-surface-variant bg-surface-container px-2.5 py-1 rounded-md">
-                        <span className="material-symbols-outlined icon-sm text-on-surface-variant/70">timer</span>
+                      <span className="inline-flex items-center gap-1 font-mono text-xs text-ink/70 bg-muted px-2.5 py-1 rounded-none">
                         {duration}
                       </span>
                     )}
-                    <span className="font-body text-body-md text-on-surface-variant">
+                    <span className="font-body text-[16px] text-ink/70">
                       {format.dateTime(d.created_at)}
                     </span>
                     {d.url && isLive && (
@@ -666,7 +692,7 @@ function DeploymentsTab({
                         href={d.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="font-label text-label-md text-primary hover:underline"
+                        className="font-body text-[15px] text-ink hover:underline"
                       >
                         {t("project.visit")}
                       </a>
@@ -714,37 +740,34 @@ function TerminalTab({
   };
 
   return (
-    <div className="floating-card overflow-hidden p-0">
+    <div className="ink-card-lg overflow-hidden p-0">
       {/* Terminal Bar Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-surface-container px-6 py-4 border-b border-surface-variant/20">
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-muted px-6 py-4 border-b border-hair">
         <div className="flex items-center gap-3">
-          <span className="material-symbols-outlined icon-sm text-primary">terminal</span>
-          <span className="font-label text-label-md text-on-surface">{t("project.terminal_title")}</span>
+          <span className="font-body text-[15px] text-ink">{t("project.terminal_title")}</span>
           {isBuilding ? (
-            <span className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2.5 py-0.5 rounded-full animate-pulse font-mono">
-              <span className="h-2 w-2 rounded-full bg-primary animate-ping" />
+            <span className="flex items-center gap-1.5 text-xs text-ink bg-sun px-2.5 py-0.5 rounded-none animate-pulse font-mono">
+              <span className="h-2 w-2 rounded-none bg-ink animate-ping" />
               {t("project_details.process_running")}
             </span>
           ) : isSuccess ? (
-            <span className="flex items-center gap-1.5 text-xs text-secondary font-mono font-medium">
-              <span className="material-symbols-outlined icon-sm">check</span>
+            <span className="flex items-center gap-1.5 text-xs text-ink font-mono font-medium">
               {t("project_details.process_success")}
             </span>
           ) : isFailed ? (
-            <span className="flex items-center gap-1.5 text-xs text-error bg-error/15 px-2.5 py-0.5 rounded-full font-mono font-medium">
-              <span className="material-symbols-outlined icon-sm">error</span>
+            <span className="flex items-center gap-1.5 border-2 border-error px-[8px] py-[1px] font-mono text-[12px] font-bold text-error">
               {t("project_details.process_failed")}
             </span>
           ) : null}
         </div>
 
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 cursor-pointer font-label text-label-md text-on-surface-variant select-none">
+          <label className="flex items-center gap-2 cursor-pointer font-body text-[15px] text-ink/70 select-none">
             <input
               type="checkbox"
               checked={autoScroll}
               onChange={(e) => setAutoScroll(e.target.checked)}
-              className="rounded accent-primary"
+              className="rounded-none accent-primary"
             />
             {t("project.terminal_autoscroll")}
           </label>
@@ -752,7 +775,7 @@ function TerminalTab({
           <button
             type="button"
             onClick={copyToClipboard}
-            className="ghost-btn px-3 py-1.5 font-label text-label-md text-on-surface-variant hover:text-on-surface"
+            className="btn-outline px-3 py-1.5 font-body text-[15px] text-ink/70 hover:text-ink"
           >
             {copied ? t("project.terminal_copied") : t("project.terminal_copy")}
           </button>
@@ -796,10 +819,7 @@ function parseEnvText(text: string): Array<{ key: string; value: string }> {
     const key = trimmed.slice(0, eqIndex).trim();
     let val = trimmed.slice(eqIndex + 1).trim();
 
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
 
@@ -873,49 +893,45 @@ function EnvImportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md animate-in fade-in-0 duration-200 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-surface p-6 md:p-8 shadow-2xl animate-in fade-in-0 zoom-in-95 duration-200 border border-surface-variant/30 flex flex-col gap-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-in fade-in-0 duration-200 p-4">
+      <div className="w-full max-w-lg rounded-[12px] bg-paper p-6 md:p-8 animate-in fade-in-0 zoom-in-95 duration-200 border border-hair flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-headline text-headline-md text-on-surface">{t("project.env_import_title")}</h2>
-            <p className="mt-1 font-body text-body-md text-on-surface-variant">
-              {t("project.env_import_desc")}
-            </p>
+            <h2 className="font-display text-[22px] font-bold text-ink">
+              {t("project.env_import_title")}
+            </h2>
+            <p className="mt-1 font-body text-[16px] text-ink/70">{t("project.env_import_desc")}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-on-surface-variant hover:text-on-surface transition-colors rounded-lg hover:bg-surface-variant/50"
-          >
-            <span className="material-symbols-outlined icon-sm">close</span>
-          </button>
+            className="p-1.5 text-ink/70 hover:text-ink transition-colors rounded-none hover:bg-muted"
+          ></button>
         </div>
 
         {/* Mode Selector */}
-        <div className="inline-flex items-center gap-1.5 rounded-xl bg-surface-container p-1 shadow-[inset_0_1px_0_0_oklch(1_0_0/5%)]">
+        <div className="inline-flex items-center gap-1.5 rounded-[12px] bg-muted p-1">
           <button
             type="button"
             onClick={() => setActiveMode("file")}
-            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 font-label text-label-md transition-all ${
+            className={`flex-1 flex items-center justify-center gap-2 rounded-none py-2 font-body text-[15px] transition-all ${
               activeMode === "file"
-                ? "bg-surface text-primary font-semibold shadow-sm"
-                : "text-on-surface-variant hover:text-on-surface"
+                ? "bg-paper text-ink font-semibold"
+                : "text-ink/70 hover:text-ink"
             }`}
           >
-            <span className="material-symbols-outlined icon-sm">upload_file</span>
             {t("project.env_tab_file")}
           </button>
 
           <button
             type="button"
             onClick={() => setActiveMode("paste")}
-            className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 font-label text-label-md transition-all ${
+            className={`flex-1 flex items-center justify-center gap-2 rounded-none py-2 font-body text-[15px] transition-all ${
               activeMode === "paste"
-                ? "bg-surface text-primary font-semibold shadow-sm"
-                : "text-on-surface-variant hover:text-on-surface"
+                ? "bg-paper text-ink font-semibold"
+                : "text-ink/70 hover:text-ink"
             }`}
           >
-            <span className="material-symbols-outlined icon-sm">content_paste</span>
             {t("project.env_tab_paste")}
           </button>
         </div>
@@ -930,10 +946,10 @@ function EnvImportModal({
               }}
               onDragLeave={() => setIsDragOver(false)}
               onDrop={handleDrop}
-              className={`relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-8 text-center transition-all cursor-pointer ${
+              className={`relative flex flex-col items-center justify-center gap-3 rounded-[12px] border-2 border-dashed p-8 text-center transition-all cursor-pointer ${
                 isDragOver
-                  ? "border-primary bg-primary/10 scale-[1.01]"
-                  : "border-surface-variant/40 bg-surface-container/50 hover:border-primary/60 hover:bg-surface-container"
+                  ? "border-ink bg-sun scale-[1.01]"
+                  : "border-hair bg-muted hover:border-ink hover:bg-muted"
               }`}
             >
               <input
@@ -942,13 +958,12 @@ function EnvImportModal({
                 onChange={handleFileChange}
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
-              <span className="material-symbols-outlined icon-lg text-primary">cloud_upload</span>
               <div>
-                <p className="font-label text-label-md text-on-surface">
+                <p className="font-body text-[15px] text-ink">
                   {fileName ? fileName : t("project.env_dropzone")}
                 </p>
                 {parsedVars.length > 0 && (
-                  <p className="mt-1 font-body text-xs text-primary font-medium">
+                  <p className="mt-1 font-body text-xs text-ink font-medium">
                     {t("project.env_vars_found", { count: parsedVars.length })}
                   </p>
                 )}
@@ -961,10 +976,10 @@ function EnvImportModal({
                 value={pasteText}
                 onChange={(e) => handlePasteChange(e.target.value)}
                 placeholder={t("project.env_paste_placeholder")}
-                className="w-full rounded-xl bg-surface-container p-4 font-mono text-sm text-on-surface outline-none focus:ring-2 ring-primary/60 placeholder:text-on-surface-variant/30"
+                className="field-ink w-full p-[14px] font-mono text-[14px] outline-none placeholder:text-ink/40"
               />
               {parsedVars.length > 0 && (
-                <p className="font-body text-xs text-primary font-medium">
+                <p className="font-body text-xs text-ink font-medium">
                   {t("project.env_vars_found", { count: parsedVars.length })}
                 </p>
               )}
@@ -977,7 +992,7 @@ function EnvImportModal({
           <button
             type="button"
             onClick={onClose}
-            className="ghost-btn px-5 py-2.5 font-label text-label-md"
+            className="btn-outline px-5 py-2.5 font-body text-[15px]"
           >
             {t("project.cancel")}
           </button>
@@ -986,7 +1001,7 @@ function EnvImportModal({
             type="button"
             onClick={handleSubmit}
             disabled={parsedVars.length === 0}
-            className="primary-btn px-6 py-2.5 font-label text-label-md disabled:opacity-50"
+            className="btn-ink px-6 py-2.5 font-body text-[15px] disabled:opacity-50"
           >
             {t("project.env_import_submit", { count: parsedVars.length })}
           </button>
@@ -1056,9 +1071,7 @@ function EnvTab({ project }: { project: Project }) {
   };
 
   const updateEnvPair = (id: string, field: "key" | "value", val: string) => {
-    setEnvVars((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: val } : item)),
-    );
+    setEnvVars((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: val } : item)));
   };
 
   const handleImportedVars = (imported: Array<{ key: string; value: string }>) => {
@@ -1085,11 +1098,13 @@ function EnvTab({ project }: { project: Project }) {
 
   return (
     <>
-      <form onSubmit={saveEnvVars} className="floating-card p-6 md:p-8 flex flex-col gap-6">
+      <form onSubmit={saveEnvVars} className="ink-card-lg p-6 md:p-8 flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-col gap-1">
-            <h2 className="font-headline text-headline-md text-on-surface">{t("project.settings_env_vars")}</h2>
-            <p className="font-body text-body-md text-on-surface-variant">
+            <h2 className="font-display text-[22px] font-bold text-ink">
+              {t("project.settings_env_vars")}
+            </h2>
+            <p className="font-body text-[16px] text-ink/70">
               {t("project.settings_env_vars_desc")}
             </p>
           </div>
@@ -1097,15 +1112,14 @@ function EnvTab({ project }: { project: Project }) {
           <button
             type="button"
             onClick={() => setIsImportModalOpen(true)}
-            className="ghost-btn flex items-center gap-2 px-4 py-2.5 font-label text-label-md text-primary bg-primary/10 hover:bg-primary/20"
+            className="btn-outline flex items-center gap-2 px-4 py-2.5 font-body text-[15px] text-ink bg-sun hover:bg-sun"
           >
-            <span className="material-symbols-outlined icon-sm">file_upload</span>
             {t("project.env_import_btn")}
           </button>
         </div>
 
         {message && (
-          <div className="rounded-xl bg-primary/10 p-4 font-body text-body-md text-primary animate-in fade-in-0 duration-200">
+          <div className="rounded-[12px] bg-sun p-4 font-body text-[16px] text-ink animate-in fade-in-0 duration-200">
             {message}
           </div>
         )}
@@ -1121,23 +1135,21 @@ function EnvTab({ project }: { project: Project }) {
                 placeholder={t("project_details.env_key_placeholder")}
                 value={pair.key}
                 onChange={(e) => updateEnvPair(pair.id, "key", e.target.value)}
-                className="w-1/2 rounded-xl bg-surface-container px-4 py-3 font-mono text-sm text-on-surface outline-none focus:ring-2 ring-primary/60 transition-all"
+                className="field-ink w-1/2 px-[14px] py-[12px] font-mono text-[14px] outline-none"
               />
               <input
                 type="text"
                 placeholder={t("project_details.env_value_placeholder")}
                 value={pair.value}
                 onChange={(e) => updateEnvPair(pair.id, "value", e.target.value)}
-                className="w-1/2 rounded-xl bg-surface-container px-4 py-3 font-mono text-sm text-on-surface outline-none focus:ring-2 ring-primary/60 transition-all"
+                className="field-ink w-1/2 px-[14px] py-[12px] font-mono text-[14px] outline-none"
               />
               {envVars.length > 1 && (
                 <button
                   type="button"
                   onClick={() => removeEnvPair(pair.id)}
-                  className="p-2 text-on-surface-variant hover:text-error transition-colors"
-                >
-                  <span className="material-symbols-outlined icon-sm">delete</span>
-                </button>
+                  className="p-2 text-ink/70 hover:text-error transition-colors"
+                ></button>
               )}
             </div>
           ))}
@@ -1147,7 +1159,7 @@ function EnvTab({ project }: { project: Project }) {
           <button
             type="button"
             onClick={addEnvPair}
-            className="ghost-btn px-4 py-2 font-label text-label-md transition-all active:scale-[0.98]"
+            className="btn-outline px-4 py-2 font-body text-[15px] transition-all active:scale-[0.98]"
           >
             {t("project_details.env_add_var")}
           </button>
@@ -1155,7 +1167,7 @@ function EnvTab({ project }: { project: Project }) {
           <button
             type="submit"
             disabled={saving}
-            className="primary-btn px-6 py-3 font-label text-label-md disabled:opacity-50"
+            className="btn-ink px-6 py-3 font-body text-[15px] disabled:opacity-50"
           >
             {saving ? t("project.saving") : t("project.save_changes")}
           </button>
@@ -1200,7 +1212,9 @@ function ProjectPlanCard({ project }: { project: Project }) {
   const priceOf = (plan: SubscriptionTier): string => {
     const offer = pricing.data?.plans.find((candidate) => candidate.id === plan);
     if (!offer) return "";
-    return offer.price === 0 ? t("project_plan.free_price") : format.money(offer.price, offer.currency);
+    return offer.price === 0
+      ? t("project_plan.free_price")
+      : format.money(offer.price, offer.currency);
   };
 
   const handleUpgrade = async (plan: "pro" | "business") => {
@@ -1216,28 +1230,40 @@ function ProjectPlanCard({ project }: { project: Project }) {
   };
 
   const planSpecs = {
-    free: { ram: "256 MB", cpu: "0.5 vCPU", name: "Free", badgeBg: "bg-surface-variant text-on-surface-variant" },
-    pro: { ram: "1 GB", cpu: "1 vCPU", name: "Pro", badgeBg: "bg-primary/15 text-primary font-semibold" },
-    business: { ram: "8 GB", cpu: "4 vCPU", name: "Business", badgeBg: "bg-secondary/20 text-secondary font-semibold" },
+    free: { ram: "256 MB", cpu: "0.5 vCPU", name: "Free", badgeBg: "bg-muted text-ink/70" },
+    pro: { ram: "1 GB", cpu: "1 vCPU", name: "Pro", badgeBg: "bg-sun text-ink font-semibold" },
+    business: {
+      ram: "8 GB",
+      cpu: "4 vCPU",
+      name: "Business",
+      badgeBg: "bg-sun text-ink font-semibold",
+    },
   };
 
   const currentSpecs = planSpecs[currentPlan] ?? planSpecs.free;
 
   return (
-    <div className="floating-card p-6 md:p-8 flex flex-col gap-6">
-      <Accordion type="single" collapsible defaultValue={search.checkout ? "plan-menu" : undefined} className="w-full">
+    <div className="ink-card-lg p-6 md:p-8 flex flex-col gap-6">
+      <Accordion
+        type="single"
+        collapsible
+        defaultValue={search.checkout ? "plan-menu" : undefined}
+        className="w-full"
+      >
         <AccordionItem value="plan-menu" className="border-b-0">
           <AccordionTrigger className="hover:no-underline p-0 flex flex-wrap items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="font-label text-label-sm text-on-surface-variant uppercase tracking-wider">
+              <span className="font-body text-[13px] text-ink/70 uppercase tracking-wider">
                 {t("project_plan.section_label")}
               </span>
-              <span className="h-4 w-px bg-surface-variant/40 hidden md:inline" />
+              <span className="h-4 w-px bg-muted hidden md:inline" />
               <div className="flex items-center gap-2">
-                <span className="font-headline text-headline-md text-on-surface">
+                <span className="font-display text-[22px] font-bold text-ink">
                   {t("project_plan.current_plan_title")}:
                 </span>
-                <span className={`px-3.5 py-1 rounded-full font-label text-label-md ${currentSpecs.badgeBg}`}>
+                <span
+                  className={`px-3.5 py-1 rounded-none font-body text-[15px] ${currentSpecs.badgeBg}`}
+                >
                   {currentSpecs.name}
                 </span>
               </div>
@@ -1246,85 +1272,109 @@ function ProjectPlanCard({ project }: { project: Project }) {
 
           <AccordionContent className="flex flex-col gap-6 pt-6">
             {search.checkout === "ok" && (
-              <div className="rounded-xl bg-secondary/15 p-4 font-body text-body-md text-secondary border border-secondary/20 flex items-center gap-3">
-                <span className="material-symbols-outlined icon-md">check_circle</span>
+              <div className="rounded-[12px] bg-sun p-4 font-body text-[16px] text-ink border border-ink flex items-center gap-3">
                 {t("project_plan.checkout_success")}
               </div>
             )}
 
             {search.checkout === "avbrutt" && (
-              <div className="rounded-xl bg-surface-container p-4 font-body text-body-md text-on-surface-variant border border-surface-variant/30">
+              <div className="rounded-[12px] bg-muted p-4 font-body text-[16px] text-ink/70 border border-hair">
                 {t("project_plan.checkout_canceled", { plan: currentSpecs.name })}
               </div>
             )}
 
             {checkoutError && (
-              <div role="alert" className="rounded-xl bg-error/10 p-4 font-body text-body-md text-error">
+              <div
+                role="alert"
+                className="border-2 border-error px-[18px] py-[14px] font-body text-[16px] text-error"
+              >
                 {checkoutError}
               </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
               {/* Free Plan Box */}
-              <div className={`rounded-2xl p-5 border flex flex-col justify-between ${currentPlan === "free" ? "border-primary/40 bg-primary/5 shadow-sm" : "border-surface-variant/30 bg-surface-container/40"}`}>
+              <div
+                className={`rounded-[12px] p-5 border flex flex-col justify-between ${currentPlan === "free" ? "border-ink bg-sun" : "border-hair bg-muted"}`}
+              >
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-headline text-headline-sm text-on-surface">Free</span>
+                    <span className="font-display text-[26px] font-bold text-ink">Free</span>
                     {currentPlan === "free" && (
-                      <span className="text-xs font-label px-2.5 py-0.5 rounded-full bg-primary/15 text-primary font-semibold">{t("project_plan.active")}</span>
+                      <span className="text-xs font-body px-2.5 py-0.5 rounded-none bg-sun text-ink font-semibold">
+                        {t("project_plan.active")}
+                      </span>
                     )}
                   </div>
-                  <p className="font-body text-body-sm text-on-surface-variant mb-4">{t("project_plan.free_desc")}</p>
-                  <ul className="flex flex-col gap-2 font-body text-body-sm text-on-surface-variant">
+                  <p className="font-body text-[14px] text-ink/70 mb-4">
+                    {t("project_plan.free_desc")}
+                  </p>
+                  <ul className="flex flex-col gap-2 font-body text-[14px] text-ink/70">
                     <li className="flex items-center gap-2">
-                      <span className="material-symbols-outlined icon-sm text-primary">check</span> {t("project_plan.free_f1")}
+                      <Mark on size={18} /> {t("project_plan.free_f1")}
                     </li>
                     <li className="flex items-center gap-2">
-                      <span className="material-symbols-outlined icon-sm text-primary">check</span> {t("project_plan.free_f2")}
+                      <Mark on size={18} /> {t("project_plan.free_f2")}
                     </li>
                     <li className="flex items-center gap-2">
-                      <span className="material-symbols-outlined icon-sm text-primary">check</span> {t("project_plan.free_f3")}
+                      <Mark on size={18} /> {t("project_plan.free_f3")}
                     </li>
-                    <li className="flex items-center gap-2 text-on-surface-variant/50">
-                      <span className="material-symbols-outlined icon-sm text-on-surface-variant/40">close</span> {t("project_plan.free_f4")}
+                    <li className="flex items-center gap-2 text-ink/40">
+                      <Mark on={false} size={18} /> {t("project_plan.free_f4")}
                     </li>
                   </ul>
                 </div>
-                <div className="mt-6 pt-4 border-t border-surface-variant/20">
-                  <span className="font-display text-headline-sm text-on-surface">{priceOf("free")}</span>
-                  <span className="font-body text-body-sm text-on-surface-variant"> {t("project_plan.per_month")}</span>
+                <div className="mt-6 pt-4 border-t border-hair">
+                  <span className="font-display text-[26px] font-bold text-ink">
+                    {priceOf("free")}
+                  </span>
+                  <span className="font-body text-[14px] text-ink/70">
+                    {" "}
+                    {t("project_plan.per_month")}
+                  </span>
                 </div>
               </div>
 
               {/* Pro Plan Box */}
-              <div className={`rounded-2xl p-5 border flex flex-col justify-between ${currentPlan === "pro" ? "border-primary bg-primary/10 shadow-sm" : "border-surface-variant/30 bg-surface-container/40 hover:border-primary/50"} transition-all`}>
+              <div
+                className={`rounded-[12px] p-5 border flex flex-col justify-between ${currentPlan === "pro" ? "border-ink bg-sun" : "border-hair bg-muted hover:border-ink"} transition-all`}
+              >
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-headline text-headline-sm text-on-surface">Pro</span>
+                    <span className="font-display text-[26px] font-bold text-ink">Pro</span>
                     {currentPlan === "pro" && (
-                      <span className="text-xs font-label px-2.5 py-0.5 rounded-full bg-primary text-on-primary font-semibold">{t("project_plan.active")}</span>
+                      <span className="text-xs font-body px-2.5 py-0.5 rounded-none bg-ink text-on-primary font-semibold">
+                        {t("project_plan.active")}
+                      </span>
                     )}
                   </div>
-                  <p className="font-body text-body-sm text-on-surface-variant mb-4">{t("project_plan.pro_desc")}</p>
-                  <ul className="flex flex-col gap-2 font-body text-body-sm text-on-surface-variant">
-                    <li className="flex items-center gap-2 font-medium text-on-surface">
-                      <span className="material-symbols-outlined icon-sm text-primary">check</span> {t("project_plan.pro_f1")}
+                  <p className="font-body text-[14px] text-ink/70 mb-4">
+                    {t("project_plan.pro_desc")}
+                  </p>
+                  <ul className="flex flex-col gap-2 font-body text-[14px] text-ink/70">
+                    <li className="flex items-center gap-2 font-medium text-ink">
+                      <Mark on size={18} /> {t("project_plan.pro_f1")}
                     </li>
-                    <li className="flex items-center gap-2 font-medium text-on-surface">
-                      <span className="material-symbols-outlined icon-sm text-primary">check</span> {t("project_plan.pro_f2")}
+                    <li className="flex items-center gap-2 font-medium text-ink">
+                      <Mark on size={18} /> {t("project_plan.pro_f2")}
                     </li>
-                    <li className="flex items-center gap-2 font-medium text-on-surface">
-                      <span className="material-symbols-outlined icon-sm text-primary">check</span> {t("project_plan.pro_f3")}
+                    <li className="flex items-center gap-2 font-medium text-ink">
+                      <Mark on size={18} /> {t("project_plan.pro_f3")}
                     </li>
-                    <li className="flex items-center gap-2 font-medium text-on-surface">
-                      <span className="material-symbols-outlined icon-sm text-primary">check</span> {t("project_plan.pro_f4")}
+                    <li className="flex items-center gap-2 font-medium text-ink">
+                      <Mark on size={18} /> {t("project_plan.pro_f4")}
                     </li>
                   </ul>
                 </div>
-                <div className="mt-6 pt-4 border-t border-surface-variant/20 flex items-center justify-between">
+                <div className="mt-6 pt-4 border-t border-hair flex items-center justify-between">
                   <div>
-                    <span className="font-display text-headline-sm text-on-surface">{priceOf("pro")}</span>
-                    <span className="font-body text-body-sm text-on-surface-variant"> {t("project_plan.per_month")}</span>
+                    <span className="font-display text-[26px] font-bold text-ink">
+                      {priceOf("pro")}
+                    </span>
+                    <span className="font-body text-[14px] text-ink/70">
+                      {" "}
+                      {t("project_plan.per_month")}
+                    </span>
                   </div>
                   {currentPlan !== "pro" && (
                     <button
@@ -1334,46 +1384,58 @@ function ProjectPlanCard({ project }: { project: Project }) {
                         void handleUpgrade("pro");
                       }}
                       disabled={upgradingPlan !== null}
-                      className="primary-btn px-4 py-2 font-label text-label-md disabled:opacity-50"
+                      className="btn-ink px-4 py-2 font-body text-[15px] disabled:opacity-50"
                     >
-                      {upgradingPlan === "pro" ? t("project_plan.loading") : currentPlan === "business" ? t("project_plan.change") : t("project_plan.upgrade")}
+                      {upgradingPlan === "pro"
+                        ? t("project_plan.loading")
+                        : currentPlan === "business"
+                          ? t("project_plan.change")
+                          : t("project_plan.upgrade")}
                     </button>
                   )}
                 </div>
               </div>
 
               {/* Business Plan Box */}
-              <div className={`rounded-2xl p-5 border flex flex-col justify-between ${currentPlan === "business" ? "border-secondary bg-secondary/10 shadow-sm" : "border-surface-variant/30 bg-surface-container/40 hover:border-secondary/50"} transition-all`}>
+              <div
+                className={`rounded-[12px] p-5 border flex flex-col justify-between ${currentPlan === "business" ? "border-ink bg-sun" : "border-hair bg-muted hover:border-ink"} transition-all`}
+              >
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-headline text-headline-sm text-on-surface">Business</span>
+                    <span className="font-display text-[26px] font-bold text-ink">Business</span>
                     {currentPlan === "business" && (
-                      <span className="text-xs font-label px-2.5 py-0.5 rounded-full bg-secondary text-on-secondary font-semibold">{t("project_plan.active")}</span>
+                      <span className="text-xs font-body px-2.5 py-0.5 rounded-none bg-sun text-on-secondary font-semibold">
+                        {t("project_plan.active")}
+                      </span>
                     )}
                   </div>
-                  <p className="font-body text-body-sm text-on-surface-variant mb-4">{t("project_plan.business_desc")}</p>
-                  <ul className="flex flex-col gap-2 font-body text-body-sm text-on-surface-variant">
-                    <li className="flex items-center gap-2 font-medium text-on-surface">
-                      <span className="material-symbols-outlined icon-sm text-secondary">check</span> {t("project_plan.business_f1")}
+                  <p className="font-body text-[14px] text-ink/70 mb-4">
+                    {t("project_plan.business_desc")}
+                  </p>
+                  <ul className="flex flex-col gap-2 font-body text-[14px] text-ink/70">
+                    <li className="flex items-center gap-2 font-medium text-ink">
+                      <Mark on size={18} /> {t("project_plan.business_f1")}
                     </li>
-                    <li className="flex items-center gap-2 font-medium text-on-surface">
-                      <span className="material-symbols-outlined icon-sm text-secondary">check</span> {t("project_plan.business_f2")}
+                    <li className="flex items-center gap-2 font-medium text-ink">
+                      <Mark on size={18} /> {t("project_plan.business_f2")}
                     </li>
-                    <li className="flex items-center gap-2 font-medium text-on-surface">
-                      <span className="material-symbols-outlined icon-sm text-secondary">check</span> {t("project_plan.business_f3")}
+                    <li className="flex items-center gap-2 font-medium text-ink">
+                      <Mark on size={18} /> {t("project_plan.business_f3")}
                     </li>
-                    <li className="flex items-center gap-2 font-medium text-on-surface">
-                      <span className="material-symbols-outlined icon-sm text-secondary">check</span> {t("project_plan.business_f4")}
+                    <li className="flex items-center gap-2 font-medium text-ink">
+                      <Mark on size={18} /> {t("project_plan.business_f4")}
                     </li>
                   </ul>
                 </div>
-                <div className="mt-6 pt-4 border-t border-surface-variant/20 flex items-center justify-between">
+                <div className="mt-6 pt-4 border-t border-hair flex items-center justify-between">
                   <div>
-                    <span className="font-display text-headline-sm text-on-surface">{t("project_plan.contact_price", "Skreddersydd")}</span>
+                    <span className="font-display text-[26px] font-bold text-ink">
+                      {t("project_plan.contact_price", "Skreddersydd")}
+                    </span>
                   </div>
                   <a
                     href="mailto:post@frostbytes.no?subject=Foresp%C3%B8rsel%20om%20Business-plan%20p%C3%A5%20Snoat"
-                    className="secondary-btn px-4 py-2 font-label text-label-md inline-block text-center"
+                    className="secondary-btn px-4 py-2 font-body text-[15px] inline-block text-center"
                   >
                     {t("project_plan.contact_us", "Kontakt oss")}
                   </a>
@@ -1444,42 +1506,49 @@ function SettingsTab({ project }: { project: Project }) {
       <ProjectPlanCard project={project} />
 
       {/* General Settings */}
-      <form onSubmit={saveSettings} className="floating-card p-6 md:p-8 flex flex-col gap-6">
-        <h2 className="font-headline text-headline-md text-on-surface">{t("project.project_settings")}</h2>
+      <form onSubmit={saveSettings} className="ink-card-lg p-6 md:p-8 flex flex-col gap-6">
+        <h2 className="font-display text-[22px] font-bold text-ink">
+          {t("project.project_settings")}
+        </h2>
 
         {message && (
-          <div className="rounded-xl bg-primary/10 p-4 font-body text-body-md text-primary">
-            {message}
-          </div>
+          <div className="rounded-[12px] bg-sun p-4 font-body text-[16px] text-ink">{message}</div>
         )}
 
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="advanced" className="border-b-0">
-            <AccordionTrigger className="hover:no-underline text-label-md font-label py-0 pb-4">
+            <AccordionTrigger className="hover:no-underline text-[15px] font-body py-0 pb-4">
               {t("project.advanced_build_settings", "Avanserte byggeinnstillinger")}
             </AccordionTrigger>
             <AccordionContent className="flex flex-col gap-6 pt-2">
               <label className="flex flex-col gap-2">
-                <span className="font-label text-label-md text-on-surface">{t("project.settings_build_cmd")}</span>
+                <span className="font-body text-[15px] text-ink">
+                  {t("project.settings_build_cmd")}
+                </span>
                 <input
                   type="text"
                   value={buildCommand}
                   onChange={(e) => setBuildCommand(e.target.value)}
                   placeholder={t("project_details.build_cmd_placeholder")}
-                  className="rounded-xl bg-surface-container px-4 py-3 font-body text-body-md text-on-surface outline-none ring-primary/60 focus:ring-2 max-w-lg"
+                  className="field-ink max-w-lg px-[14px] py-[12px] font-body text-[16px] outline-none"
                 />
               </label>
 
               <label className="flex flex-col gap-2">
-                <span className="font-label text-label-md text-on-surface">{t("project.static_output_dir")}</span>
+                <span className="font-body text-[15px] text-ink">
+                  {t("project.static_output_dir")}
+                </span>
                 <input
                   type="text"
                   value={staticOutputDir}
                   onChange={(e) => setStaticOutputDir(e.target.value)}
                   placeholder={t("project.static_output_dir_placeholder")}
-                  className="rounded-xl bg-surface-container px-4 py-3 font-body text-body-md text-on-surface outline-none ring-primary/60 focus:ring-2 max-w-lg"
+                  className="field-ink max-w-lg px-[14px] py-[12px] font-body text-[16px] outline-none"
                 />
-                <span className="font-body text-body-sm text-on-surface-variant max-w-lg" dangerouslySetInnerHTML={{ __html: t("project.static_output_dir_help") }} />
+                <span
+                  className="font-body text-[14px] text-ink/70 max-w-lg"
+                  dangerouslySetInnerHTML={{ __html: t("project.static_output_dir_help") }}
+                />
               </label>
 
               {staticOutputDir.trim() !== "" && (
@@ -1488,13 +1557,16 @@ function SettingsTab({ project }: { project: Project }) {
                     type="checkbox"
                     checked={spaFallback}
                     onChange={(e) => setSpaFallback(e.target.checked)}
-                    className="mt-1 h-5 w-5 rounded accent-primary"
+                    className="mt-1 h-5 w-5 rounded-none accent-primary"
                   />
                   <span className="flex flex-col gap-1">
-                    <span className="font-label text-label-md text-on-surface">
+                    <span className="font-body text-[15px] text-ink">
                       {t("project.spa_fallback")}
                     </span>
-                    <span className="font-body text-body-sm text-on-surface-variant" dangerouslySetInnerHTML={{ __html: t("project.spa_fallback_help") }} />
+                    <span
+                      className="font-body text-[14px] text-ink/70"
+                      dangerouslySetInnerHTML={{ __html: t("project.spa_fallback_help") }}
+                    />
                   </span>
                 </label>
               )}
@@ -1506,7 +1578,7 @@ function SettingsTab({ project }: { project: Project }) {
           <button
             type="submit"
             disabled={saving}
-            className="primary-btn px-6 py-3 font-label text-label-md disabled:opacity-50"
+            className="btn-ink px-6 py-3 font-body text-[15px] disabled:opacity-50"
           >
             {saving ? t("project.saving") : t("project.save_changes")}
           </button>
@@ -1514,16 +1586,18 @@ function SettingsTab({ project }: { project: Project }) {
       </form>
 
       {/* Danger Zone */}
-      <div className="floating-card p-6 md:p-8 border-error/20">
-        <h2 className="mb-2 font-headline text-headline-md text-error">{t("project.settings_danger_zone")}</h2>
-        <p className="mb-6 font-body text-body-md text-on-surface-variant">
+      <div className="ink-card-lg p-6 md:p-8 border-error/20">
+        <h2 className="mb-2 font-display text-[22px] font-bold text-error">
+          {t("project.settings_danger_zone")}
+        </h2>
+        <p className="mb-6 font-body text-[16px] text-ink/70">
           {t("project.delete_project_warning")}
         </p>
 
         <button
           type="button"
           onClick={deleteProject}
-          className="ghost-btn px-6 py-3 font-label text-label-md bg-error/10 text-error hover:bg-error/20"
+          className="btn-outline border-error px-[24px] py-[12px] font-body text-[15px] text-error hover:bg-error hover:text-paper"
         >
           {t("project.settings_delete_project")}
         </button>

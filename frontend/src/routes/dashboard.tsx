@@ -68,9 +68,7 @@ function DashboardPage() {
     if (!result) return;
 
     setGithubNotice(
-      result === "connected"
-        ? t("dashboard.github_connected")
-        : t("dashboard.github_failed"),
+      result === "connected" ? t("dashboard.github_connected") : t("dashboard.github_failed"),
     );
     void queryClient.invalidateQueries({ queryKey: ["github-status"] });
     window.history.replaceState(null, "", window.location.pathname);
@@ -78,25 +76,28 @@ function DashboardPage() {
 
   if (loading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="font-body text-body-md text-on-surface-variant">{t("login.loading")}</p>
+      <div className="flex min-h-screen items-center justify-center bg-paper">
+        <p className="font-body text-[17px] font-light text-ink/70">{t("login.loading")}</p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col bg-paper">
       <DashboardNav />
 
-      <main className="mx-auto w-full max-w-container-max flex-grow px-margin-mobile py-stack-lg md:px-gutter">
-        <div className="mb-stack-md flex flex-wrap items-end justify-between gap-4">
+      <main className="mx-auto w-full max-w-[1334px] flex-grow px-5 py-[48px] lg:px-0">
+        <div className="mb-[36px] flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="font-display text-headline-lg text-on-background">{t("dashboard.title")}</h1>
+            <h1 className="font-display text-[36px] font-bold leading-[1.15] text-ink lg:text-[45px]">
+              {t("dashboard.title")}
+            </h1>
+            <span className="swoosh mt-[8px]" aria-hidden="true" />
           </div>
           <button
             type="button"
             onClick={() => setCreating(true)}
-            className="primary-btn px-6 py-3 font-label text-label-md"
+            className="btn-ink h-[48px] px-[26px] font-display text-[16px]"
           >
             {t("dashboard.new_project")}
           </button>
@@ -105,14 +106,14 @@ function DashboardPage() {
         {githubNotice && (
           <div
             role="status"
-            className="mb-stack-md flex items-center justify-between gap-4 rounded-xl bg-surface-container px-5 py-4 animate-in fade-in-50 slide-in-from-top-2 duration-300"
+            className="mb-[36px] flex items-center justify-between gap-4 border-2 border-ink bg-sun px-[18px] py-[14px] duration-300 animate-in fade-in-50 slide-in-from-top-2"
           >
-            <p className="font-body text-body-md text-on-surface-variant">{githubNotice}</p>
+            <p className="font-body text-[16px] font-normal text-ink">{githubNotice}</p>
             <button
               type="button"
               onClick={() => setGithubNotice(null)}
               aria-label={t("dashboard.close_notice")}
-              className="font-label text-label-md text-on-surface-variant/70 transition-opacity hover:opacity-70"
+              className="shrink-0 font-body text-[15px] font-bold text-ink underline-offset-[4px] hover:underline"
             >
               {t("dashboard.close_notice")}
             </button>
@@ -120,15 +121,17 @@ function DashboardPage() {
         )}
 
         {projects.isLoading && (
-          <p className="font-body text-body-md text-on-surface-variant">{t("dashboard.loading")}</p>
+          <p className="font-body text-[17px] font-light text-ink/70">{t("dashboard.loading")}</p>
         )}
 
         {projects.isError && (
-          <div className="floating-card p-8">
-            <h2 className="mb-2 font-headline text-headline-md text-on-surface">
+          <div className="ink-card-lg px-[30px] py-[32px]">
+            <h2 className="font-display text-[24px] font-bold text-ink">
               {t("dashboard.error_title")}
             </h2>
-            <p className="font-body text-body-md text-error">{projects.error.message}</p>
+            <p className="mt-[10px] font-body text-[16px] font-normal text-error">
+              {projects.error.message}
+            </p>
           </div>
         )}
 
@@ -137,7 +140,7 @@ function DashboardPage() {
         )}
 
         {projects.isSuccess && projects.data.length > 0 && (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-[31px] md:grid-cols-2 lg:grid-cols-3">
             {projects.data.map((project) => (
               <ProjectCard key={project.id} project={project} />
             ))}
@@ -153,15 +156,21 @@ function DashboardPage() {
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col items-center px-8 py-16 text-center">
-      <h2 className="mb-2 font-headline text-headline-md text-on-surface">{t("dashboard.empty_title")}</h2>
-      <p className="mb-8 max-w-md font-body text-body-md text-on-surface-variant">
+    <div className="ink-card-lg flex flex-col items-center px-[30px] py-[64px] text-center">
+      <p className="numeral text-[86px]" aria-hidden="true">
+        #1
+      </p>
+      <span className="swoosh mt-[6px]" aria-hidden="true" />
+      <h2 className="mt-[18px] font-display text-[28px] font-bold text-ink">
+        {t("dashboard.empty_title")}
+      </h2>
+      <p className="mt-[12px] max-w-[520px] font-body text-[17px] font-light leading-[1.55] text-ink">
         {t("dashboard.empty_desc")}
       </p>
       <button
         type="button"
         onClick={onCreate}
-        className="primary-btn px-8 py-3.5 font-label text-label-md"
+        className="btn-ink mt-[26px] h-[48px] px-[26px] font-display text-[16px]"
       >
         {t("dashboard.empty_cta")}
       </button>
@@ -169,7 +178,15 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function ProjectFavicon({ url, repoUrl }: { url: string | null; repoUrl: string }) {
+function ProjectFavicon({
+  url,
+  repoUrl,
+  name,
+}: {
+  url: string | null;
+  repoUrl: string;
+  name: string;
+}) {
   const [imgSrc, setImgSrc] = useState<string | null>(() => {
     if (url) {
       return `${url.replace(/\/$/, "")}/favicon.ico`;
@@ -190,10 +207,15 @@ function ProjectFavicon({ url, repoUrl }: { url: string | null; repoUrl: string 
     setFailed(true);
   };
 
+  // Uten favicon står prosjektets forbokstav i en svart rute. Det er samme
+  // grep som avataren i toppraden, og holder rutenettet visuelt i takt.
   if (!imgSrc || failed) {
     return (
-      <span className="material-symbols-outlined icon-sm text-on-surface-variant shrink-0">
-        public
+      <span
+        aria-hidden="true"
+        className="flex h-6 w-6 shrink-0 items-center justify-center bg-ink font-body text-[13px] font-bold leading-none text-paper"
+      >
+        {name.slice(0, 1).toUpperCase()}
       </span>
     );
   }
@@ -202,7 +224,7 @@ function ProjectFavicon({ url, repoUrl }: { url: string | null; repoUrl: string 
     <img
       src={imgSrc}
       alt=""
-      className="h-5 w-5 rounded-sm object-contain shrink-0"
+      className="h-6 w-6 shrink-0 border-2 border-ink object-contain"
       onError={handleNextFallback}
     />
   );
@@ -225,7 +247,8 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
 
   // En stoppet app har ingen adresse som svarer. Lenken skjules derfor, i stedet
   // for å sende brukeren til en 502.
-  const displayUrl = deployment?.url && !isStopped ? deployment.url.replace(/^https?:\/\//, "") : null;
+  const displayUrl =
+    deployment?.url && !isStopped ? deployment.url.replace(/^https?:\/\//, "") : null;
   const activeUrl = deployment?.url && !isStopped ? deployment.url : null;
 
   const deploy = useMutation({
@@ -250,12 +273,12 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
           params: { projectId: project.id },
         });
       }}
-      className="floating-card flex cursor-pointer flex-col gap-4 p-6 transition-all"
+      className="ink-card flex min-w-0 cursor-pointer flex-col gap-[14px] px-[23px] py-[25px] transition-colors hover:bg-sun-soft"
     >
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <ProjectFavicon url={activeUrl} repoUrl={project.repo_url} />
-          <h3 className="font-headline text-headline-md text-on-surface truncate">
+        <div className="flex min-w-0 items-center gap-[10px]">
+          <ProjectFavicon url={activeUrl} repoUrl={project.repo_url} name={project.name} />
+          <h3 className="max-w-[160px] truncate font-body text-[20px] font-normal text-ink sm:max-w-[200px]">
             {project.name}
           </h3>
         </div>
@@ -263,46 +286,48 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
       </div>
 
       {error && (
-        <p role="alert" className="font-body text-body-md text-error">
+        <p role="alert" className="font-body text-[15px] font-normal text-error">
           {error}
         </p>
       )}
 
-      <div className="mt-auto flex items-center justify-between gap-3 pt-3">
+      {/* Adressen står som ren tekst med hårstrek under – lenkeikonet er borte,
+          og en understreket URL leses uansett som en lenke. */}
+      <div className="min-w-0">
         {deployment?.url ? (
           <a
             href={deployment.url}
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high/60 hover:bg-surface-container-high px-3.5 py-1.5 font-body text-body-sm font-medium text-primary hover:text-primary transition-all border border-primary/20 hover:border-primary/40"
+            className="block max-w-full truncate font-mono text-[13px] text-ink underline decoration-hair underline-offset-[4px] hover:decoration-ink"
           >
-            <span className="material-symbols-outlined icon-sm">link</span>
-            <span className="truncate max-w-[150px] sm:max-w-[180px]">{displayUrl}</span>
+            {displayUrl}
           </a>
         ) : (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high/30 px-3.5 py-1.5 font-body text-body-sm text-on-surface-variant/60">
-            <span className="material-symbols-outlined icon-sm">link_off</span>
-            {t("dashboard.no_url")}
-          </span>
+          <span className="block font-mono text-[13px] text-ink/50">{t("dashboard.no_url")}</span>
+        )}
+      </div>
+
+      <hr className="hairline" />
+
+      <div className="mt-auto flex items-center justify-between gap-3">
+        {project.repo_url ? (
+          <a
+            href={project.repo_url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title={repoLabel}
+            className="min-w-0 truncate font-mono text-[13px] text-ink/70 underline-offset-[4px] hover:text-ink hover:underline"
+          >
+            {repoLabel}
+          </a>
+        ) : (
+          <span />
         )}
 
-        <div className="flex items-center gap-2">
-          {project.repo_url && (
-            <a
-              href={project.repo_url}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              title={repoLabel}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-full bg-surface-container-high/60 hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-all border border-surface-container-high/80"
-            >
-              <svg viewBox="0 0 16 16" className="h-4 w-4 fill-current" aria-hidden="true">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-              </svg>
-            </a>
-          )}
-
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={(e) => {
@@ -310,7 +335,7 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
               deploy.mutate();
             }}
             disabled={deploy.isPending || isBuilding}
-            className="primary-btn px-4 py-2 font-label text-label-md disabled:opacity-50"
+            className="btn-ink h-[38px] shrink-0 px-[16px] font-display text-[14px]"
           >
             {isBuilding
               ? t("dashboard.deploying")
@@ -363,13 +388,13 @@ function RepoPicker({
   const { t } = useTranslation();
   if (!status?.connected) {
     return (
-      <div className="rounded-xl bg-surface-container px-4 py-5 text-center">
-        <p className="mb-4 font-body text-body-md text-on-surface-variant">
+      <div className="border-2 border-ink px-[18px] py-[20px] text-center">
+        <p className="mb-[16px] font-body text-[16px] font-light leading-[1.5] text-ink">
           {t("dashboard.new_project_modal.connect_github_prompt")}
         </p>
         <a
           href={status?.installUrl ?? "#"}
-          className="primary-btn inline-flex px-5 py-2.5 font-label text-label-md"
+          className="btn-ink h-[44px] px-[22px] font-display text-[15px]"
         >
           {t("dashboard.new_project_modal.connect_github")}
         </a>
@@ -384,26 +409,29 @@ function RepoPicker({
         value={search}
         onChange={(event) => onSearch(event.target.value)}
         placeholder={t("dashboard.new_project_modal.search_placeholder")}
-        className="rounded-xl bg-surface-container px-4 py-3 font-body text-body-md text-on-surface outline-none ring-primary/60 placeholder:text-on-surface-variant/60 focus:ring-2"
+        className="field-ink h-[46px] px-[14px] font-body text-[16px] font-normal outline-none placeholder:text-ink/40"
       />
 
-      <div className="max-h-56 overflow-y-auto rounded-xl bg-surface-container/60">
+      <div className="max-h-56 overflow-y-auto border-2 border-ink">
         {isLoading && (
-          <p className="px-4 py-4 font-body text-body-md text-on-surface-variant">
+          <p className="px-[14px] py-[14px] font-body text-[16px] font-light text-ink/70">
             {t("dashboard.new_project_modal.loading_repos")}
           </p>
         )}
 
         {error && (
-          <p role="alert" className="px-4 py-4 font-body text-body-md text-error">
+          <p role="alert" className="px-[14px] py-[14px] font-body text-[16px] text-error">
             {error.message}
           </p>
         )}
 
         {!isLoading && !error && repos.length === 0 && (
-          <p className="px-4 py-4 font-body text-body-md text-on-surface-variant">
+          <p className="px-[14px] py-[14px] font-body text-[16px] font-light text-ink/70">
             {t("dashboard.new_project_modal.no_repos")}{" "}
-            <a href={status.installUrl ?? "#"} className="text-primary hover:opacity-80">
+            <a
+              href={status.installUrl ?? "#"}
+              className="text-ink underline underline-offset-[4px]"
+            >
               {t("dashboard.new_project_modal.grant_access")}
             </a>
             .
@@ -418,15 +446,13 @@ function RepoPicker({
               type="button"
               onClick={() => onSelect(repo)}
               aria-pressed={selected}
-              className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors ${
-                selected ? "bg-primary/15" : "hover:bg-surface-container"
+              className={`flex w-full items-center justify-between gap-3 border-b border-hair px-[14px] py-[11px] text-left transition-colors last:border-b-0 ${
+                selected ? "bg-sun" : "hover:bg-sun-soft"
               }`}
             >
-              <span className="truncate font-body text-body-md text-on-surface">
-                {repo.fullName}
-              </span>
+              <span className="truncate font-mono text-[14px] text-ink">{repo.fullName}</span>
               {repo.private && (
-                <span className="shrink-0 rounded bg-surface-variant/50 px-2 py-0.5 font-label text-label-md text-on-surface-variant/70">
+                <span className="shrink-0 border border-ink px-[6px] py-[1px] font-body text-[11px] uppercase tracking-[0.08em] text-ink">
                   {t("dashboard.new_project_modal.private")}
                 </span>
               )}
@@ -491,27 +517,28 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-margin-mobile backdrop-blur-sm animate-in fade-in-0 duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-5 duration-200 animate-in fade-in-0"
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-project-title"
       onClick={onClose}
     >
       <div
-        className="floating-card w-full max-w-lg p-8 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2 duration-250"
+        className="ink-card-lg w-full max-w-[560px] px-[30px] py-[32px] duration-250 animate-in fade-in-0 slide-in-from-bottom-2 zoom-in-95"
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 id="new-project-title" className="mb-2 font-headline text-headline-md text-on-surface">
+        <h2 id="new-project-title" className="font-display text-[28px] font-bold text-ink">
           {t("dashboard.new_project_modal.title")}
         </h2>
-        <p className="mb-stack-md font-body text-body-md text-on-surface-variant">
+        <span className="swoosh mt-[6px]" aria-hidden="true" />
+        <p className="mt-[14px] font-body text-[16px] font-light leading-[1.5] text-ink">
           {t("dashboard.new_project_modal.desc")}
         </p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
+        <form onSubmit={handleSubmit} className="mt-[24px] flex flex-col gap-[16px]">
+          <div className="flex flex-col gap-[8px]">
             <div className="flex items-baseline justify-between gap-3">
-              <span className="font-label text-label-md text-on-surface-variant">
+              <span className="font-body text-[15px] font-normal text-ink">
                 {t("dashboard.new_project_modal.github_repo")}
               </span>
               {status.data?.configured && (
@@ -522,9 +549,11 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
                     setRepoUrl("");
                     setInstallationId(null);
                   }}
-                  className="font-label text-label-md text-primary transition-opacity hover:opacity-80"
+                  className="font-body text-[15px] font-normal text-ink underline underline-offset-[4px] hover:decoration-sun hover:decoration-[3px]"
                 >
-                  {pasteUrl ? t("dashboard.new_project_modal.choose_list") : t("dashboard.new_project_modal.paste_url")}
+                  {pasteUrl
+                    ? t("dashboard.new_project_modal.choose_list")
+                    : t("dashboard.new_project_modal.paste_url")}
                 </button>
               )}
             </div>
@@ -550,19 +579,19 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
                   setInstallationId(null);
                 }}
                 placeholder="https://github.com/brukernavn/repo"
-                className="rounded-xl bg-surface-container px-4 py-3 font-body text-body-md text-on-surface outline-none ring-primary/60 placeholder:text-on-surface-variant/60 focus:ring-2"
+                className="field-ink h-[46px] px-[14px] font-mono text-[14px] outline-none placeholder:text-ink/40"
               />
             )}
 
             {!installationId && repoUrl && (
-              <span className="font-label text-label-md text-on-surface-variant/70">
+              <span className="font-body text-[14px] font-light text-ink/70">
                 {t("dashboard.new_project_modal.public_repo_note")}
               </span>
             )}
           </div>
 
-          <label className="flex flex-col gap-2">
-            <span className="font-label text-label-md text-on-surface-variant">
+          <label className="flex flex-col gap-[8px]">
+            <span className="font-body text-[15px] font-normal text-ink">
               {t("dashboard.new_project_modal.project_name")}
             </span>
             <input
@@ -576,9 +605,9 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
               pattern="[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
               title="Små bokstaver, tall og bindestrek."
               placeholder="min-app"
-              className="rounded-xl bg-surface-container px-4 py-3 font-body text-body-md text-on-surface outline-none ring-primary/60 placeholder:text-on-surface-variant/60 focus:ring-2"
+              className="field-ink h-[46px] px-[14px] font-mono text-[14px] outline-none placeholder:text-ink/40"
             />
-            <span className="font-label text-label-md text-on-surface-variant/70">
+            <span className="font-body text-[14px] font-light text-ink/70">
               {t("dashboard.new_project_modal.subdomain_preview", {
                 name: effectiveName || "<navn>",
                 suffix: appDomainSuffix,
@@ -587,25 +616,30 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
           </label>
 
           {create.isError && (
-            <p role="alert" className="font-body text-body-md text-error">
+            <p
+              role="alert"
+              className="border-2 border-error px-[14px] py-[10px] font-body text-[15px] text-error"
+            >
               {create.error.message}
             </p>
           )}
 
-          <div className="mt-2 flex justify-end gap-3">
+          <div className="mt-[8px] flex justify-end gap-[12px]">
             <button
               type="button"
               onClick={onClose}
-              className="ghost-btn px-5 py-3 font-label text-label-md"
+              className="btn-outline h-[46px] px-[20px] font-display text-[15px]"
             >
               {t("dashboard.new_project_modal.cancel")}
             </button>
             <button
               type="submit"
               disabled={create.isPending}
-              className="primary-btn px-6 py-3 font-label text-label-md disabled:opacity-50"
+              className="btn-ink h-[46px] px-[24px] font-display text-[15px]"
             >
-              {create.isPending ? t("dashboard.new_project_modal.creating") : t("dashboard.new_project_modal.create")}
+              {create.isPending
+                ? t("dashboard.new_project_modal.creating")
+                : t("dashboard.new_project_modal.create")}
             </button>
           </div>
         </form>

@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Mark } from "@/components/Mark";
 import { SnoatLogo } from "@/components/SnoatLogo";
 import { approveOauthRequest, denyOauthRequest } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -71,12 +72,10 @@ function ConsentPage() {
   if (!request) {
     return (
       <ConsentShell>
-        <h1 className="font-display text-headline-md text-on-background">
+        <h1 className="font-display text-[22px] font-bold text-ink">
           {t("mcp.consent_invalid_title")}
         </h1>
-        <p className="font-body text-body-md text-on-surface-variant">
-          {t("mcp.consent_invalid_body")}
-        </p>
+        <p className="font-body text-[16px] text-ink/70">{t("mcp.consent_invalid_body")}</p>
       </ConsentShell>
     );
   }
@@ -84,7 +83,7 @@ function ConsentPage() {
   if (loading) {
     return (
       <ConsentShell>
-        <p className="font-body text-body-md text-on-surface-variant">{t("mcp.consent_loading")}</p>
+        <p className="font-body text-[16px] text-ink/70">{t("mcp.consent_loading")}</p>
       </ConsentShell>
     );
   }
@@ -100,19 +99,17 @@ function ConsentPage() {
   if (!user) {
     return (
       <ConsentShell>
-        <h1 className="font-display text-headline-md text-on-background">
+        <h1 className="font-display text-[22px] font-bold text-ink">
           {t("mcp.consent_login_title")}
         </h1>
-        <p className="font-body text-body-md text-on-surface-variant">
-          {t("mcp.consent_login_body")}
-        </p>
+        <p className="font-body text-[16px] text-ink/70">{t("mcp.consent_login_body")}</p>
         <button
           type="button"
           onClick={() => {
             rememberReturnTo(`${window.location.pathname}${window.location.search}`);
             void navigate({ to: "/login" });
           }}
-          className="primary-btn w-full px-6 py-3.5 font-label text-label-lg"
+          className="btn-ink w-full px-6 py-3.5 font-body text-[16px]"
         >
           {t("mcp.consent_login_action")}
         </button>
@@ -123,30 +120,28 @@ function ConsentPage() {
   return (
     <ConsentShell>
       <div className="flex flex-col gap-2">
-        <span className="font-label text-label-sm text-primary">{t("mcp.consent_eyebrow")}</span>
-        <h1 className="font-display text-headline-md text-on-background">
-          {t("mcp.consent_title")}
-        </h1>
-        <p className="font-body text-body-md text-on-surface-variant">
+        <span className="w-fit bg-sun px-[8px] py-[2px] font-body text-[12px] font-bold uppercase tracking-[0.1em] text-ink">
+          {t("mcp.consent_eyebrow")}
+        </span>
+        <h1 className="font-display text-[22px] font-bold text-ink">{t("mcp.consent_title")}</h1>
+        <p className="font-body text-[16px] text-ink/70">
           {t("mcp.consent_body", { account: displayName(user) })}
         </p>
       </div>
 
-      <ul className="flex flex-col gap-3 rounded-2xl bg-surface-container p-5">
+      <ul className="flex flex-col gap-3 border-2 border-ink p-5">
         {PERMISSION_KEYS.map((key) => (
-          <li key={key} className="flex items-start gap-3">
-            <span className="material-symbols-outlined icon-sm mt-0.5 text-primary">check</span>
-            <span className="font-body text-body-md text-on-surface">{t(key)}</span>
+          <li key={key} className="flex items-center gap-3">
+            <Mark on size={20} />
+            <span className="font-body text-[16px] text-ink">{t(key)}</span>
           </li>
         ))}
       </ul>
 
-      <p className="font-body text-body-sm text-on-surface-variant">
-        {t("mcp.consent_revoke_hint")}
-      </p>
+      <p className="font-body text-[14px] text-ink/70">{t("mcp.consent_revoke_hint")}</p>
 
       {error && (
-        <p role="alert" className="font-body text-body-sm text-error">
+        <p role="alert" className="font-body text-[14px] text-error">
           {error}
         </p>
       )}
@@ -156,7 +151,7 @@ function ConsentPage() {
           type="button"
           onClick={() => approve.mutate()}
           disabled={busy}
-          className="primary-btn flex-1 px-6 py-3.5 font-label text-label-lg disabled:opacity-60"
+          className="btn-ink flex-1 px-6 py-3.5 font-body text-[16px] disabled:opacity-60"
         >
           {approve.isPending ? t("mcp.consent_approving") : t("mcp.consent_approve")}
         </button>
@@ -164,7 +159,7 @@ function ConsentPage() {
           type="button"
           onClick={() => deny.mutate()}
           disabled={busy}
-          className="ghost-btn flex-1 px-6 py-3.5 font-label text-label-lg disabled:opacity-60"
+          className="btn-outline flex-1 px-6 py-3.5 font-body text-[16px] disabled:opacity-60"
         >
           {t("mcp.consent_deny")}
         </button>
@@ -175,9 +170,11 @@ function ConsentPage() {
 
 function ConsentShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-margin-mobile py-12">
-      <SnoatLogo />
-      <div className="floating-card flex w-full max-w-lg flex-col gap-6 p-8">{children}</div>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-paper px-5 py-12">
+      <SnoatLogo size={36} className="text-ink" />
+      <div className="ink-card-lg flex w-full max-w-[560px] flex-col gap-6 px-[30px] py-[32px]">
+        {children}
+      </div>
     </div>
   );
 }

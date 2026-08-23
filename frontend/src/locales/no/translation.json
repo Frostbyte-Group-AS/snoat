@@ -6,13 +6,14 @@
     "my_projects": "Mine prosjekter",
     "login": "Logg inn",
     "register": "Registrer deg",
-    "mcp": "AI-tilkobling"
+    "mcp": "AI-tilkobling",
+    "why": "Hvorfor Snoat"
   },
   "hero": {
-    "title": "Lynrask infrastruktur for moderne Webapper",
-    "description": "Deploy nettside på ett klikk. 100% GDPR-vennlig skyplattform bygget for fart og personvern.",
+    "title": "Norsk infrastruktur for moderne webapper.",
+    "description": "Deploy på ett klikk. Koden bygges, kjøres og lagres i Norge — uten en eneste amerikansk sky i kjeden.",
     "cta_go_to_projects": "Gå til prosjektene dine",
-    "cta_register": "Registrer deg",
+    "cta_register": "Start gratis i dag",
     "cta_security": "Les om sikkerhet"
   },
   "features": {
@@ -35,12 +36,36 @@
     "backend": {
       "title": "Sikker Infrastruktur",
       "body": "Isolert og kryptert containerarkitektur bygget for moderne cybersikkerhetsbehov."
+    },
+    "deploy": {
+      "title": "Push to deploy",
+      "body": "Koble et GitHub-repository én gang. Hver push til hovedgrenen bygges automatisk og går live på ditt eget subdomene."
+    },
+    "domains": {
+      "title": "Egne domener",
+      "body": "Pek domenet ditt mot Snoat, så utsteder Caddy et gratis Let's Encrypt-sertifikat så snart DNS-oppslaget svarer."
+    },
+    "sovereignty": {
+      "title": "Datasuverenitet",
+      "body": "All data blir liggende i Norge. Det gjør GDPR-vurderingen kort, og gir deg et europeisk alternativ til Vercel."
+    },
+    "analytics": {
+      "title": "Innebygd analyse",
+      "body": "Trafikk, båndbredde og responstider hentes rett fra proxy-loggene. Ingen sporingsskript, ingen tredjepart som teller for deg."
+    },
+    "ai": {
+      "title": "AI-tilkobling",
+      "body": "Snoat er en MCP-server. Koble til Claude og la assistenten opprette prosjekter, trigge deploys og lese logger for deg."
+    },
+    "scale": {
+      "title": "Planer som skalerer",
+      "body": "Fra en statisk portefølje til tjue kjørende apper. Du endrer plan når du trenger det, og grensene gjelder umiddelbart."
     }
   },
   "pricing": {
-    "title": "Enkel prising",
-    "free_price": "Gratis",
-    "per_month": "{{price}} / mnd",
+    "title": "Planer og priser",
+    "free_price": "0",
+    "per_month": "per måned",
     "unavailable": "Vi får ikke hentet prislisten akkurat nå. Prøv igjen om litt.",
     "vat_note_no": "Alle priser er eks. mva. Frostbyte Group AS fakturerer med norsk mva.",
     "vat_note_eu": "Alle priser er eks. mva. Avgiften beregnes i kassen etter landet ditt. Bedrifter med gyldig mva-nummer faktureres uten mva.",
@@ -55,10 +80,22 @@
     "business": {
       "title": "Business",
       "description": "Maksimal ytelse, prioritert byggekø og faktura."
-    }
+    },
+    "cta": "Start gratis",
+    "cta_note": "Uten kredittkort",
+    "limit_apps": "{{count}} app samtidig",
+    "limit_apps_plural": "{{count}} apper samtidig",
+    "limit_memory": "{{value}} minne per app",
+    "limit_cpu": "{{value}} vCPU per app",
+    "limit_build": "{{count}} byggeminutter i måneden",
+    "limit_queue": "Prioritert byggekø",
+    "limit_static": "Ubegrenset med statiske sider"
   },
   "footer": {
-    "copyright": "Snoat — bygget i Norge. Data lagret i Norge. © {{year}}"
+    "copyright": "© {{year}} Snoat — Frostbyte Group AS. Bygget i Norge.",
+    "vision": "Snoat gir norske team et sted å publisere moderne webapper uten å gi fra seg kontrollen over dataene. Bygget og driftet i Norge av Frostbyte Group AS.",
+    "col_platform": "Plattform",
+    "col_account": "Konto"
   },
   "login": {
     "title_signin": "Logg inn",
@@ -376,21 +413,21 @@
     }
   },
   "mcp": {
-    "eyebrow": "Model Context Protocol",
+    "eyebrow": "Custom connector",
     "title": "Koble Claude til Snoat",
-    "intro": "Gi Claude tilgang til Snoat-kontoen din, så kan den se prosjektene dine, deploye, lese byggelogger og feilsøke – rett i samtalen. Du trenger ingen nøkkel og ingen installasjon: kopier URL-en under og lim den inn i Claude.",
+    "intro": "Snoat er en hostet MCP-server. Legg den til som en custom connector i Claude, så kan assistenten se prosjektene dine, deploye, lese byggelogger og feilsøke – rett i samtalen. Ingen pakke å installere, ingen nøkkel å lime inn.",
     "url_label": "Connector-URL",
     "url_copy": "Kopier",
     "url_copied": "Kopiert!",
-    "step_open": "Åpne Claude, og gå til Innstillinger → Connectors.",
-    "step_add": "Velg «Legg til egendefinert connector».",
-    "step_paste": "Lim inn URL-en over, og trykk «Legg til».",
+    "step_open": "Åpne Claude → Settings → Connectors.",
+    "step_add": "Trykk «Add custom connector».",
+    "step_paste": "Lim inn URL-en over som «Remote MCP server URL», og trykk «Add».",
     "step_approve": "Logg inn hos Snoat i vinduet som åpner seg, og trykk «Godkjenn».",
-    "no_key_needed": "Tilkoblingen gjelder bare din egen konto. Claude ser aldri passordet ditt, og du kan koble fra igjen når som helst.",
+    "no_key_needed": "Connectoren er din egen: URL-en er lik for alle, men tilgangen oppstår først når du godkjenner den, og tokenet gjelder bare kontoen din. Claude ser aldri passordet ditt, og du kan koble fra når som helst.",
     "loading": "Laster…",
-    "connections_title": "Tilkoblede AI-klienter",
-    "connections_subtitle": "Klienter som har tilgang til kontoen din akkurat nå.",
-    "connections_empty": "Ingen klienter er tilkoblet ennå. Følg trinnene over for å koble til Claude.",
+    "connections_title": "Dine tilkoblinger",
+    "connections_subtitle": "Connectorene som har tilgang til kontoen din akkurat nå.",
+    "connections_empty": "Ingen connectorer er koblet til ennå. Følg trinnene over for å legge til den første.",
     "connected_at": "Tilkoblet {{date}}",
     "last_used": "sist brukt {{date}}",
     "never_used": "ikke brukt ennå",
@@ -425,5 +462,49 @@
     "consent_login_action": "Logg inn",
     "consent_invalid_title": "Forespørselen mangler eller er utløpt",
     "consent_invalid_body": "Start tilkoblingen på nytt fra AI-klienten. Forespørsler utløper etter en stund av sikkerhetshensyn."
+  },
+  "usp": {
+    "sovereignty": {
+      "title": "Helnorsk drift",
+      "body": "Kode, data og logger ligger på maskinvare i Norge, driftet av Frostbyte Group AS. Ingen tredjelandsoverføring, ingen fotnote i personvernerklæringen."
+    },
+    "speed": {
+      "title": "Bygget for fart",
+      "body": "Nixpacks bygger repoet ditt automatisk, og Caddy serverer resultatet fra Norden. Lav latens der brukerne dine faktisk befinner seg."
+    },
+    "security": {
+      "title": "Sikkerhet fra start",
+      "body": "Anti-DDoS, automatisk HTTPS og isolerte containere er på fra første deploy. Det er ikke en pakke du kjøper i tillegg."
+    }
+  },
+  "secure": {
+    "title_line1": "Sikker hosting som",
+    "title_line2": "vokser med bedriften",
+    "body": "Hvert prosjekt kjører i sin egen isolerte container med eget ressurstak, bak en proxy som håndterer TLS og trafikk før den treffer appen din. Sertifikater fornyes automatisk, og både bygg og kjøretid logges slik at du kan se nøyaktig hva som skjedde. Trenger du mer kapasitet, bytter du plan — du flytter ikke plattform."
+  },
+  "features_section": {
+    "title": "Det du får"
+  },
+  "why": {
+    "title": "Hvorfor Snoat",
+    "body": "Snoat er bygget av Frostbyte Group AS fordi det manglet et sted å publisere moderne webapper uten å sende dataene ut av landet. Plattformen gjør det Vercel gjør — automatiske bygg, forhåndsvisninger, egne domener og SSL — men på maskinvare vi eier og drifter selv, i Norge.",
+    "fact1_value": "100 %",
+    "fact1_label": "av data lagret i Norge",
+    "fact2_value": "Nixpacks",
+    "fact2_label": "bygger uten Dockerfile",
+    "fact3_value": "Automatisk",
+    "fact3_label": "HTTPS på alle domener",
+    "footnote": "Driftet av Frostbyte Group AS"
+  },
+  "cta": {
+    "title_line1": "Klar for å deploye",
+    "title_line2": "på norsk infrastruktur?",
+    "placeholder": "Skriv e-postadressen din",
+    "button": "Kom i gang"
+  },
+  "account": {
+    "menu_label": "Kontomeny",
+    "settings_title": "Innstillinger",
+    "connector": "AI-tilkobling"
   }
 }

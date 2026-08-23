@@ -1,77 +1,45 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { SnoatLogo } from "@/components/SnoatLogo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { avatarUrl, displayName, useAuth } from "@/lib/auth";
+import { UserMenu } from "@/components/UserMenu";
 
+/**
+ * Toppraden i dashboardet.
+ *
+ * Den inneholder nå bare to ting: veien til prosjektene, og avataren. Alt som
+ * gjelder kontoen – AI-tilkobling, fakturering, utlogging – ligger i
+ * `UserMenu`. Da slipper raden å vokse med én lenke for hver kontoside vi
+ * legger til, og skillet mellom «innhold» og «konto» blir tydelig.
+ *
+ * Designet skiller flater med strek, ikke med skygge, så headeren har en
+ * hårstrek under seg i stedet for den gamle blur-skyggen.
+ */
 export function DashboardNav() {
   const { t } = useTranslation();
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
-
-  const name = displayName(user);
-  const avatar = avatarUrl(user);
-
-  const handleSignOut = async () => {
-    await signOut();
-    await navigate({ to: "/" });
-  };
 
   return (
-    <header className="sticky top-0 z-50 bg-background/70 shadow-[0_8px_30px_-20px_oklch(0_0_0/0.9)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-container-max items-center justify-between gap-4 px-margin-mobile py-4 md:px-gutter">
-        <div className="flex items-center gap-6">
-          <Link to="/dashboard" className="inline-flex">
-            <SnoatLogo />
+    <header className="sticky top-0 z-50 border-b-2 border-ink bg-paper">
+      <div className="mx-auto flex w-full max-w-[1334px] items-center justify-between gap-4 px-5 py-[14px] lg:px-0">
+        <div className="flex items-center gap-[22px]">
+          <Link to="/dashboard" className="inline-flex text-ink" aria-label="Snoat">
+            <SnoatLogo size={30} />
           </Link>
-          <span className="hidden font-label text-label-md text-on-surface-variant sm:inline">
+          <Link
+            to="/dashboard"
+            className="hidden font-body text-[15px] font-normal text-ink/70 transition-colors hover:text-ink sm:inline"
+            activeProps={{
+              className:
+                "text-ink font-bold decoration-sun decoration-[3px] underline underline-offset-[6px]",
+            }}
+          >
             {t("dashboard.title")}
-          </span>
+          </Link>
         </div>
 
-        <div className="flex items-center gap-4">
-          <Link
-            to="/settings/mcp"
-            className="hidden font-label text-label-md text-on-surface-variant transition-colors hover:text-on-surface sm:inline"
-            activeProps={{ className: "text-primary" }}
-          >
-            {t("nav.mcp")}
-          </Link>
-
-          <Link
-            to="/settings/billing"
-            className="hidden font-label text-label-md text-on-surface-variant transition-colors hover:text-on-surface sm:inline"
-            activeProps={{ className: "text-primary" }}
-          >
-            {t("billing.title")}
-          </Link>
-
+        <div className="flex items-center gap-[18px]">
           <LanguageSwitcher />
-
-          <div className="flex items-center gap-2.5">
-            {avatar ? (
-              <img
-                src={avatar}
-                alt=""
-                className="h-8 w-8 rounded-full bg-surface-variant object-cover"
-              />
-            ) : (
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-variant font-label text-label-md text-on-surface-variant">
-                {name.slice(0, 1).toUpperCase()}
-              </span>
-            )}
-            <span className="hidden font-label text-label-md text-on-surface md:inline">
-              {name}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void handleSignOut()}
-            className="ghost-btn px-4 py-2.5 font-label text-label-md"
-          >
-            {t("dashboard.logout")}
-          </button>
+          <UserMenu />
         </div>
       </div>
     </header>

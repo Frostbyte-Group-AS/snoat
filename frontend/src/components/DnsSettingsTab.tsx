@@ -3,7 +3,12 @@ import { useTranslation } from "react-i18next";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { Project } from "@/lib/database.types";
 import { getDomainStatus, type DomainCheck, type DomainStatus } from "@/lib/api";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { projectHostname, snoatServerIp } from "@/lib/platform";
 
 /** Hvor lenge «Kopiert!» vises på knappen. */
@@ -23,7 +28,7 @@ interface DnsRecord {
 export function DnsSettingsTab({
   project,
   onSaveDomain,
-  isSaving
+  isSaving,
 }: {
   project: Project;
   onSaveDomain: (domain: string | null) => void;
@@ -105,40 +110,34 @@ export function DnsSettingsTab({
     <div className="flex flex-col gap-6">
       {/* Sperre for Free-plan */}
       {isFreePlan && (
-        <div className="floating-card p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-primary/30 bg-primary/5">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-              <span className="material-symbols-outlined icon-md">lock</span>
-            </div>
-            <div>
-              <h2 className="font-headline text-headline-sm text-on-surface">{t("project_plan.gated_dns_title")}</h2>
-              <p className="font-body text-body-md text-on-surface-variant mt-0.5">{t("project_plan.gated_dns_desc")}</p>
-            </div>
-          </div>
+        <div className="border-2 border-ink bg-sun px-[23px] py-[20px]">
+          <h2 className="font-display text-[20px] font-bold text-ink">
+            {t("project_plan.gated_dns_title")}
+          </h2>
+          <p className="mt-[6px] font-body text-[16px] font-normal text-ink">
+            {t("project_plan.gated_dns_desc")}
+          </p>
         </div>
       )}
 
       {/* Domenekonfigurasjon. Snoat-adressen sto tidligere i et eget kort her;
           den og det egne domenet er nå lenker øverst på prosjektsiden, der man
           leter etter dem. */}
-      <div className="floating-card p-6 md:p-8 flex flex-col gap-6">
+      <div className="ink-card-lg p-6 md:p-8 flex flex-col gap-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-headline text-headline-md text-on-surface">{t("dns.connect_title")}</h2>
-            <p className="mt-1 font-body text-body-md text-on-surface-variant">
-              {t("dns.connect_desc")}
-            </p>
+            <h2 className="font-display text-[22px] font-bold text-ink">
+              {t("dns.connect_title")}
+            </h2>
+            <p className="mt-1 font-body text-[16px] text-ink/70">{t("dns.connect_desc")}</p>
           </div>
 
           {project.custom_domain && status && (
             <span
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 font-label text-xs ${
-                status.ready ? "bg-secondary/15 text-secondary" : "bg-surface-variant/40 text-on-surface-variant"
+              className={`inline-flex shrink-0 items-center border-2 px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] ${
+                status.ready ? "border-ink bg-ink text-paper" : "border-ink bg-paper text-ink"
               }`}
             >
-              <span className="material-symbols-outlined icon-sm">
-                {status.ready ? "check_circle" : "hourglass_top"}
-              </span>
               {status.ready
                 ? t("dns.badge_connected", "Koblet til")
                 : t("dns.badge_waiting", "Venter")}
@@ -148,7 +147,7 @@ export function DnsSettingsTab({
 
         <div className="flex flex-col gap-4 md:flex-row md:items-center justify-between">
           <div className="flex flex-1 flex-col gap-2 max-w-md">
-            <label className="font-label text-label-md text-on-surface-variant">{t("dns.domain_label")}</label>
+            <label className="font-body text-[15px] text-ink/70">{t("dns.domain_label")}</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -156,7 +155,7 @@ export function DnsSettingsTab({
                 onChange={(e) => setDomain(e.target.value)}
                 disabled={isFreePlan}
                 placeholder={isFreePlan ? t("project_plan.gated_dns_title") : "dittdomene.no"}
-                className="flex-1 rounded-xl bg-surface-container px-4 py-3 font-mono text-sm text-on-surface outline-none ring-primary/60 placeholder:text-on-surface-variant/40 focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="field-ink flex-1 px-[14px] py-[12px] font-mono text-[14px] outline-none placeholder:text-ink/40 disabled:cursor-not-allowed disabled:opacity-50"
               />
               {/* Lagre-knappen lagrer, og bare det. Den tømte tidligere domenet
                   når feltet var tomt, slik at ett klikk kunne koble fra et
@@ -166,12 +165,12 @@ export function DnsSettingsTab({
                 type="button"
                 onClick={() => cleanDomain && onSaveDomain(cleanDomain)}
                 disabled={isFreePlan || isSaving || !cleanDomain || isSavedDomain}
-                className={`shrink-0 rounded-xl px-4 py-3 font-label text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                className={`shrink-0 rounded-[12px] px-4 py-3 font-body text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                   isSaving
-                    ? "bg-surface-variant/40 text-on-surface-variant cursor-wait"
+                    ? "bg-muted text-ink/70 cursor-wait"
                     : isSavedDomain && cleanDomain
-                      ? "bg-secondary/15 text-secondary"
-                      : "bg-primary text-on-primary hover:bg-primary/90"
+                      ? "bg-sun text-ink"
+                      : "bg-ink text-on-primary hover:bg-sun"
                 }`}
               >
                 {isSaving
@@ -186,15 +185,20 @@ export function DnsSettingsTab({
               <button
                 type="button"
                 onClick={() => {
-                  if (window.confirm(t("dns.disconnect_confirm", {
-                    domain: project.custom_domain,
-                    defaultValue: "Koble fra {{domain}}? Siden slutter å svare på dette domenet til det kobles til igjen.",
-                  }))) {
+                  if (
+                    window.confirm(
+                      t("dns.disconnect_confirm", {
+                        domain: project.custom_domain,
+                        defaultValue:
+                          "Koble fra {{domain}}? Siden slutter å svare på dette domenet til det kobles til igjen.",
+                      }),
+                    )
+                  ) {
                     onSaveDomain(null);
                   }
                 }}
                 disabled={isSaving}
-                className="self-start font-label text-xs text-on-surface-variant underline underline-offset-4 transition-colors hover:text-error disabled:opacity-50"
+                className="self-start font-body text-xs text-ink/70 underline underline-offset-4 transition-colors hover:text-error disabled:opacity-50"
               >
                 {t("dns.disconnect", "Koble fra {{domain}}", { domain: project.custom_domain })}
               </button>
@@ -203,25 +207,27 @@ export function DnsSettingsTab({
 
           {mode === "subdomain" && (
             <div className="flex flex-col gap-2 md:w-48">
-              <label className="font-label text-label-md text-on-surface-variant">{t("dns.subdomain_label")}</label>
+              <label className="font-body text-[15px] text-ink/70">
+                {t("dns.subdomain_label")}
+              </label>
               <input
                 type="text"
                 value={subdomain}
                 onChange={(e) => setSubdomain(e.target.value)}
                 placeholder="app"
-                className="rounded-xl bg-surface-container px-4 py-3 font-mono text-sm text-on-surface outline-none ring-primary/60 placeholder:text-on-surface-variant/40 focus:ring-2"
+                className="field-ink px-[14px] py-[12px] font-mono text-[14px] outline-none placeholder:text-ink/40"
               />
             </div>
           )}
 
           <div className="flex flex-col gap-2">
-            <span className="font-label text-label-md text-on-surface-variant">{t("dns.domain_type")}</span>
-            <div className="inline-flex rounded-xl bg-surface-container p-1 shadow-[inset_0_1px_0_0_oklch(1_0_0/5%)]">
+            <span className="font-body text-[15px] text-ink/70">{t("dns.domain_type")}</span>
+            <div className="inline-flex rounded-[12px] bg-muted p-1">
               <button
                 type="button"
                 onClick={() => setMode("root")}
-                className={`rounded-lg px-4 py-2 font-label text-label-md transition-all ${
-                  mode === "root" ? "bg-surface text-primary font-semibold shadow-sm" : "text-on-surface-variant hover:text-on-surface"
+                className={`rounded-none px-4 py-2 font-body text-[15px] transition-all ${
+                  mode === "root" ? "bg-paper text-ink font-semibold" : "text-ink/70 hover:text-ink"
                 }`}
               >
                 {t("dns.mode_root", { domain: displayDomain })}
@@ -229,8 +235,10 @@ export function DnsSettingsTab({
               <button
                 type="button"
                 onClick={() => setMode("subdomain")}
-                className={`rounded-lg px-4 py-2 font-label text-label-md transition-all ${
-                  mode === "subdomain" ? "bg-surface text-primary font-semibold shadow-sm" : "text-on-surface-variant hover:text-on-surface"
+                className={`rounded-none px-4 py-2 font-body text-[15px] transition-all ${
+                  mode === "subdomain"
+                    ? "bg-paper text-ink font-semibold"
+                    : "text-ink/70 hover:text-ink"
                 }`}
               >
                 {t("dns.mode_subdomain", { sub, domain: displayDomain })}
@@ -248,17 +256,17 @@ export function DnsSettingsTab({
           type="multiple"
           defaultValue={defaultOpen}
           key={String(status?.ready)}
-          className="floating-card px-6 md:px-8"
+          className="ink-card-lg px-6 md:px-8"
         >
           {project.custom_domain && (
             <AccordionItem value="status" className="border-outline-variant/30">
               <AccordionTrigger className="py-5 hover:no-underline">
                 <span className="flex items-center gap-3">
-                  <span className="font-headline text-headline-sm text-on-surface">
+                  <span className="font-display text-[26px] font-bold text-ink">
                     {t("dns.status_title", "Tilkobling")}
                   </span>
                   {status && (
-                    <span className="font-body text-xs text-on-surface-variant">
+                    <span className="font-body text-xs text-ink/70">
                       {status.ready
                         ? t("dns.status_ready", "Domenet er koblet til og svarer.")
                         : t("dns.status_waiting", "Slik ligger det an akkurat nå.")}
@@ -275,12 +283,10 @@ export function DnsSettingsTab({
           <AccordionItem value="records" className="border-none">
             <AccordionTrigger className="py-5 hover:no-underline">
               <span className="flex items-center gap-3">
-                <span className="font-headline text-headline-sm text-on-surface">
+                <span className="font-display text-[26px] font-bold text-ink">
                   {t("dns.records_title")}
                 </span>
-                <span className="font-body text-xs text-on-surface-variant">
-                  {records.length}
-                </span>
+                <span className="font-body text-xs text-ink/70">{records.length}</span>
               </span>
             </AccordionTrigger>
             <AccordionContent className="pb-6">
@@ -303,33 +309,37 @@ export function DnsSettingsTab({
 function RecordRow({ record }: { record: DnsRecord }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-3 rounded-2xl bg-surface-container p-5 shadow-[inset_0_1px_0_0_oklch(1_0_0/5%)] border border-surface-variant/20 hover:border-primary/40 transition-colors">
+    <div className="flex flex-col gap-3 rounded-[12px] bg-muted p-5 border border-hair hover:border-ink transition-colors">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <span className="rounded-lg bg-primary/15 px-3 py-1 font-mono text-xs font-bold text-primary">
+          <span className="rounded-none bg-sun px-3 py-1 font-mono text-xs font-bold text-ink">
             {record.type}
           </span>
-          <span className="font-body text-xs text-on-surface-variant">{record.description}</span>
+          <span className="font-body text-xs text-ink/70">{record.description}</span>
         </div>
 
-        <span className="font-mono text-xs text-on-surface-variant/60">TTL: {record.ttl}</span>
+        <span className="font-mono text-xs text-ink/60">TTL: {record.ttl}</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
         {/* Host / Navn */}
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-surface px-4 py-3 shadow-[inset_0_1px_0_0_oklch(1_0_0/6%)]">
+        <div className="flex items-center justify-between gap-3 rounded-[12px] bg-paper px-4 py-3">
           <div className="flex flex-col min-w-0">
-            <span className="font-label text-[10px] tracking-wider text-on-surface-variant/70 uppercase">{t("dns.name_host")}</span>
-            <code className="font-mono text-sm text-on-surface truncate">{record.host}</code>
+            <span className="font-body text-[10px] tracking-wider text-ink/60 uppercase">
+              {t("dns.name_host")}
+            </span>
+            <code className="font-mono text-sm text-ink truncate">{record.host}</code>
           </div>
           <CopyButton value={record.host} label={t("dns.name_host")} />
         </div>
 
         {/* Verdi / Peker til */}
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-surface px-4 py-3 shadow-[inset_0_1px_0_0_oklch(1_0_0/6%)]">
+        <div className="flex items-center justify-between gap-3 rounded-[12px] bg-paper px-4 py-3">
           <div className="flex flex-col min-w-0">
-            <span className="font-label text-[10px] tracking-wider text-on-surface-variant/70 uppercase">{t("dns.value_target")}</span>
-            <code className="font-mono text-sm text-primary truncate">{record.value}</code>
+            <span className="font-body text-[10px] tracking-wider text-ink/60 uppercase">
+              {t("dns.value_target")}
+            </span>
+            <code className="font-mono text-sm text-ink truncate">{record.value}</code>
           </div>
           <CopyButton value={record.value} label={t("dns.value_target")} />
         </div>
@@ -365,13 +375,10 @@ function CopyButton({ value, label }: { value: string; label: string }) {
       type="button"
       onClick={handleCopy}
       aria-label={`${t("dns.copy")} ${label}`}
-      className={`ghost-btn shrink-0 flex items-center gap-1.5 px-3 py-1.5 font-label text-xs transition-colors rounded-lg ${
-        copied ? "bg-secondary/15 text-secondary font-semibold" : "bg-surface-container text-on-surface-variant hover:text-on-surface"
+      className={`btn-outline shrink-0 px-[12px] py-[6px] font-body text-[13px] ${
+        copied ? "bg-sun" : ""
       }`}
     >
-      <span className="material-symbols-outlined icon-sm">
-        {copied ? "check" : "content_copy"}
-      </span>
       {copied ? t("dns.copied") : t("dns.copy")}
     </button>
   );
@@ -398,21 +405,15 @@ function DomainStatusPanel({ query }: { query: UseQueryResult<DomainStatus> }) {
   return (
     <div className="flex flex-col gap-4">
       {query.isError && (
-        <p className="font-body text-body-md text-error">
+        <p className="font-body text-[16px] text-error">
           {t("dns.status_error", "Kunne ikke hente status akkurat nå.")}
         </p>
       )}
 
       {status && (
         <div className="flex flex-col divide-y divide-outline-variant/30">
-          <DomainCheckRow
-            label={t("dns.check_dns", "DNS peker hit")}
-            check={status.dns}
-          />
-          <DomainCheckRow
-            label={t("dns.check_route", "Rute aktiv")}
-            check={status.route}
-          />
+          <DomainCheckRow label={t("dns.check_dns", "DNS peker hit")} check={status.dns} />
+          <DomainCheckRow label={t("dns.check_route", "Rute aktiv")} check={status.route} />
           <DomainCheckRow
             label={t("dns.check_certificate", "Sertifikat")}
             check={status.certificate}
@@ -424,34 +425,35 @@ function DomainStatusPanel({ query }: { query: UseQueryResult<DomainStatus> }) {
         type="button"
         onClick={() => query.refetch()}
         disabled={query.isFetching}
-        className="self-start inline-flex items-center gap-1.5 rounded-xl bg-surface-container px-3 py-2 font-label text-sm text-on-surface-variant transition-all hover:text-on-surface disabled:opacity-50 disabled:cursor-wait"
+        className="btn-outline self-start px-[14px] py-[7px] font-body text-[14px] disabled:cursor-wait"
       >
-        <span className={`material-symbols-outlined icon-sm ${query.isFetching ? "animate-spin" : ""}`}>
-          refresh
-        </span>
-        {t("dns.status_recheck", "Sjekk på nytt")}
+        {query.isFetching ? "…" : t("dns.status_recheck", "Sjekk på nytt")}
       </button>
     </div>
   );
 }
 
 function DomainCheckRow({ label, check }: { label: string; check: DomainCheck }) {
-  // Ikonet bærer tilstanden, men aldri alene: fargeblinde skal se forskjell på
-  // «venter» og «feilet» uten å skille grønt fra rødt, så formen skiller også.
+  // Tilstanden bæres av en 20 px rute, ikke av et ikon – og aldri av farge
+  // alene: fylt svart, tomt med ramme og rød ramme har tre ulike former, så en
+  // fargeblind leser ser forskjellen uten å måtte skille grønt fra rødt.
   const presentation = {
-    ok: { icon: "check_circle", tone: "text-secondary" },
-    pending: { icon: "hourglass_top", tone: "text-on-surface-variant" },
-    failed: { icon: "error", tone: "text-error" },
+    ok: { glyph: "✓", box: "bg-ink text-paper border-ink" },
+    pending: { glyph: "·", box: "bg-paper text-ink border-ink" },
+    failed: { glyph: "✕", box: "bg-paper text-error border-error" },
   }[check.state];
 
   return (
     <div className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-      <span className={`material-symbols-outlined icon-sm mt-0.5 ${presentation.tone}`}>
-        {presentation.icon}
+      <span
+        aria-hidden="true"
+        className={`mt-[2px] flex h-[20px] w-[20px] shrink-0 items-center justify-center border-2 font-body text-[12px] font-bold leading-none ${presentation.box}`}
+      >
+        {presentation.glyph}
       </span>
       <div className="flex flex-col gap-0.5">
-        <span className="font-label text-label-md text-on-surface">{label}</span>
-        <span className="font-body text-xs text-on-surface-variant">{check.detail}</span>
+        <span className="font-body text-[15px] text-ink">{label}</span>
+        <span className="font-body text-[13px] text-ink/70">{check.detail}</span>
       </div>
     </div>
   );

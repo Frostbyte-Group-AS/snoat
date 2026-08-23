@@ -2,16 +2,37 @@
 @source "../src";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+/*
+ * Snoat designsystem — «Ink & Sun».
+ *
+ * Alle verdier er hentet direkte fra Figma-fila
+ * «Website Hosting Landing Page» (fileKey m3BEhOsDc9QQoKLFAllvHt, node 0:1683)
+ * via Figma MCP. Artboardet er tegnet i 937 px bredde, men er en nedskalert
+ * 1440 px desktop-layout: skalafaktoren er 1440 / 937 = 1,5368. Den er
+ * verifisert mot flere noder som treffer runde tall etter oppskalering
+ * (52,042→80 · 39,031→60 · 20,926→32 · 15,613→24 · 1,301→2 · 7,806→12).
+ * Alle px-tall i denne fila er derfor Figma-verdien ganget med 1,5368.
+ *
+ * Tre regler bærer hele uttrykket:
+ *   1. Svart strek, ikke skygge. Flater defineres av 2 px ramme i ren svart.
+ *   2. Firkantet handling, rundet innhold. Knapper og felt har radius 0,
+ *      kort har 12/16/18 px.
+ *   3. Én aksentfarge. #FFED88 er gul markør — aldri en flate å lese tekst på
+ *      i lang form, aldri erstatning for svart.
+ */
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
+  /* ---- Radier (Figma 7,806 / 10,123 / 11,059 → ×1,5368) ---- */
+  --radius: 1rem;
+  --radius-none: 0px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 18px;
+  --radius-2xl: 18px;
+  --radius-3xl: 18px;
 
+  /* ---- Semantiske farger (beholder shadcn-navnene) ---- */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-on-background: var(--foreground);
@@ -33,6 +54,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-error: var(--error);
+  --color-success: var(--success);
   --color-border: var(--border);
   --color-outline: var(--outline);
   --color-input: var(--input);
@@ -43,134 +65,303 @@
   --color-on-surface-variant: var(--on-surface-variant);
   --color-surface-container: var(--surface-container);
 
-  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-headline: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-label: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  /* ---- Råfarger fra designet ---- */
+  --color-ink: #000000;
+  --color-ink-soft: #171717;
+  --color-paper: #ffffff;
+  --color-sun: #ffed88;
+  --color-sun-soft: #fff8d1;
+  --color-ash: #d9d9d9;
+  --color-hair: rgba(0, 0, 0, 0.1);
 
-  --text-display: clamp(2.75rem, 6vw, 4.5rem);
-  --text-display--line-height: 1.05;
-  --text-display--letter-spacing: -0.035em;
-  --text-headline-lg: clamp(1.75rem, 3vw, 2.5rem);
+  /* ---- Typografi ----
+     Designet setter Helvetica Bold / Regular / Light. Arial er metrisk
+     kompatibel og dekker Windows/Linux uten webfont-nedlasting. Clash Display
+     brukes kun i footeren, akkurat som i Figma. */
+  --font-display: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-headline: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-label: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-meta: "Clash Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  /* ---- Typeskala for markedsflater (1440 px referanse) ---- */
+  --text-display: clamp(2.5rem, 5.556vw, 5rem); /* 80 */
+  --text-display--line-height: 1.15;
+  --text-display--letter-spacing: -0.005em;
+  --text-display--font-weight: 700;
+
+  --text-headline-lg: clamp(2rem, 4.167vw, 3.75rem); /* 60 */
   --text-headline-lg--line-height: 1.15;
-  --text-headline-lg--letter-spacing: -0.02em;
-  --text-headline-md: 1.375rem;
-  --text-headline-md--line-height: 1.25;
-  --text-headline-md--letter-spacing: -0.01em;
-  --text-body-lg: 1.125rem;
-  --text-body-lg--line-height: 1.6;
-  --text-body-md: 0.9375rem;
-  --text-body-md--line-height: 1.6;
-  --text-label-md: 0.875rem;
-  --text-label-md--line-height: 1.2;
+  --text-headline-lg--font-weight: 700;
 
+  --text-headline-md: clamp(1.625rem, 3.125vw, 2.8125rem); /* 45 */
+  --text-headline-md--line-height: 1.2;
+  --text-headline-md--font-weight: 700;
+
+  --text-title-lg: clamp(1.375rem, 2.194vw, 1.975rem); /* 31,6 */
+  --text-title-lg--line-height: 1.25;
+  --text-title-lg--font-weight: 400;
+
+  --text-title-md: clamp(1.25rem, 1.993vw, 1.794rem); /* 28,7 */
+  --text-title-md--line-height: 1.25;
+  --text-title-md--font-weight: 400;
+
+  --text-body-lg: clamp(1.0625rem, 2.222vw, 2rem); /* 32 */
+  --text-body-lg--line-height: 1.45;
+  --text-body-lg--font-weight: 300;
+
+  --text-body-md: clamp(1rem, 1.667vw, 1.5rem); /* 24 */
+  --text-body-md--line-height: 1.5;
+  --text-body-md--font-weight: 300;
+
+  --text-body-sm: clamp(0.9375rem, 1.458vw, 1.3125rem); /* 21 */
+  --text-body-sm--line-height: 1.55;
+  --text-body-sm--font-weight: 300;
+
+  --text-body-xs: clamp(0.875rem, 1.389vw, 1.25rem); /* 20 */
+  --text-body-xs--line-height: 1.55;
+  --text-body-xs--font-weight: 300;
+
+  --text-label-lg: 1.25rem; /* 20 — CTA-knapp i hero */
+  --text-label-lg--line-height: 1.2;
+  --text-label-lg--font-weight: 700;
+  --text-label-md: 0.9375rem; /* 15 */
+  --text-label-md--line-height: 1.3;
+  --text-label-sm: 0.8125rem; /* 13 */
+  --text-label-sm--line-height: 1.3;
+
+  /* ---- Rytme ---- */
   --spacing-stack-md: 1.5rem;
   --spacing-stack-lg: 3rem;
-  --spacing-gutter: 2.5rem;
+  --spacing-gutter: 3.25rem; /* 52 — sidemarg i 1440-artboardet */
   --spacing-margin-mobile: 1.25rem;
 
-  --container-container-max: 76rem;
+  --container-container-max: 83.375rem; /* 1334 — innholdsbredden i designet */
 }
 
 :root {
-  --radius: 1rem;
-  --background: oklch(0.16 0.017 260);
-  --foreground: oklch(0.97 0.005 250);
-  --surface: oklch(0.19 0.018 260);
-  --on-surface: oklch(0.96 0.005 250);
-  --surface-variant: oklch(0.26 0.022 262);
-  --on-surface-variant: oklch(0.75 0.018 258);
-  --surface-container: oklch(0.24 0.02 262);
-  --card: oklch(0.21 0.019 261);
-  --card-foreground: oklch(0.96 0.005 250);
-  --popover: oklch(0.21 0.019 261);
-  --popover-foreground: oklch(0.96 0.005 250);
-  --primary: oklch(0.86 0.16 197);
-  --primary-foreground: oklch(0.18 0.03 210);
-  --primary-container: oklch(0.42 0.1 200);
-  --on-primary-container: oklch(0.95 0.03 197);
-  --secondary: oklch(0.82 0.16 165);
-  --secondary-foreground: oklch(0.18 0.03 200);
-  --secondary-fixed: oklch(0.86 0.13 168);
-  --muted: oklch(0.24 0.02 262);
-  --muted-foreground: oklch(0.72 0.018 258);
-  --accent: oklch(0.26 0.022 262);
-  --accent-foreground: oklch(0.96 0.005 250);
-  --destructive: oklch(0.68 0.19 22);
-  --destructive-foreground: oklch(0.98 0.01 250);
-  --error: oklch(0.72 0.17 25);
-  --border: oklch(1 0 0 / 10%);
-  --outline: oklch(1 0 0 / 18%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.86 0.16 197);
+  color-scheme: light;
+
+  --background: #ffffff;
+  --foreground: #000000;
+
+  --surface: #ffffff;
+  --on-surface: #000000;
+  --surface-variant: #f5f5f5;
+  --on-surface-variant: #5c5c5c;
+  --surface-container: #fafafa;
+
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+
+  /* Handling er svart. Gul er markør, ikke knapp. */
+  --primary: #000000;
+  --primary-foreground: #ffffff;
+  --primary-container: #ffed88;
+  --on-primary-container: #000000;
+
+  --secondary: #ffed88;
+  --secondary-foreground: #000000;
+  --secondary-fixed: #fff8d1;
+
+  --muted: #f5f5f5;
+  --muted-foreground: #5c5c5c;
+  --accent: #ffed88;
+  --accent-foreground: #000000;
+
+  /* Funksjonelle statusfarger. Designet er tofarget, men et dashboard må
+     kunne si «dette feilet» uten at brukeren må lese teksten først. Rødt
+     brukes kun til feil — aldri som dekor. */
+  --destructive: #d81e06;
+  --destructive-foreground: #ffffff;
+  --error: #d81e06;
+  --success: #000000;
+
+  --border: #000000;
+  --outline: #000000;
+  --input: #000000;
+  --ring: #000000;
 }
 
 @layer base {
-  * {
-    border-color: transparent;
+  *,
+  ::after,
+  ::before {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
+    background-color: var(--background);
+    color: var(--foreground);
     font-family: var(--font-body);
+  }
+
+  ::selection {
+    background: var(--color-sun);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
   }
 }
 
-@utility floating-card {
-  border-radius: var(--radius-2xl);
-  background: color-mix(in oklab, var(--surface) 92%, transparent);
-  box-shadow:
-    0 1px 0 0 oklch(1 0 0 / 5%) inset,
-    0 2px 8px -2px oklch(0 0 0 / 45%),
-    0 28px 70px -35px oklch(0 0 0 / 85%);
-  transition:
-    transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 0.4s ease;
+/* ---------------------------------------------------------------------------
+   Byggeklosser
+   ------------------------------------------------------------------------- */
+
+/* Kort. Figma: border 1,301 → 2 px, radius 7,806 → 12 px. Ingen skygge. */
+@utility ink-card {
+  background: var(--color-paper);
+  border: 2px solid var(--color-ink);
+  border-radius: 12px;
 }
 
-@utility primary-btn {
-  border-radius: 9999px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-weight: 600;
-  transition:
-    filter 0.25s ease,
-    transform 0.25s ease;
+/* Det store kortet: border 1,687 → 2,6 px, radius 10,123 → 16 px. */
+@utility ink-card-lg {
+  background: var(--color-paper);
+  border: 2.6px solid var(--color-ink);
+  border-radius: 16px;
 }
 
-@utility ghost-btn {
-  border-radius: 9999px;
+/* Prisekort: radius 11,059 → 18 px. */
+@utility ink-card-xl {
+  background: var(--color-paper);
+  border: 2px solid var(--color-ink);
+  border-radius: 18px;
+}
+
+/* Knapper er firkantede i hele designet — det er en bevisst kontrast mot de
+   rundede kortene, og gjør handlinger umulige å forveksle med innhold. */
+@utility btn-ink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-weight: 700;
+  border: 2px solid var(--color-ink);
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+@utility btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-weight: 700;
+  border: 2px solid var(--color-ink);
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+@utility btn-sun {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  background: var(--color-sun);
+  color: var(--color-ink);
+  font-weight: 700;
+  border: 2px solid var(--color-ink);
+  transition: background-color 0.18s ease;
+}
+
+@utility btn-quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
   background: transparent;
-  color: var(--on-surface);
-  font-weight: 600;
+  color: var(--color-ink);
+  font-weight: 400;
+  border: 2px solid transparent;
   transition:
-    background-color 0.25s ease,
-    color 0.25s ease;
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+/* Skjemafelt. Figma: nyhetsbrevfeltet er en ren firkant med 2 px ramme. */
+@utility field-ink {
+  border-radius: 0;
+  background: var(--color-paper);
+  border: 2px solid var(--color-ink);
+  color: var(--color-ink);
+  transition: background-color 0.18s ease;
+}
+
+/* Hårstrek — Figma bruker svart på 10 % som eneste skillelinje. */
+@utility hairline {
+  border: 0;
+  border-top: 1px solid var(--color-hair);
+}
+
+/* De store konturnumrene (#1 … #6). Figma: 56,002 → 86 px, fyll transparent
+   med svart kontur. */
+@utility numeral {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: transparent;
+  -webkit-text-stroke: 2.3px var(--color-ink);
+  paint-order: stroke fill;
+  line-height: 1;
+}
+
+/* Den gule håndtegnede understrekingen. Figma: 48,139 × 6,505 → 74 × 10 px. */
+@utility swoosh {
+  display: block;
+  width: 74px;
+  height: 10px;
+  background-image: url("/illustrations/swoosh.svg");
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
 }
 
 @layer components {
-  .floating-card:hover {
-    transform: translateY(-4px);
-    box-shadow:
-      0 1px 0 0 oklch(1 0 0 / 8%) inset,
-      0 4px 14px -2px oklch(0 0 0 / 50%),
-      0 40px 90px -40px oklch(0 0 0 / 90%);
+  .btn-ink:hover:not(:disabled) {
+    background: var(--color-paper);
+    color: var(--color-ink);
   }
 
-  .primary-btn:hover {
-    filter: brightness(1.08);
-    transform: translateY(-1px);
+  .btn-outline:hover:not(:disabled) {
+    background: var(--color-ink);
+    color: var(--color-paper);
   }
 
-  .ghost-btn:hover {
-    background-color: var(--surface-variant);
+  .btn-sun:hover:not(:disabled) {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+
+  .btn-quiet:hover:not(:disabled) {
+    background: var(--color-sun);
+  }
+
+  .field-ink:focus-within,
+  .field-ink:focus {
+    background: var(--color-sun-soft);
+  }
+
+  .btn-ink:disabled,
+  .btn-outline:disabled,
+  .btn-sun:disabled,
+  .btn-quiet:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 }
-
-/* Unlayered: Google's Material Symbols stylesheet is unlayered and would
-   otherwise beat Tailwind's layered font-size utilities. */
-.material-symbols-outlined { line-height: 1; }
-.icon-sm { font-size: 1rem; }
-.icon-lg { font-size: 2.25rem; }
-.icon-xl { font-size: 6rem; }

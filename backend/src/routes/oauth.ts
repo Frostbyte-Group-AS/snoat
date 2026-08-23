@@ -106,10 +106,10 @@ wellKnown.get("/oauth-protected-resource/api/mcp", (c) => c.json(protectedResour
  * `code_challenge_methods_supported: ["S256"]` sier at den er påkrevd – vi
  * støtter ikke `plain`.
  */
-wellKnown.get("/oauth-authorization-server", (c) => {
+function authorizationServerMetadata(c: Parameters<typeof publicApiUrl>[0]) {
   const base = publicApiUrl(c);
 
-  return c.json({
+  return {
     issuer: base,
     authorization_endpoint: `${base}/oauth/authorize`,
     token_endpoint: `${base}/oauth/token`,
@@ -122,8 +122,23 @@ wellKnown.get("/oauth-authorization-server", (c) => {
     token_endpoint_auth_methods_supported: ["none"],
     revocation_endpoint_auth_methods_supported: ["none"],
     service_documentation: `${dashboardUrl()}/settings/mcp`,
-  });
-});
+  };
+}
+
+wellKnown.get("/oauth-authorization-server", (c) => c.json(authorizationServerMetadata(c)));
+
+/**
+ * Samme dokument med ressursens sti hengt på.
+ *
+ * Vår `issuer` har ingen sti, så den korte formen over er den RFC 8414 krever.
+ * Men flere connector-klienter bygger oppslaget ved å sette inn *ressursens*
+ * sti – `/api/mcp` – i stedet for issuerens, og spør derfor her først. De skal
+ * ikke måtte falle tilbake: en klient som får 404 på sitt første oppslag rekker
+ * ofte å gi opp med «could not connect» før den prøver den korte formen.
+ */
+wellKnown.get("/oauth-authorization-server/api/mcp", (c) =>
+  c.json(authorizationServerMetadata(c)),
+);
 
 /**
  * Samme dokument på OpenID Connect sin sti.

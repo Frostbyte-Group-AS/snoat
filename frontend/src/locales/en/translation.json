@@ -3,16 +3,17 @@
     "features": "Features",
     "pricing": "Pricing",
     "security": "Security",
-    "my_projects": "My Projects",
-    "login": "Log in",
+    "my_projects": "My projects",
+    "login": "Sign in",
     "register": "Sign up",
-    "mcp": "AI connection"
+    "mcp": "AI connection",
+    "why": "Why Snoat"
   },
   "hero": {
-    "title": "Lightning-fast infrastructure for modern Web Apps",
-    "description": "Deploy your website in one click. 100% GDPR-compliant cloud platform built for speed and privacy.",
+    "title": "Norwegian infrastructure for modern web apps.",
+    "description": "Deploy in one click. Your code is built, run and stored in Norway — with no US cloud anywhere in the chain.",
     "cta_go_to_projects": "Go to your projects",
-    "cta_register": "Sign up",
+    "cta_register": "Start free today",
     "cta_security": "Read about security"
   },
   "features": {
@@ -35,12 +36,36 @@
     "backend": {
       "title": "Secure Infrastructure",
       "body": "Isolated and encrypted container architecture built for modern cybersecurity needs."
+    },
+    "deploy": {
+      "title": "Push to deploy",
+      "body": "Connect a GitHub repository once. Every push to the main branch builds automatically and goes live on your own subdomain."
+    },
+    "domains": {
+      "title": "Custom domains",
+      "body": "Point your domain at Snoat and Caddy issues a free Let's Encrypt certificate as soon as the DNS lookup answers."
+    },
+    "sovereignty": {
+      "title": "Data sovereignty",
+      "body": "All data stays in Norway. That keeps the GDPR assessment short, and gives you a European alternative to Vercel."
+    },
+    "analytics": {
+      "title": "Built-in analytics",
+      "body": "Traffic, bandwidth and response times come straight from the proxy logs. No tracking scripts, no third party counting for you."
+    },
+    "ai": {
+      "title": "AI connection",
+      "body": "Snoat is an MCP server. Connect Claude and let the assistant create projects, trigger deploys and read logs for you."
+    },
+    "scale": {
+      "title": "Plans that scale",
+      "body": "From a static portfolio to twenty running apps. Change plan when you need to, and the limits apply immediately."
     }
   },
   "pricing": {
-    "title": "Simple Pricing",
-    "free_price": "Free",
-    "per_month": "{{price}} / month",
+    "title": "Plans & pricing",
+    "free_price": "0",
+    "per_month": "per month",
     "unavailable": "We can't load the price list right now. Please try again shortly.",
     "vat_note_no": "All prices exclude VAT. Frostbyte Group AS invoices with Norwegian VAT.",
     "vat_note_eu": "All prices exclude VAT. Tax is calculated at checkout based on your country. Businesses with a valid VAT number are invoiced without VAT.",
@@ -55,10 +80,22 @@
     "business": {
       "title": "Business",
       "description": "Maximum performance, priority build queue and invoicing."
-    }
+    },
+    "cta": "Start free",
+    "cta_note": "No credit card required",
+    "limit_apps": "{{count}} app at a time",
+    "limit_apps_plural": "{{count}} apps at a time",
+    "limit_memory": "{{value}} memory per app",
+    "limit_cpu": "{{value}} vCPU per app",
+    "limit_build": "{{count}} build minutes per month",
+    "limit_queue": "Priority build queue",
+    "limit_static": "Unlimited static sites"
   },
   "footer": {
-    "copyright": "Snoat — built in Norway. Data stored in Norway. © {{year}}"
+    "copyright": "© {{year}} Snoat — Frostbyte Group AS. Built in Norway.",
+    "vision": "Snoat gives Norwegian teams a place to publish modern web apps without giving up control of their data. Built and operated in Norway by Frostbyte Group AS.",
+    "col_platform": "Platform",
+    "col_account": "Account"
   },
   "login": {
     "title_signin": "Log in",
@@ -376,21 +413,21 @@
     }
   },
   "mcp": {
-    "eyebrow": "Model Context Protocol",
+    "eyebrow": "Custom connector",
     "title": "Connect Claude to Snoat",
-    "intro": "Give Claude access to your Snoat account, and it can list your projects, deploy them, read build logs and help you debug — right in the conversation. No key and no install: copy the URL below and paste it into Claude.",
+    "intro": "Snoat is a hosted MCP server. Add it as a custom connector in Claude and the assistant can see your projects, deploy, read build logs and debug — right in the conversation. Nothing to install, no key to paste.",
     "url_label": "Connector URL",
     "url_copy": "Copy",
     "url_copied": "Copied!",
-    "step_open": "Open Claude and go to Settings → Connectors.",
-    "step_add": "Choose “Add custom connector”.",
-    "step_paste": "Paste the URL above and click “Add”.",
-    "step_approve": "Sign in to Snoat in the window that opens, then click “Approve”.",
-    "no_key_needed": "The connection covers your own account only. Claude never sees your password, and you can disconnect at any time.",
+    "step_open": "Open Claude → Settings → Connectors.",
+    "step_add": "Click “Add custom connector”.",
+    "step_paste": "Paste the URL above as the remote MCP server URL and click “Add”.",
+    "step_approve": "Sign in to Snoat in the window that opens, and click “Approve”.",
+    "no_key_needed": "The connector is your own: the URL is the same for everyone, but access only exists once you approve it, and the token is bound to your account. Claude never sees your password, and you can disconnect at any time.",
     "loading": "Loading…",
-    "connections_title": "Connected AI clients",
-    "connections_subtitle": "Clients that currently have access to your account.",
-    "connections_empty": "No clients connected yet. Follow the steps above to connect Claude.",
+    "connections_title": "Your connections",
+    "connections_subtitle": "The connectors that have access to your account right now.",
+    "connections_empty": "No connectors are linked yet. Follow the steps above to add the first one.",
     "connected_at": "Connected {{date}}",
     "last_used": "last used {{date}}",
     "never_used": "not used yet",
@@ -425,5 +462,49 @@
     "consent_login_action": "Sign in",
     "consent_invalid_title": "The request is missing or expired",
     "consent_invalid_body": "Start the connection again from your AI client. Requests expire after a while for security reasons."
+  },
+  "usp": {
+    "sovereignty": {
+      "title": "Run in Norway",
+      "body": "Code, data and logs live on hardware in Norway, operated by Frostbyte Group AS. No third-country transfers, no footnote in your privacy policy."
+    },
+    "speed": {
+      "title": "Built for speed",
+      "body": "Nixpacks builds your repository automatically and Caddy serves the result from the Nordics. Low latency where your users actually are."
+    },
+    "security": {
+      "title": "Secure from the start",
+      "body": "Anti-DDoS, automatic HTTPS and isolated containers are on from your first deploy. It is not an add-on you buy separately."
+    }
+  },
+  "secure": {
+    "title_line1": "Secure hosting that",
+    "title_line2": "grows with your business",
+    "body": "Every project runs in its own isolated container with its own resource ceiling, behind a proxy that handles TLS and traffic before it reaches your app. Certificates renew themselves, and both builds and runtime are logged so you can see exactly what happened. Need more capacity, and you change plan — not platform."
+  },
+  "features_section": {
+    "title": "What you get"
+  },
+  "why": {
+    "title": "Why Snoat",
+    "body": "Snoat is built by Frostbyte Group AS because there was nowhere to publish modern web apps without sending the data out of the country. The platform does what Vercel does — automatic builds, previews, custom domains and SSL — but on hardware we own and operate ourselves, in Norway.",
+    "fact1_value": "100%",
+    "fact1_label": "of data stored in Norway",
+    "fact2_value": "Nixpacks",
+    "fact2_label": "builds without a Dockerfile",
+    "fact3_value": "Automatic",
+    "fact3_label": "HTTPS on every domain",
+    "footnote": "Operated by Frostbyte Group AS"
+  },
+  "cta": {
+    "title_line1": "Ready to deploy on",
+    "title_line2": "Norwegian infrastructure?",
+    "placeholder": "Enter your email",
+    "button": "Get started"
+  },
+  "account": {
+    "menu_label": "Account menu",
+    "settings_title": "Settings",
+    "connector": "AI connection"
   }
 }

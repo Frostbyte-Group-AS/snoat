@@ -39,24 +39,27 @@ function AuthCallback() {
   }, [loading, user, navigate]);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 px-margin-mobile">
-      <SnoatLogo />
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-paper px-5">
+      <SnoatLogo size={36} className="text-ink" />
       {error ? (
-        <div className="floating-card max-w-md p-8 text-center">
-          <h1 className="mb-2 font-headline text-headline-md text-on-surface">
+        <div className="ink-card-lg max-w-[520px] px-[30px] py-[32px] text-center">
+          <h1 className="font-display text-[28px] font-bold leading-[1.15] text-ink">
             Innloggingen ble avbrutt
           </h1>
-          <p className="mb-6 font-body text-body-md text-on-surface-variant">{error}</p>
+          <span className="swoosh mx-auto mt-[6px]" aria-hidden="true" />
+          <p className="mt-[16px] font-body text-[17px] font-light leading-[1.5] text-ink">
+            {error}
+          </p>
           <button
             type="button"
             onClick={() => void navigate({ to: "/login" })}
-            className="primary-btn px-6 py-3 font-label text-label-md"
+            className="btn-ink mt-[24px] h-[52px] w-full font-display text-[16px]"
           >
             Prøv igjen
           </button>
         </div>
       ) : (
-        <p className="font-body text-body-md text-on-surface-variant">Logger deg inn…</p>
+        <p className="font-body text-[17px] font-light text-ink/70">Logger deg inn…</p>
       )}
     </div>
   );

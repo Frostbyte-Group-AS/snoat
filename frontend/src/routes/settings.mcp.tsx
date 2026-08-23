@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { DashboardNav } from "@/components/DashboardNav";
+
 import {
   createApiKey,
   disconnectMcpClient,
@@ -13,18 +13,23 @@ import {
   type ApiKeyItem,
   type McpConnection,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 
 /**
- * «AI-tilkobling» – kontoens MCP-innstillinger.
+ * «AI-tilkobling» – kontoens egen custom connector.
  *
- * Ligger under `/settings` og ikke inne i et prosjekt, som den gjorde før. Det
- * var misvisende: tilgangen gjelder hele kontoen, så en fane inne i «mittvel» ga
- * inntrykk av at Claude bare fikk se det ene prosjektet – og den samme fanen sto
- * dessuten identisk under hvert prosjekt.
+ * Snoat er en **hostet MCP-server**, og det er hele poenget med denne siden:
+ * kunden legger den til som en *custom connector* i Claude. Det finnes ingen
+ * pakke å installere, ingen JSON-fil å redigere og ingen lokal prosess som må
+ * kjøre – den forrige generasjonen (`mcp-server/`, en stdio-server distribuert
+ * som npm-pakke) er fjernet fra kodebasen.
  *
- * Siden har én hovedhandling: kopier én URL. Alt annet er sekundært, og
- * API-nøkler ligger sammenrullet nederst, for klienter som ikke støtter OAuth.
+ * Connectoren er **per bruker**. URL-en er den samme for alle, men tilgangen
+ * oppstår først når nettopp denne kontoen godkjenner den i samtykkeflyten, og
+ * tokenet som utstedes er bundet til brukeren. To personer som limer inn samme
+ * URL får hver sin connector, mot hver sin konto.
+ *
+ * Siden ligger under `/settings` og rendres inne i `routes/settings.tsx`, som
+ * eier rammen, overskriften og innloggingssjekken. Her står bare innholdet.
  */
 export const Route = createFileRoute("/settings/mcp")({
   head: () => ({
@@ -34,19 +39,12 @@ export const Route = createFileRoute("/settings/mcp")({
 });
 
 function McpSettingsPage() {
-  const { user, loading } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const connectorUrl = mcpConnectorUrl();
-
-  useEffect(() => {
-    if (!loading && !user) void navigate({ to: "/login" });
-  }, [loading, user, navigate]);
 
   const connections = useQuery({
     queryKey: ["mcp-connections"],
     queryFn: async () => (await fetchMcpConnections()).connections,
-    enabled: !!user,
   });
 
   const disconnect = useMutation({
@@ -55,21 +53,17 @@ function McpSettingsPage() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
-      <DashboardNav />
+    <div className="flex flex-col gap-[31px]">
+      <ConnectCard connectorUrl={connectorUrl} />
 
-      <main className="mx-auto flex max-w-container-max flex-col gap-8 px-margin-mobile py-10 md:px-gutter">
-        <ConnectCard connectorUrl={connectorUrl} />
+      <ConnectionsCard
+        connections={connections.data}
+        loading={connections.isLoading}
+        onDisconnect={(clientId) => disconnect.mutate(clientId)}
+        disconnecting={disconnect.isPending}
+      />
 
-        <ConnectionsCard
-          connections={connections.data}
-          loading={connections.isLoading}
-          onDisconnect={(clientId) => disconnect.mutate(clientId)}
-          disconnecting={disconnect.isPending}
-        />
-
-        <CommandLineCard connectorUrl={connectorUrl} />
-      </main>
+      <CommandLineCard connectorUrl={connectorUrl} />
     </div>
   );
 }
@@ -84,7 +78,7 @@ function CopyButton({
   value,
   label,
   copiedLabel,
-  className = "primary-btn",
+  className = "btn-ink",
 }: {
   value: string;
   label: string;
@@ -101,36 +95,31 @@ function CopyButton({
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className={`${className} flex flex-shrink-0 items-center gap-2 px-5 py-3 font-label text-label-md`}
+      className={`${className} flex-shrink-0 px-[20px] py-[12px] font-body text-[15px]`}
     >
-      <span className="material-symbols-outlined icon-sm">{copied ? "check" : "content_copy"}</span>
       {copied ? copiedLabel : label}
     </button>
   );
 }
 
-/** Hovedkortet: URL-en, og de fire trinnene i Claude. */
+/** Hovedkortet: URL-en, og trinnene i Claude. */
 function ConnectCard({ connectorUrl }: { connectorUrl: string }) {
   const { t } = useTranslation();
 
   const steps = [t("mcp.step_open"), t("mcp.step_add"), t("mcp.step_paste"), t("mcp.step_approve")];
 
   return (
-    <section className="flex flex-col gap-6 rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/10 via-surface-container to-background p-6 shadow-lg md:p-8">
+    <section className="ink-card-lg flex flex-col gap-6 px-[30px] py-[32px]">
       <div className="flex flex-col gap-2">
-        <span className="inline-flex w-fit items-center gap-2 rounded-full bg-primary/20 px-3 py-1 font-label text-label-sm font-semibold text-primary">
-          <span className="material-symbols-outlined icon-sm">smart_toy</span>
+        <span className="w-fit bg-sun px-[8px] py-[2px] font-body text-[12px] font-bold uppercase tracking-[0.1em] text-ink">
           {t("mcp.eyebrow")}
         </span>
-        <h1 className="font-display text-headline-md text-on-background">{t("mcp.title")}</h1>
-        <p className="max-w-2xl font-body text-body-md text-on-surface-variant">{t("mcp.intro")}</p>
+        <h2 className="font-display text-[28px] font-bold text-ink">{t("mcp.title")}</h2>
+        <p className="max-w-2xl font-body text-[16px] text-ink/70">{t("mcp.intro")}</p>
       </div>
 
       <div className="flex flex-col gap-3">
-        <label
-          htmlFor="connector-url"
-          className="font-label text-label-md font-semibold text-on-surface"
-        >
+        <label htmlFor="connector-url" className="font-body text-[15px] font-bold text-ink">
           {t("mcp.url_label")}
         </label>
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -140,7 +129,7 @@ function ConnectCard({ connectorUrl }: { connectorUrl: string }) {
             readOnly
             value={connectorUrl}
             onFocus={(event) => event.currentTarget.select()}
-            className="w-full rounded-xl border border-primary/40 bg-surface px-4 py-3 font-mono text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="field-ink w-full px-[14px] py-[12px] font-mono text-[15px] outline-none"
           />
           <CopyButton
             value={connectorUrl}
@@ -153,15 +142,20 @@ function ConnectCard({ connectorUrl }: { connectorUrl: string }) {
       <ol className="flex flex-col gap-4">
         {steps.map((step, index) => (
           <li key={step} className="flex items-start gap-4">
-            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/20 font-label text-label-md font-semibold text-primary">
+            <span
+              aria-hidden="true"
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center bg-ink font-body text-[14px] font-bold text-paper"
+            >
               {index + 1}
             </span>
-            <span className="pt-0.5 font-body text-body-md text-on-surface">{step}</span>
+            <span className="pt-0.5 font-body text-[16px] text-ink">{step}</span>
           </li>
         ))}
       </ol>
 
-      <p className="font-body text-body-sm text-on-surface-variant">{t("mcp.no_key_needed")}</p>
+      <p className="border-2 border-hair px-[16px] py-[12px] font-body text-[14px] text-ink/70">
+        {t("mcp.no_key_needed")}
+      </p>
     </section>
   );
 }
@@ -187,35 +181,30 @@ function ConnectionsCard({
     });
 
   return (
-    <section className="flex flex-col gap-5 rounded-3xl border border-surface-variant/30 bg-surface-container p-6 md:p-8">
+    <section className="ink-card flex flex-col gap-5 px-[30px] py-[28px]">
       <div className="flex flex-col gap-1">
-        <h2 className="font-display text-title-lg text-on-background">
+        <h2 className="font-display text-[22px] font-bold text-ink">
           {t("mcp.connections_title")}
         </h2>
-        <p className="font-body text-body-sm text-on-surface-variant">
-          {t("mcp.connections_subtitle")}
-        </p>
+        <p className="font-body text-[14px] text-ink/70">{t("mcp.connections_subtitle")}</p>
       </div>
 
       {loading ? (
-        <p className="font-body text-body-md text-on-surface-variant">{t("mcp.loading")}</p>
+        <p className="font-body text-[16px] text-ink/70">{t("mcp.loading")}</p>
       ) : !connections || connections.length === 0 ? (
-        <p className="font-body text-body-md italic text-on-surface-variant/70">
-          {t("mcp.connections_empty")}
-        </p>
+        <p className="font-body text-[16px] italic text-ink/60">{t("mcp.connections_empty")}</p>
       ) : (
-        <ul className="divide-y divide-surface-variant/20 border-y border-surface-variant/20">
+        <ul className="divide-y divide-hair border-y border-hair">
           {connections.map((connection) => (
             <li
               key={connection.clientId}
               className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center"
             >
               <div className="flex flex-col gap-1">
-                <span className="flex items-center gap-2 font-label text-label-lg font-semibold text-on-surface">
-                  <span className="material-symbols-outlined icon-sm text-primary">link</span>
+                <span className="font-body text-[17px] font-bold text-ink">
                   {connection.clientName}
                 </span>
-                <span className="font-body text-body-xs text-on-surface-variant">
+                <span className="font-body text-[13px] text-ink/70">
                   {t("mcp.connected_at", { date: formatDate(connection.connectedAt) })}
                   {" · "}
                   {connection.lastUsedAt
@@ -232,7 +221,7 @@ function ConnectionsCard({
                   }
                 }}
                 disabled={disconnecting}
-                className="ghost-btn self-start px-4 py-2.5 font-label text-label-md text-error disabled:opacity-60 sm:self-auto"
+                className="btn-outline self-start border-error px-[16px] py-[10px] font-body text-[15px] text-error hover:bg-error hover:text-paper sm:self-auto"
               >
                 {t("mcp.disconnect")}
               </button>
@@ -279,39 +268,35 @@ function CommandLineCard({ connectorUrl }: { connectorUrl: string }) {
   const claudeCodeCommand = `claude mcp add --transport http snoat ${connectorUrl}`;
 
   return (
-    <details className="group rounded-3xl border border-surface-variant/30 bg-surface-container p-6 md:p-8">
+    <details className="group ink-card px-[30px] py-[28px]">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className="font-display text-title-lg text-on-background">
-            {t("mcp.advanced_title")}
-          </h2>
-          <p className="font-body text-body-sm text-on-surface-variant">
-            {t("mcp.advanced_subtitle")}
-          </p>
+          <h2 className="font-display text-[22px] font-bold text-ink">{t("mcp.advanced_title")}</h2>
+          <p className="font-body text-[14px] text-ink/70">{t("mcp.advanced_subtitle")}</p>
         </div>
-        <span className="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">
-          expand_more
+        <span
+          aria-hidden="true"
+          className="flex h-[28px] w-[28px] shrink-0 items-center justify-center border-2 border-ink font-body text-[18px] font-bold leading-none text-ink"
+        >
+          <span className="group-open:hidden">+</span>
+          <span className="hidden group-open:inline">–</span>
         </span>
       </summary>
 
       <div className="mt-6 flex flex-col gap-8">
         {/* Claude Code klarer OAuth selv – der trengs ingen nøkkel. */}
         <div className="flex flex-col gap-3">
-          <h3 className="font-label text-label-lg font-semibold text-on-surface">
-            {t("mcp.claude_code_title")}
-          </h3>
-          <p className="font-body text-body-sm text-on-surface-variant">
-            {t("mcp.claude_code_body")}
-          </p>
+          <h3 className="font-body text-[16px] font-bold text-ink">{t("mcp.claude_code_title")}</h3>
+          <p className="font-body text-[14px] text-ink/70">{t("mcp.claude_code_body")}</p>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <code className="w-full overflow-x-auto rounded-xl border border-surface-variant/40 bg-surface px-4 py-3 font-mono text-body-sm text-on-surface">
+            <code className="w-full overflow-x-auto border-2 border-hair px-[14px] py-[12px] font-mono text-[14px] text-ink">
               {claudeCodeCommand}
             </code>
             <CopyButton
               value={claudeCodeCommand}
               label={t("mcp.url_copy")}
               copiedLabel={t("mcp.url_copied")}
-              className="secondary-btn"
+              className="btn-outline"
             />
           </div>
         </div>
@@ -320,62 +305,56 @@ function CommandLineCard({ connectorUrl }: { connectorUrl: string }) {
         <div className="flex flex-col gap-4">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div className="flex flex-col gap-1">
-              <h3 className="font-label text-label-lg font-semibold text-on-surface">
-                {t("mcp.keys_title")}
-              </h3>
-              <p className="max-w-xl font-body text-body-sm text-on-surface-variant">
-                {t("mcp.keys_body")}
-              </p>
+              <h3 className="font-body text-[16px] font-bold text-ink">{t("mcp.keys_title")}</h3>
+              <p className="max-w-xl font-body text-[14px] text-ink/70">{t("mcp.keys_body")}</p>
             </div>
             <button
               type="button"
               onClick={() => create.mutate()}
               disabled={create.isPending}
-              className="secondary-btn flex-shrink-0 px-5 py-3 font-label text-label-md disabled:opacity-60"
+              className="btn-outline flex-shrink-0 px-[20px] py-[12px] font-body text-[15px]"
             >
               {create.isPending ? t("mcp.keys_creating") : t("mcp.keys_create")}
             </button>
           </div>
 
           {newKey && (
-            <div className="flex flex-col gap-3 rounded-2xl border border-primary bg-primary/10 p-5">
-              <p className="font-body text-body-sm text-on-surface">{t("mcp.keys_once_warning")}</p>
+            <div className="flex flex-col gap-3 border-2 border-ink bg-sun px-[18px] py-[16px]">
+              <p className="font-body text-[14px] font-bold text-ink">
+                {t("mcp.keys_once_warning")}
+              </p>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <input
                   type="text"
                   readOnly
                   value={newKey}
                   onFocus={(event) => event.currentTarget.select()}
-                  className="w-full rounded-xl border border-primary/40 bg-surface px-4 py-3 font-mono text-body-sm text-on-surface focus:outline-none"
+                  className="field-ink w-full px-[14px] py-[12px] font-mono text-[14px] outline-none"
                 />
                 <CopyButton
                   value={newKey}
                   label={t("mcp.url_copy")}
                   copiedLabel={t("mcp.url_copied")}
-                  className="secondary-btn"
+                  className="btn-ink"
                 />
               </div>
             </div>
           )}
 
           {keys.isLoading ? (
-            <p className="font-body text-body-sm text-on-surface-variant">{t("mcp.loading")}</p>
+            <p className="font-body text-[14px] text-ink/70">{t("mcp.loading")}</p>
           ) : !keys.data || keys.data.length === 0 ? (
-            <p className="font-body text-body-sm italic text-on-surface-variant/70">
-              {t("mcp.keys_empty")}
-            </p>
+            <p className="font-body text-[14px] italic text-ink/60">{t("mcp.keys_empty")}</p>
           ) : (
-            <ul className="divide-y divide-surface-variant/20 border-y border-surface-variant/20">
+            <ul className="divide-y divide-hair border-y border-hair">
               {keys.data.map((key: ApiKeyItem) => (
                 <li
                   key={key.id}
                   className="flex flex-col justify-between gap-2 py-3 sm:flex-row sm:items-center"
                 >
                   <div className="flex flex-col gap-0.5">
-                    <span className="font-label text-label-md text-on-surface">{key.name}</span>
-                    <span className="font-mono text-body-xs text-on-surface-variant">
-                      {key.token_prefix}…
-                    </span>
+                    <span className="font-body text-[15px] text-ink">{key.name}</span>
+                    <span className="font-mono text-[13px] text-ink/70">{key.token_prefix}…</span>
                   </div>
                   <button
                     type="button"
@@ -383,7 +362,7 @@ function CommandLineCard({ connectorUrl }: { connectorUrl: string }) {
                       if (confirm(t("mcp.keys_revoke_confirm"))) revoke.mutate(key.id);
                     }}
                     disabled={revoke.isPending}
-                    className="ghost-btn self-start px-4 py-2 font-label text-label-md text-error disabled:opacity-60 sm:self-auto"
+                    className="btn-outline self-start border-error px-[16px] py-[8px] font-body text-[15px] text-error hover:bg-error hover:text-paper sm:self-auto"
                   >
                     {t("mcp.keys_revoke")}
                   </button>

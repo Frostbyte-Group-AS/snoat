@@ -7,10 +7,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 export const Route = createFileRoute("/reset-password")({
   head: () => ({
-    meta: [
-      { title: "Nytt passord — Snoat" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "Nytt passord — Snoat" }, { name: "robots", content: "noindex" }],
   }),
   component: ResetPasswordPage,
 });
@@ -94,51 +91,49 @@ function ResetPasswordPage() {
   const invalidLink = linkError !== null || (!settling && !user);
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-x-hidden">
-      <div className="pointer-events-none absolute inset-0 z-[-1] flex items-start justify-center opacity-20">
-        <div className="mt-[-200px] h-[700px] w-[700px] rounded-full bg-primary blur-[150px] mix-blend-screen" />
-      </div>
-
-      <header className="mx-auto w-full max-w-container-max flex items-center justify-between px-margin-mobile py-6 md:px-gutter">
-        <Link to="/" className="inline-flex">
-          <SnoatLogo />
+    <div className="flex min-h-screen flex-col bg-paper">
+      <header className="mx-auto flex w-full max-w-[1334px] items-center justify-between px-5 py-6 lg:px-0 lg:pt-[48px]">
+        <Link to="/" className="inline-flex text-ink" aria-label="Snoat">
+          <SnoatLogo size={36} />
         </Link>
         <LanguageSwitcher />
       </header>
 
-      <main className="flex flex-grow items-center justify-center px-margin-mobile py-stack-lg">
-        <div className="floating-card w-full max-w-md p-8 md:p-10">
+      <main className="flex flex-grow items-center justify-center px-5 py-12">
+        <div className="ink-card-lg w-full max-w-[520px] px-[30px] py-[32px]">
           {settling ? (
-            <p className="text-center font-body text-body-md text-on-surface-variant">
+            <p className="text-center font-body text-[17px] font-light text-ink/70">
               {t("login.loading")}
             </p>
           ) : invalidLink ? (
             <>
-              <h1 className="mb-2 font-headline text-headline-lg text-on-surface text-center">
+              <h1 className="text-center font-display text-[32px] font-bold leading-[1.15] text-ink">
                 {t("reset.invalid_title")}
               </h1>
-              <p className="mb-stack-md font-body text-body-md text-on-surface-variant text-center">
+              <span className="swoosh mx-auto mt-[6px]" aria-hidden="true" />
+              <p className="mt-[16px] text-center font-body text-[17px] font-light leading-[1.5] text-ink">
                 {t("reset.invalid_desc")}
               </p>
               <Link
                 to="/forgot-password"
-                className="primary-btn block w-full py-3.5 text-center font-label text-label-md"
+                className="btn-ink mt-[24px] h-[52px] w-full font-display text-[16px]"
               >
                 {t("reset.btn_request_new")}
               </Link>
             </>
           ) : (
             <>
-              <h1 className="mb-2 font-headline text-headline-lg text-on-surface text-center">
+              <h1 className="text-center font-display text-[32px] font-bold leading-[1.15] text-ink">
                 {t("reset.title")}
               </h1>
-              <p className="mb-stack-md font-body text-body-md text-on-surface-variant text-center">
+              <span className="swoosh mx-auto mt-[6px]" aria-hidden="true" />
+              <p className="mt-[16px] text-center font-body text-[17px] font-light leading-[1.5] text-ink">
                 {t("reset.desc", { email: user?.email ?? "" })}
               </p>
 
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                <label className="flex flex-col gap-2">
-                  <span className="font-label text-label-md text-on-surface-variant">
+              <form onSubmit={handleSubmit} className="mt-[26px] flex flex-col gap-[16px]">
+                <label className="flex flex-col gap-[8px]">
+                  <span className="font-body text-[15px] font-normal text-ink">
                     {t("reset.new_password_label")}
                   </span>
                   <input
@@ -148,12 +143,12 @@ function ResetPasswordPage() {
                     required
                     minLength={8}
                     autoComplete="new-password"
-                    className="rounded-xl bg-surface-container px-4 py-3 font-body text-body-md text-on-surface outline-none ring-primary/60 focus:ring-2"
+                    className="field-ink h-[52px] px-[16px] font-body text-[17px] font-normal outline-none"
                   />
                 </label>
 
-                <label className="flex flex-col gap-2">
-                  <span className="font-label text-label-md text-on-surface-variant">
+                <label className="flex flex-col gap-[8px]">
+                  <span className="font-body text-[15px] font-normal text-ink">
                     {t("login.confirm_password_label")}
                   </span>
                   <input
@@ -163,12 +158,15 @@ function ResetPasswordPage() {
                     required
                     minLength={8}
                     autoComplete="new-password"
-                    className="rounded-xl bg-surface-container px-4 py-3 font-body text-body-md text-on-surface outline-none ring-primary/60 focus:ring-2"
+                    className="field-ink h-[52px] px-[16px] font-body text-[17px] font-normal outline-none"
                   />
                 </label>
 
                 {error && (
-                  <p role="alert" className="font-body text-body-md text-error text-center">
+                  <p
+                    role="alert"
+                    className="border-2 border-error px-[14px] py-[10px] text-center font-body text-[15px] font-normal text-error"
+                  >
                     {error}
                   </p>
                 )}
@@ -176,7 +174,7 @@ function ResetPasswordPage() {
                 <button
                   type="submit"
                   disabled={pending}
-                  className="primary-btn mt-2 w-full py-3.5 font-label text-label-md disabled:opacity-50"
+                  className="btn-ink mt-[4px] h-[52px] w-full font-display text-[17px]"
                 >
                   {pending ? t("login.loading") : t("reset.btn_save")}
                 </button>
