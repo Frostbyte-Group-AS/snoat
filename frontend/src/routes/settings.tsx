@@ -29,7 +29,7 @@ function SettingsLayout() {
   }, [loading, user, navigate]);
 
   const tabClass =
-    "block border-2 border-ink px-[16px] py-[11px] font-body text-[15px] text-ink transition-colors hover:bg-sun";
+    "block border-2 border-line px-[16px] py-[11px] font-body text-[15px] text-ink transition-colors hover:bg-sun";
   const activeTabClass = "bg-ink font-bold text-paper hover:bg-ink";
 
   if (loading || !user) {
@@ -46,16 +46,16 @@ function SettingsLayout() {
 
       <main className="mx-auto w-full max-w-[1334px] flex-grow px-5 py-[48px] lg:px-0">
         <div className="mb-[36px]">
-          <h1 className="font-display text-[36px] font-bold leading-[1.15] text-ink lg:text-[45px]">
+          <h1 className="anim-rise font-display text-[36px] font-bold leading-[1.15] text-ink lg:text-[45px]">
             {t("account.settings_title")}
           </h1>
-          <span className="swoosh mt-[8px]" aria-hidden="true" />
+          <span className="swoosh anim-draw mt-[8px]" aria-hidden="true" />
         </div>
 
         <div className="flex flex-col gap-[31px] lg:flex-row">
           {/* Sidemenyen er en liste med lenker, ikke faner: hver side har sin
               egen URL, slik at den kan bokmerkes og lenkes til fra e-post. */}
-          <nav className="flex shrink-0 flex-col gap-[10px] lg:w-[240px]">
+          <nav className="stagger flex shrink-0 flex-col gap-[10px] lg:w-[240px]">
             <Link
               to="/settings/mcp"
               className={tabClass}

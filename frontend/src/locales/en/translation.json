@@ -10,28 +10,28 @@
     "why": "Why Snoat"
   },
   "hero": {
-    "title": "Norwegian infrastructure for modern web apps.",
-    "description": "Deploy in one click. Your code is built, run and stored in Norway — with no US cloud anywhere in the chain.",
+    "title": "1-click web app hosting on European infrastructure.",
+    "description": "Deploy directly from GitHub in seconds. Builds, runtime, and data in Europe — 100% GDPR-compliant with zero US cloud dependencies.",
     "cta_go_to_projects": "Go to your projects",
-    "cta_register": "Start free today",
+    "cta_register": "Start free in 1 click",
     "cta_security": "Read about security"
   },
   "features": {
     "data_sovereignty": {
       "title": "Data Sovereignty",
-      "body": "All data stays in Europe. 100% GDPR-compliant. The perfect European Vercel alternative for privacy-focused teams."
+      "body": "All data stays in Europe. 100% GDPR-compliant. The perfect alternative for privacy-focused teams."
     },
     "performance": {
       "title": "Lightning Fast",
-      "body": "Optimized edge servers and aggressive caching provide unbeatable global latency."
+      "body": "Optimized edge servers and caching provide unbeatable response times."
     },
     "security": {
       "title": "Security First",
-      "body": "Enterprise-grade DDoS protection and automated vulnerability analysis built-in."
+      "body": "DDoS protection, isolated containers, and automatic HTTPS built-in."
     },
     "dx": {
       "title": "Developer Experience",
-      "body": "Seamless GitHub integration, instant previews, and out-of-the-box Next.js support."
+      "body": "Seamless GitHub integration, instant previews, and automated builds."
     },
     "backend": {
       "title": "Secure Infrastructure",
@@ -39,27 +39,27 @@
     },
     "deploy": {
       "title": "Push to deploy",
-      "body": "Connect a GitHub repository once. Every push to the main branch builds automatically and goes live on your own subdomain."
+      "body": "Connect GitHub once. Every push automatically builds and deploys in seconds."
     },
     "domains": {
       "title": "Custom domains",
-      "body": "Point your domain at Snoat and Caddy issues a free Let's Encrypt certificate as soon as the DNS lookup answers."
+      "body": "Point your domain to Snoat. Free SSL certificates are issued and renewed automatically."
     },
     "sovereignty": {
       "title": "Data sovereignty",
-      "body": "All data stays in Norway. That keeps the GDPR assessment short, and gives you a European alternative to Vercel."
+      "body": "All data stays in Europe. Full control, zero third-country transfers, and 100% GDPR compliance."
     },
     "analytics": {
       "title": "Built-in analytics",
-      "body": "Traffic, bandwidth and response times come straight from the proxy logs. No tracking scripts, no third party counting for you."
+      "body": "Track traffic and response times in real time directly from the proxy — cookie-free and private."
     },
     "ai": {
-      "title": "AI connection",
-      "body": "Snoat is an MCP server. Connect Claude and let the assistant create projects, trigger deploys and read logs for you."
+      "title": "AI & MCP ready",
+      "body": "Manage projects, deploys, and logs directly from Claude or Cursor via Snoat MCP."
     },
     "scale": {
-      "title": "Plans that scale",
-      "body": "From a static portfolio to twenty running apps. Change plan when you need to, and the limits apply immediately."
+      "title": "Instant scaling",
+      "body": "From simple websites to demanding web apps. Upgrade resources instantly with one click."
     }
   },
   "pricing": {
@@ -92,8 +92,8 @@
     "limit_static": "Unlimited static sites"
   },
   "footer": {
-    "copyright": "© {{year}} Snoat — Frostbyte Group AS. Built in Norway.",
-    "vision": "Snoat gives Norwegian teams a place to publish modern web apps without giving up control of their data. Built and operated in Norway by Frostbyte Group AS.",
+    "copyright": "© {{year}} Snoat — Frostbyte Group AS. Built in Europe.",
+    "vision": "1-click web app hosting on European infrastructure. Built and operated by Frostbyte Group AS.",
     "col_platform": "Platform",
     "col_account": "Account"
   },
@@ -478,42 +478,42 @@
   },
   "usp": {
     "sovereignty": {
-      "title": "Run in Norway",
-      "body": "Code, data and logs live on hardware in Norway, operated by Frostbyte Group AS. No third-country transfers, no footnote in your privacy policy."
+      "title": "European infrastructure",
+      "body": "All code, builds and data stay in Europe. Full sovereignty and 100% GDPR compliance."
     },
     "speed": {
-      "title": "Built for speed",
-      "body": "Nixpacks builds your repository automatically and Caddy serves the result from the Nordics. Low latency where your users actually are."
+      "title": "1-click deploy",
+      "body": "Push to GitHub — we automatically build and go live in seconds with ultra-low latency."
     },
     "security": {
-      "title": "Secure from the start",
-      "body": "Anti-DDoS, automatic HTTPS and isolated containers are on from your first deploy. It is not an add-on you buy separately."
+      "title": "All-inclusive security",
+      "body": "Automatic SSL, DDoS protection, and isolated containers are included from day one."
     }
   },
   "secure": {
-    "title_line1": "Secure hosting that",
-    "title_line2": "grows with your business",
-    "body": "Every project runs in its own isolated container with its own resource ceiling, behind a proxy that handles TLS and traffic before it reaches your app. Certificates renew themselves, and both builds and runtime are logged so you can see exactly what happened. Need more capacity, and you change plan — not platform."
+    "title_line1": "Isolated, secure, and",
+    "title_line2": "ready to scale",
+    "body": "Every project runs in its own isolated container with dedicated resources and automatic HTTPS. Scale up with one click as traffic grows — zero downtime, no platform migration."
   },
   "features_section": {
     "title": "What you get"
   },
   "why": {
-    "title": "Why Snoat",
-    "body": "Snoat is built by Frostbyte Group AS because there was nowhere to publish modern web apps without sending the data out of the country. The platform does what Vercel does — automatic builds, previews, custom domains and SSL — but on hardware we own and operate ourselves, in Norway.",
+    "title": "Why choose Snoat?",
+    "body": "Everything you love about Vercel — instant builds, automated deploys, and custom domains — on European infrastructure with complete data privacy.",
     "fact1_value": "100%",
-    "fact1_label": "of data stored in Norway",
-    "fact2_value": "Nixpacks",
-    "fact2_label": "builds without a Dockerfile",
-    "fact3_value": "Automatic",
-    "fact3_label": "HTTPS on every domain",
+    "fact1_label": "European storage & hosting",
+    "fact2_value": "1 Click",
+    "fact2_label": "From GitHub to production",
+    "fact3_value": "Auto-SSL",
+    "fact3_label": "Free HTTPS on every domain",
     "footnote": "Operated by Frostbyte Group AS"
   },
   "cta": {
-    "title_line1": "Ready to deploy on",
-    "title_line2": "Norwegian infrastructure?",
+    "title_line1": "Ready for 1-click hosting",
+    "title_line2": "on European infrastructure?",
     "placeholder": "Enter your email",
-    "button": "Get started"
+    "button": "Start free"
   },
   "account": {
     "menu_label": "Account menu",

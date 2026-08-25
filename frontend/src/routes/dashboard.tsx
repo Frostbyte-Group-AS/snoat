@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { BranchPicker } from "@/components/BranchPicker";
 import { DashboardNav } from "@/components/DashboardNav";
@@ -90,43 +90,73 @@ function DashboardPage() {
       <main className="mx-auto w-full max-w-[1334px] flex-grow px-5 py-[48px] lg:px-0">
         <div className="mb-[36px] flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="font-display text-[36px] font-bold leading-[1.15] text-ink lg:text-[45px]">
+            <h1 className="anim-rise font-display text-[36px] font-bold leading-[1.15] text-ink lg:text-[45px]">
               {t("dashboard.title")}
             </h1>
-            <span className="swoosh mt-[8px]" aria-hidden="true" />
+            {/* Håndstreken tegner seg selv fra venstre etter at overskriften har
+                landet, akkurat som om den ble strøket under for hånd. */}
+            <span className="swoosh anim-draw mt-[8px]" aria-hidden="true" />
           </div>
           <button
             type="button"
             onClick={() => setCreating(true)}
-            className="btn-ink h-[48px] px-[26px] font-display text-[16px]"
+            className="btn-ink anim-rise [--anim-delay:80ms] h-[48px] px-[26px] font-display text-[16px]"
           >
             {t("dashboard.new_project")}
           </button>
         </div>
 
-        {githubNotice && (
-          <div
-            role="status"
-            className="mb-[36px] flex items-center justify-between gap-4 border-2 border-ink bg-sun px-[18px] py-[14px] duration-300 animate-in fade-in-50 slide-in-from-top-2"
-          >
-            <p className="font-body text-[16px] font-normal text-ink">{githubNotice}</p>
-            <button
-              type="button"
-              onClick={() => setGithubNotice(null)}
-              aria-label={t("dashboard.close_notice")}
-              className="shrink-0 font-body text-[15px] font-bold text-ink underline-offset-[4px] hover:underline"
+        {/* Varselet folder seg ut og igjen. Lå det i en `&&`, forsvant hele
+            raden i ett hopp når man lukket den, og rutenettet under sprang opp. */}
+        <div
+          className="collapse-grid"
+          data-open={githubNotice ? "true" : "false"}
+          inert={!githubNotice}
+        >
+          <div>
+            <div
+              role="status"
+              className="mb-[36px] flex items-center justify-between gap-4 border-2 border-line bg-sun px-[18px] py-[14px]"
             >
-              {t("dashboard.close_notice")}
-            </button>
+              <p className="font-body text-[16px] font-normal text-ink">{githubNotice}</p>
+              <button
+                type="button"
+                onClick={() => setGithubNotice(null)}
+                aria-label={t("dashboard.close_notice")}
+                className="shrink-0 font-body text-[15px] font-bold text-ink underline-offset-[4px] hover:underline"
+              >
+                {t("dashboard.close_notice")}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Skjelettkort i rutenettets egen form, ikke «Laster …» på en tom side.
+            Da hopper ikke layouten når prosjektene kommer inn. */}
+        {projects.isLoading && (
+          <div className="grid grid-cols-1 gap-[31px] md:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                aria-hidden="true"
+                className="ink-card anim-fade flex min-w-0 flex-col gap-[14px] px-[23px] py-[25px]"
+                style={{ "--anim-delay": `${i * 80}ms` } as CSSProperties}
+              >
+                <div className="skeleton h-6 w-1/2" />
+                <div className="skeleton h-4 w-3/4" />
+                <hr className="hairline" />
+                <div className="mt-auto flex items-center justify-between gap-3">
+                  <div className="skeleton h-4 w-1/3" />
+                  <div className="skeleton h-[38px] w-[96px]" />
+                </div>
+              </div>
+            ))}
+            <span className="sr-only">{t("dashboard.loading")}</span>
           </div>
         )}
 
-        {projects.isLoading && (
-          <p className="font-body text-[17px] font-light text-ink/70">{t("dashboard.loading")}</p>
-        )}
-
         {projects.isError && (
-          <div className="ink-card-lg px-[30px] py-[32px]">
+          <div className="ink-card-lg anim-rise px-[30px] py-[32px]">
             <h2 className="font-display text-[24px] font-bold text-ink">
               {t("dashboard.error_title")}
             </h2>
@@ -141,7 +171,7 @@ function DashboardPage() {
         )}
 
         {projects.isSuccess && projects.data.length > 0 && (
-          <div className="grid grid-cols-1 gap-[31px] md:grid-cols-2 lg:grid-cols-3">
+          <div className="stagger grid grid-cols-1 gap-[31px] md:grid-cols-2 lg:grid-cols-3">
             {projects.data.map((project) => (
               <ProjectCard key={project.id} project={project} />
             ))}
@@ -157,11 +187,11 @@ function DashboardPage() {
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   const { t } = useTranslation();
   return (
-    <div className="ink-card-lg flex flex-col items-center px-[30px] py-[64px] text-center">
+    <div className="ink-card-lg anim-rise flex flex-col items-center px-[30px] py-[64px] text-center">
       <p className="numeral text-[86px]" aria-hidden="true">
         #1
       </p>
-      <span className="swoosh mt-[6px]" aria-hidden="true" />
+      <span className="swoosh anim-draw mt-[6px]" aria-hidden="true" />
       <h2 className="mt-[18px] font-display text-[28px] font-bold text-ink">
         {t("dashboard.empty_title")}
       </h2>
@@ -225,7 +255,7 @@ function ProjectFavicon({
     <img
       src={imgSrc}
       alt=""
-      className="h-6 w-6 shrink-0 border-2 border-ink object-contain"
+      className="h-6 w-6 shrink-0 border-2 border-line object-contain"
       onError={handleNextFallback}
     />
   );
@@ -274,7 +304,7 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
           params: { projectId: project.id },
         });
       }}
-      className="ink-card flex min-w-0 cursor-pointer flex-col gap-[14px] px-[23px] py-[25px] transition-colors hover:bg-sun-soft"
+      className="ink-card lift flex min-w-0 cursor-pointer flex-col gap-[14px] px-[23px] py-[25px] hover:bg-sun-soft"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-[10px]">
@@ -389,7 +419,7 @@ function RepoPicker({
   const { t } = useTranslation();
   if (!status?.connected) {
     return (
-      <div className="border-2 border-ink px-[18px] py-[20px] text-center">
+      <div className="border-2 border-line px-[18px] py-[20px] text-center">
         <p className="mb-[16px] font-body text-[16px] font-light leading-[1.5] text-ink">
           {t("dashboard.new_project_modal.connect_github_prompt")}
         </p>
@@ -413,7 +443,7 @@ function RepoPicker({
         className="field-ink h-[46px] px-[14px] font-body text-[16px] font-normal outline-none placeholder:text-ink/40"
       />
 
-      <div className="max-h-56 overflow-y-auto border-2 border-ink">
+      <div className="max-h-56 overflow-y-auto border-2 border-line">
         {isLoading && (
           <p className="px-[14px] py-[14px] font-body text-[16px] font-light text-ink/70">
             {t("dashboard.new_project_modal.loading_repos")}
@@ -447,13 +477,13 @@ function RepoPicker({
               type="button"
               onClick={() => onSelect(repo)}
               aria-pressed={selected}
-              className={`flex w-full items-center justify-between gap-3 border-b border-hair px-[14px] py-[11px] text-left transition-colors last:border-b-0 ${
+              className={`anim-slide-in flex w-full items-center justify-between gap-3 border-b border-hair px-[14px] py-[11px] text-left last:border-b-0 ${
                 selected ? "bg-sun" : "hover:bg-sun-soft"
               }`}
             >
               <span className="truncate font-mono text-[14px] text-ink">{repo.fullName}</span>
               {repo.private && (
-                <span className="shrink-0 border border-ink px-[6px] py-[1px] font-body text-[11px] uppercase tracking-[0.08em] text-ink">
+                <span className="shrink-0 border border-line px-[6px] py-[1px] font-body text-[11px] uppercase tracking-[0.08em] text-ink">
                   {t("dashboard.new_project_modal.private")}
                 </span>
               )}
@@ -532,20 +562,20 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-5 duration-200 animate-in fade-in-0"
+      className="anim-fade fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-5"
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-project-title"
       onClick={onClose}
     >
       <div
-        className="ink-card-lg w-full max-w-[560px] px-[30px] py-[32px] duration-250 animate-in fade-in-0 slide-in-from-bottom-2 zoom-in-95"
+        className="ink-card-lg anim-pop w-full max-w-[560px] px-[30px] py-[32px]"
         onClick={(event) => event.stopPropagation()}
       >
         <h2 id="new-project-title" className="font-display text-[28px] font-bold text-ink">
           {t("dashboard.new_project_modal.title")}
         </h2>
-        <span className="swoosh mt-[6px]" aria-hidden="true" />
+        <span className="swoosh anim-draw mt-[6px]" aria-hidden="true" />
         <p className="mt-[14px] font-body text-[16px] font-light leading-[1.5] text-ink">
           {t("dashboard.new_project_modal.desc")}
         </p>

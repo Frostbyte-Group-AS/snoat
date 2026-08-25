@@ -19,10 +19,14 @@ export function DashboardNav() {
   const { t } = useTranslation();
 
   return (
-    <header className="sticky top-0 z-50 border-b-2 border-ink bg-paper">
+    <header className="sticky top-0 z-50 border-b-2 border-line bg-paper">
       <div className="mx-auto flex w-full max-w-[1334px] items-center justify-between gap-4 px-5 py-[14px] lg:px-0">
         <div className="flex items-center gap-[22px]">
-          <Link to="/dashboard" className="inline-flex text-ink" aria-label="Snoat">
+          <Link
+            to="/dashboard"
+            className="anim-slide-in inline-flex text-ink transition-transform duration-200 hover:-translate-y-px"
+            aria-label="Snoat"
+          >
             <SnoatLogo size={30} />
           </Link>
           <Link

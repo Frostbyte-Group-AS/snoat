@@ -201,7 +201,7 @@ function LoginPage() {
 
       <main className="flex flex-grow items-center justify-center px-5 py-12">
         {awaitingConfirmation ? (
-          <div className="ink-card-lg w-full max-w-[520px] px-[30px] py-[32px] text-center">
+          <div className="ink-card-lg anim-pop w-full max-w-[520px] px-[30px] py-[32px] text-center">
             <h1 className="font-display text-[32px] font-bold leading-[1.15] text-ink">
               {t("login.confirm_sent_title")}
             </h1>
@@ -223,7 +223,7 @@ function LoginPage() {
             </button>
           </div>
         ) : (
-          <div className="ink-card-lg w-full max-w-[520px] px-[30px] py-[32px]">
+          <div className="ink-card-lg anim-pop w-full max-w-[520px] px-[30px] py-[32px]">
             <h1 className="text-center font-display text-[32px] font-bold leading-[1.15] text-ink">
               {mode === "signin" ? t("login.title_signin") : t("login.title_signup")}
             </h1>

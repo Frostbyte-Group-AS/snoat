@@ -129,7 +129,7 @@ function ConsentPage() {
         </p>
       </div>
 
-      <ul className="flex flex-col gap-3 border-2 border-ink p-5">
+      <ul className="flex flex-col gap-3 border-2 border-line p-5">
         {PERMISSION_KEYS.map((key) => (
           <li key={key} className="flex items-center gap-3">
             <Mark on size={20} />
@@ -172,7 +172,7 @@ function ConsentShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-paper px-5 py-12">
       <SnoatLogo size={36} className="text-ink" />
-      <div className="ink-card-lg flex w-full max-w-[560px] flex-col gap-6 px-[30px] py-[32px]">
+      <div className="ink-card-lg anim-pop flex w-full max-w-[560px] flex-col gap-6 px-[30px] py-[32px]">
         {children}
       </div>
     </div>

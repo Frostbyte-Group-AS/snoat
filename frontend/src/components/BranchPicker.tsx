@@ -122,7 +122,9 @@ export function BranchPicker({
             />
           )}
 
-          <div className="max-h-56 overflow-y-auto border-2 border-ink">
+          {/* Lista skifter høyde mens man filtrerer. `size-morph` gjør det til
+              en bevegelse i stedet for et hopp. */}
+          <div className="max-h-56 overflow-y-auto border-2 border-line">
             <BranchRow label={defaultLabel} selected={value === ""} onSelect={() => onChange("")} />
 
             {visible.map((name) => (
@@ -136,7 +138,7 @@ export function BranchPicker({
             ))}
 
             {visible.length === 0 && needle && (
-              <p className="px-[14px] py-[14px] font-body text-[16px] font-light text-ink/70">
+              <p className="anim-fade px-[14px] py-[14px] font-body text-[16px] font-light text-ink/70">
                 {t("branch.no_match")}
               </p>
             )}
@@ -184,13 +186,13 @@ function BranchRow({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`flex w-full items-center justify-between gap-3 border-b border-hair px-[14px] py-[11px] text-left transition-colors last:border-b-0 ${
+      className={`anim-slide-in flex w-full items-center justify-between gap-3 border-b border-hair px-[14px] py-[11px] text-left last:border-b-0 ${
         selected ? "bg-sun" : "hover:bg-sun-soft"
       }`}
     >
       <span className="truncate font-mono text-[14px] text-ink">{label}</span>
       {note && (
-        <span className="shrink-0 border border-ink px-[6px] py-[1px] font-body text-[11px] uppercase tracking-[0.08em] text-ink">
+        <span className="shrink-0 border border-line px-[6px] py-[1px] font-body text-[11px] uppercase tracking-[0.08em] text-ink">
           {note}
         </span>
       )}

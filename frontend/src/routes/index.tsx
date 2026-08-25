@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Mark } from "@/components/Mark";
+import { Reveal } from "@/components/Reveal";
 import { SnoatLogo } from "@/components/SnoatLogo";
 import { getPricing, type PlanOption } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -34,17 +35,17 @@ import { useRequestedMarket } from "@/lib/market";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Snoat — norsk skyinfrastruktur for moderne webapper" },
+      { title: "Snoat — Webapp-hosting på 1 klikk på norsk infrastruktur" },
       {
         name: "description",
         content:
-          "Deploy nettsiden din på ett klikk. Snoat er et helnorsk alternativ til Vercel: bygg, kjøring og data i Norge, med automatisk HTTPS og innebygd sikkerhet.",
+          "Webapp-hosting på 1 klikk på norsk infrastruktur. Deploy direkte fra GitHub på sekunder med automatisk HTTPS, isolerte containere og full datasuverenitet.",
       },
-      { property: "og:title", content: "Snoat — norsk skyinfrastruktur for moderne webapper" },
+      { property: "og:title", content: "Snoat — Webapp-hosting på 1 klikk på norsk infrastruktur" },
       {
         property: "og:description",
         content:
-          "Deploy nettsiden din på ett klikk. Helnorsk alternativ til Vercel — data lagret i Norge.",
+          "Webapp-hosting på 1 klikk på norsk infrastruktur. Deploy direkte fra GitHub på sekunder — data lagret og driftet i Norge.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -124,18 +125,20 @@ function Hero({ signedIn }: { signedIn: boolean }) {
   const { t } = useTranslation();
 
   return (
-    <section className={`${SHELL} pt-[48px] lg:pt-[81px]`}>
+    <section className={`${SHELL} pt-[56px] lg:pt-[96px]`}>
       <div className="flex flex-col items-start gap-10 lg:flex-row lg:items-start lg:justify-between lg:gap-0">
+        {/* Heroen ligger over folden og animerer ved montering. Å vente på en
+            rullehendelse for det første man ser, ville bare vært en forsinkelse. */}
         <div className="w-full lg:w-[758px] lg:pt-[50px]">
-          <h1 className="font-display text-[clamp(2.5rem,5.556vw,5rem)] font-bold leading-[1.15] tracking-[-0.005em] text-ink">
+          <h1 className="anim-rise font-display text-[clamp(2.5rem,5.556vw,5rem)] font-bold leading-[1.15] tracking-[-0.005em] text-ink">
             {t("hero.title")}
           </h1>
-          <p className="mt-[18px] max-w-[684px] font-body text-[clamp(1.0625rem,2.222vw,2rem)] font-light leading-[1.45] text-ink">
+          <p className="anim-rise [--anim-delay:100ms] mt-[22px] max-w-[684px] font-body text-[clamp(1.0625rem,2.222vw,2rem)] font-light leading-[1.45] text-ink">
             {t("hero.description")}
           </p>
           <Link
             to={signedIn ? "/dashboard" : "/login"}
-            className="btn-ink mt-[24px] px-[26px] py-[15px] font-display text-[clamp(1rem,1.42vw,1.275rem)] font-bold"
+            className="btn-ink anim-rise [--anim-delay:200ms] mt-[32px] px-[30px] py-[16px] font-display text-[clamp(1rem,1.42vw,1.275rem)] font-bold"
           >
             {signedIn ? t("hero.cta_go_to_projects") : t("hero.cta_register")}
           </Link>
@@ -148,7 +151,7 @@ function Hero({ signedIn }: { signedIn: boolean }) {
           aria-hidden="true"
           width={373}
           height={373}
-          className="w-[320px] max-w-full shrink-0 self-center sm:w-[440px] lg:w-[573px] lg:self-start"
+          className="anim-pop [--anim-delay:180ms] w-[320px] max-w-full shrink-0 self-center sm:w-[440px] lg:w-[573px] lg:self-start"
         />
       </div>
     </section>
@@ -165,10 +168,15 @@ function Promises() {
   const { t } = useTranslation();
 
   return (
-    <section className={`${SHELL} mt-[60px] lg:mt-[50px]`}>
+    <section className={`${SHELL} mt-[72px] lg:mt-[80px]`}>
       <div className="grid grid-cols-1 gap-[31px] md:grid-cols-3">
-        {PROMISES.map((key) => (
-          <article key={key} className="ink-card flex flex-col gap-[14px] px-[23px] py-[25px]">
+        {PROMISES.map((key, i) => (
+          <Reveal
+            as="article"
+            key={key}
+            delay={i * 90}
+            className="ink-card lift flex flex-col gap-[14px] px-[23px] py-[25px]"
+          >
             <span className="swoosh" aria-hidden="true" />
             <h2 className="font-body text-[22px] font-normal leading-[1.25] text-ink lg:text-[28.7px]">
               {t(`usp.${key}.title`)}
@@ -176,7 +184,7 @@ function Promises() {
             <p className="font-body text-[16px] font-light leading-[1.55] text-ink lg:text-[19.7px]">
               {t(`usp.${key}.body`)}
             </p>
-          </article>
+          </Reveal>
         ))}
       </div>
     </section>
@@ -191,8 +199,8 @@ function SecureSection() {
   const { t } = useTranslation();
 
   return (
-    <section className={`${SHELL} mt-[90px] lg:mt-[92px]`}>
-      <div className="flex flex-col items-center gap-10 lg:flex-row lg:items-center lg:justify-between lg:gap-0">
+    <section className={`${SHELL} mt-[110px] lg:mt-[150px]`}>
+      <Reveal className="flex flex-col items-center gap-10 lg:flex-row lg:items-center lg:justify-between lg:gap-0">
         {/* Figma-noden er 355,836 px, men det er plasseringsboksen: selve
             vektoren er 327,646 bred, siden gruppen har 3,85–3,96 % innrykk.
             504 px = 327,646 × 1,5368 er derfor riktig tegnebredde. Setter man
@@ -214,7 +222,7 @@ function SecureSection() {
             {t("secure.body")}
           </p>
         </div>
-      </div>
+      </Reveal>
     </section>
   );
 }
@@ -229,14 +237,21 @@ function Features() {
   const { t } = useTranslation();
 
   return (
-    <section id="funksjoner" className={`${SHELL} mt-[100px] lg:mt-[124px] scroll-mt-[120px]`}>
-      <h2 className="text-center font-display text-[clamp(2rem,4.167vw,3.75rem)] font-bold leading-[1.15] text-ink">
-        {t("features_section.title")}
-      </h2>
+    <section id="funksjoner" className={`${SHELL} mt-[110px] lg:mt-[150px] scroll-mt-[120px]`}>
+      <Reveal>
+        <h2 className="text-center font-display text-[clamp(2rem,4.167vw,3.75rem)] font-bold leading-[1.15] text-ink">
+          {t("features_section.title")}
+        </h2>
+      </Reveal>
 
       <div className="mt-[46px] grid grid-cols-1 gap-x-[57px] gap-y-[46px] md:grid-cols-2 lg:mt-[91px] lg:grid-cols-3 lg:gap-y-[90.7px]">
         {FEATURES.map((key, i) => (
-          <article key={key} className="ink-card-lg flex flex-col gap-[18px] px-[30px] py-[32px]">
+          <Reveal
+            as="article"
+            key={key}
+            delay={(i % 3) * 90}
+            className="ink-card-lg lift flex flex-col gap-[18px] px-[30px] py-[32px]"
+          >
             <div>
               {/* 56,002 → 86 px, transparent fyll med svart kontur. */}
               <p className="numeral text-[64px] lg:text-[86px]" aria-hidden="true">
@@ -250,7 +265,7 @@ function Features() {
             <p className="font-body text-[17px] font-light leading-[1.55] text-ink lg:text-[21px]">
               {t(`features.${key}.body`)}
             </p>
-          </article>
+          </Reveal>
         ))}
       </div>
     </section>
@@ -271,20 +286,23 @@ function WhySection() {
   ];
 
   return (
-    <section id="hvorfor" className={`${SHELL} mt-[100px] lg:mt-[128px] scroll-mt-[120px]`}>
+    <section id="hvorfor" className={`${SHELL} mt-[110px] lg:mt-[150px] scroll-mt-[120px]`}>
       <div className="flex flex-col gap-10 lg:flex-row lg:items-start lg:justify-between lg:gap-[57px]">
-        <div className="w-full lg:w-[590px] lg:pt-[34px]">
+        <Reveal className="w-full lg:w-[590px] lg:pt-[34px]">
           <h2 className="font-display text-[clamp(2rem,4.167vw,3.75rem)] font-bold leading-[1.15] text-ink">
             {t("why.title")}
           </h2>
           <p className="mt-[24px] font-body text-[clamp(1.0625rem,2.222vw,2rem)] font-light leading-[1.45] text-ink lg:text-justify">
             {t("why.body")}
           </p>
-        </div>
+        </Reveal>
 
-        <div className="ink-card-lg flex w-full flex-col justify-center gap-[22px] px-[30px] py-[32px] lg:w-[697px] lg:min-h-[415px]">
+        <Reveal
+          delay={120}
+          className="ink-card-lg flex w-full flex-col justify-center gap-[22px] px-[30px] py-[32px] lg:w-[697px] lg:min-h-[415px]"
+        >
           <span className="swoosh mx-auto" aria-hidden="true" />
-          <dl className="flex flex-col gap-[22px]">
+          <dl className="stagger flex flex-col gap-[22px]">
             {facts.map((fact) => (
               <div key={fact.label} className="text-center">
                 <dt className="font-display text-[32px] font-bold leading-[1.1] text-ink lg:text-[40px]">
@@ -299,7 +317,7 @@ function WhySection() {
           <p className="text-center font-body text-[15px] font-light text-ink lg:text-[24px]">
             {t("why.footnote")}
           </p>
-        </div>
+        </Reveal>
       </div>
     </section>
   );
@@ -344,7 +362,7 @@ function PriceCard({ plan, featured }: { plan: PlanOption; featured: boolean }) 
 
   return (
     <article
-      className={`ink-card-xl flex flex-col ${
+      className={`ink-card-xl lift flex flex-col ${
         featured
           ? "px-[42px] pb-[40px] pt-[57px] lg:w-[441px] lg:min-h-[605px]"
           : "px-[38px] pb-[36px] pt-[53px] lg:w-[412px] lg:min-h-[566px]"
@@ -367,7 +385,7 @@ function PriceCard({ plan, featured }: { plan: PlanOption; featured: boolean }) 
 
       <hr className="hairline mt-[24px]" />
 
-      <ul className={`mt-[28px] flex flex-col ${featured ? "gap-[16px]" : "gap-[14px]"}`}>
+      <ul className={`stagger mt-[28px] flex flex-col ${featured ? "gap-[16px]" : "gap-[14px]"}`}>
         {rows.map((row) => (
           <li key={row.text} className="flex items-center gap-[10px]">
             <Mark on={row.on} size={featured ? 25 : 22} />
@@ -416,16 +434,22 @@ function PricingSection() {
   const featuredIndex = plans.length === 3 ? 1 : -1;
 
   return (
-    <section id="prising" className={`${SHELL} mt-[100px] lg:mt-[130px] scroll-mt-[120px]`}>
-      <h2 className="text-center font-display text-[clamp(2.25rem,5.19vw,4.688rem)] font-bold leading-[1.15] text-ink">
-        {t("pricing.title")}
-      </h2>
+    <section id="prising" className={`${SHELL} mt-[110px] lg:mt-[150px] scroll-mt-[120px]`}>
+      <Reveal>
+        <h2 className="text-center font-display text-[clamp(2.25rem,5.19vw,4.688rem)] font-bold leading-[1.15] text-ink">
+          {t("pricing.title")}
+        </h2>
+      </Reveal>
 
       <div className="mt-[46px] flex flex-col items-center justify-center gap-[27px] lg:mt-[76px] lg:flex-row lg:items-start">
         {plans.map((plan, i) => (
-          <div key={plan.id} className={i === featuredIndex ? "lg:-mt-[20px]" : ""}>
+          <Reveal
+            key={plan.id}
+            delay={i * 110}
+            className={i === featuredIndex ? "lg:-mt-[20px]" : ""}
+          >
             <PriceCard plan={plan} featured={i === featuredIndex} />
-          </div>
+          </Reveal>
         ))}
       </div>
 
@@ -456,8 +480,8 @@ function ClosingCta() {
   const [email, setEmail] = useState("");
 
   return (
-    <section className={`${SHELL} mt-[100px] lg:mt-[140px]`}>
-      <div className="flex flex-col gap-10 lg:flex-row lg:items-center lg:justify-between">
+    <section className={`${SHELL} mt-[110px] lg:mt-[150px]`}>
+      <Reveal className="flex flex-col gap-10 lg:flex-row lg:items-center lg:justify-between">
         <h2 className="font-display text-[clamp(1.75rem,3.108vw,2.797rem)] font-bold leading-[1.2] text-ink">
           {t("cta.title_line1")}
           <br className="hidden lg:inline" /> {t("cta.title_line2")}
@@ -490,7 +514,7 @@ function ClosingCta() {
             {t("cta.button")}
           </button>
         </form>
-      </div>
+      </Reveal>
     </section>
   );
 }
@@ -504,7 +528,7 @@ function SiteFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className={`${SHELL} mt-[100px] pb-[60px] lg:mt-[144px] lg:pb-[84px]`}>
+    <footer className={`${SHELL} mt-[120px] pb-[72px] lg:mt-[160px] lg:pb-[96px]`}>
       <div className="flex flex-col gap-12 lg:flex-row lg:justify-between">
         <div>
           <SnoatLogo size={40} className="text-ink" />

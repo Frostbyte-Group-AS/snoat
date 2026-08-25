@@ -68,7 +68,7 @@ function ForgotPasswordPage() {
       </header>
 
       <main className="flex flex-grow items-center justify-center px-5 py-12">
-        <div className="ink-card-lg w-full max-w-[520px] px-[30px] py-[32px]">
+        <div className="ink-card-lg anim-pop w-full max-w-[520px] px-[30px] py-[32px]">
           <h1 className="text-center font-display text-[32px] font-bold leading-[1.15] text-ink">
             {t("forgot.title")}
           </h1>

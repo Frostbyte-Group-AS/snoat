@@ -110,7 +110,7 @@ export function DnsSettingsTab({
     <div className="flex flex-col gap-6">
       {/* Sperre for Free-plan */}
       {isFreePlan && (
-        <div className="border-2 border-ink bg-sun px-[23px] py-[20px]">
+        <div className="border-2 border-line bg-sun px-[23px] py-[20px]">
           <h2 className="font-display text-[20px] font-bold text-ink">
             {t("project_plan.gated_dns_title")}
           </h2>
@@ -123,7 +123,7 @@ export function DnsSettingsTab({
       {/* Domenekonfigurasjon. Snoat-adressen sto tidligere i et eget kort her;
           den og det egne domenet er nå lenker øverst på prosjektsiden, der man
           leter etter dem. */}
-      <div className="ink-card-lg p-6 md:p-8 flex flex-col gap-6">
+      <div className="ink-card-lg anim-rise flex flex-col gap-6 p-6 md:p-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-display text-[22px] font-bold text-ink">
@@ -134,8 +134,9 @@ export function DnsSettingsTab({
 
           {project.custom_domain && status && (
             <span
-              className={`inline-flex shrink-0 items-center border-2 px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] ${
-                status.ready ? "border-ink bg-ink text-paper" : "border-ink bg-paper text-ink"
+              key={String(status.ready)}
+              className={`anim-pop inline-flex shrink-0 items-center border-2 px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] transition-colors ${
+                status.ready ? "border-line bg-ink text-paper" : "border-line bg-paper text-ink"
               }`}
             >
               {status.ready
@@ -170,7 +171,7 @@ export function DnsSettingsTab({
                     ? "bg-muted text-ink/70 cursor-wait"
                     : isSavedDomain && cleanDomain
                       ? "bg-sun text-ink"
-                      : "bg-ink text-on-primary hover:bg-sun"
+                      : "bg-ink text-paper hover:bg-sun hover:text-ink"
                 }`}
               >
                 {isSaving
@@ -256,7 +257,7 @@ export function DnsSettingsTab({
           type="multiple"
           defaultValue={defaultOpen}
           key={String(status?.ready)}
-          className="ink-card-lg px-6 md:px-8"
+          className="ink-card-lg anim-rise [--anim-delay:90ms] px-6 md:px-8"
         >
           {project.custom_domain && (
             <AccordionItem value="status" className="border-outline-variant/30">
@@ -290,7 +291,7 @@ export function DnsSettingsTab({
               </span>
             </AccordionTrigger>
             <AccordionContent className="pb-6">
-              <div className="flex flex-col gap-4">
+              <div className="stagger flex flex-col gap-4">
                 {records.map((record) => (
                   <RecordRow key={record.id} record={record} />
                 ))}
@@ -309,7 +310,7 @@ export function DnsSettingsTab({
 function RecordRow({ record }: { record: DnsRecord }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-3 rounded-[12px] bg-muted p-5 border border-hair hover:border-ink transition-colors">
+    <div className="lift flex flex-col gap-3 rounded-[12px] border border-hair bg-muted p-5 hover:border-line">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="rounded-none bg-sun px-3 py-1 font-mono text-xs font-bold text-ink">
@@ -438,8 +439,8 @@ function DomainCheckRow({ label, check }: { label: string; check: DomainCheck })
   // alene: fylt svart, tomt med ramme og rød ramme har tre ulike former, så en
   // fargeblind leser ser forskjellen uten å måtte skille grønt fra rødt.
   const presentation = {
-    ok: { glyph: "✓", box: "bg-ink text-paper border-ink" },
-    pending: { glyph: "·", box: "bg-paper text-ink border-ink" },
+    ok: { glyph: "✓", box: "bg-ink text-paper border-line" },
+    pending: { glyph: "·", box: "bg-paper text-ink border-line" },
     failed: { glyph: "✕", box: "bg-paper text-error border-error" },
   }[check.state];
 

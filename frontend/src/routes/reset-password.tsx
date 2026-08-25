@@ -100,7 +100,7 @@ function ResetPasswordPage() {
       </header>
 
       <main className="flex flex-grow items-center justify-center px-5 py-12">
-        <div className="ink-card-lg w-full max-w-[520px] px-[30px] py-[32px]">
+        <div className="ink-card-lg anim-pop w-full max-w-[520px] px-[30px] py-[32px]">
           {settling ? (
             <p className="text-center font-body text-[17px] font-light text-ink/70">
               {t("login.loading")}

@@ -29,7 +29,7 @@ export function LanguageSwitcher() {
           onClick={() => void i18n.changeLanguage(option.code)}
           title={option.title}
           aria-current={option.active ? "true" : undefined}
-          className={`font-body text-[15px] leading-none tracking-[0.06em] transition-opacity ${
+          className={`font-body text-[15px] leading-none tracking-[0.06em] transition-all duration-200 hover:-translate-y-px active:scale-95 ${
             option.active ? "font-bold text-ink" : "font-normal text-ink/45 hover:text-ink"
           }`}
         >

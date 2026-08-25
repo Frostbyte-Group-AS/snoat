@@ -4,6 +4,45 @@ Denne filen dokumenterer nye funksjonaliteter og forbedringer som er innført i 
 
 ---
 
+## 0d. Mykere strek, terminal som følger systemet, og bevegelse overalt
+
+Fire ting etter at «Ink & Sun» hadde stått en stund og blitt brukt.
+
+* **Streken er myknet fra `#000000` til `#242424`.** Ett kort med ren svart
+  ramme ser knivskarpt ut; et prosjektpanel som viser tjue av dem samtidig
+  skjærer i kanten. Nytt token `--color-line` bærer *alle* rammer, mens
+  `--color-ink` fortsatt er ren svart for tekst og fylte flater. Alle 43
+  `border-ink` i kodebasen ble byttet til `border-line`. Kontrasten er
+  fortsatt 7,9:1 mot papir. Unntaket er `.btn-ink` sin egen ramme, som må være
+  lik fyllet — en svart knapp med lysere kant får en glorie rundt seg.
+* **Prosjektsidens topprad hadde feil farge.** Den lå på `bg-ink/40`: en
+  halvgjennomsiktig svart flate som ble grå over innholdet og skiftet farge
+  etter hva som rullet under den. Den er nå papir med strek under, altså samme
+  topprad som `DashboardNav` bruker i dashboardet.
+* **Byggeloggen følger `prefers-color-scheme`.** Den var hardkodet til
+  `#070a12` med grønn tekst — en farge som ikke fantes noe annet sted i
+  paletten, og en kullsvart boks midt i et lyst dashboard. Nå leser den
+  systemets innstilling: lyst system gir papirterminal, mørkt gir mørk. Se
+  tokentabellen i `05_design_system.md`. **Resten av appen er fortsatt lys** —
+  dette er ikke et mørkt tema, men én flate som leses som en terminal.
+* **Bevegelse gjennom hele appen.** Ett sett med `@keyframes` og utilities
+  (`anim-rise`, `stagger`, `lift`, `size-morph`, `collapse-grid`, `skeleton`,
+  `anim-grow`), én kurve, tre varigheter — brukt på lister, kort, faner, søyler
+  i statistikken, dialoger og alt som endrer høyde. `<Reveal>` toner inn
+  landingssidens seksjoner ved rulling, med en `<noscript>`-regel som gjør alt
+  synlig uten JavaScript. `prefers-reduced-motion` nuller varighetene.
+  Dashboardets lastetilstand er skjelettkort i rutenettets egen form i stedet
+  for teksten «Laster …», så layouten ikke hopper når prosjektene kommer inn.
+
+Fire etterslep fra redesignet ble ryddet i samme slengen: `.secondary-btn`,
+`text-on-primary`, `text-on-secondary` og `bg-mutedest` fantes ikke lenger i
+paletten, så «Kontakt oss»-lenken sto uten flate, to «Aktiv»-merker sto svart
+på svart, og verktøytipset i grafen ble tegnet uten bakgrunn rett oppå søylene.
+`BuildStageCard` kalte dessuten `useBuildDuration()` etter en tidlig `return`,
+altså en hook som endret rekkefølge mellom to renders av samme komponent.
+
+---
+
 ## 0c. Velg hvilken gren som deployes
 
 Snoat kunne én gren per repo: den GitHub hadde pekt ut som default branch.

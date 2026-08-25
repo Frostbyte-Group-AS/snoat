@@ -57,8 +57,10 @@ export function UserMenu() {
     await navigate({ to: "/" });
   };
 
+  // Radene skyves et hakk inn ved hover. Uten ikoner og skygge er det den
+  // eneste måten en meny kan svare på pekeren på.
   const itemClass =
-    "block w-full px-[16px] py-[11px] text-left font-body text-[15px] text-ink transition-colors hover:bg-sun";
+    "block w-full px-[16px] py-[11px] text-left font-body text-[15px] text-ink transition-[background-color,padding] duration-150 hover:bg-sun hover:pl-[20px]";
 
   return (
     <div ref={containerRef} className="relative">
@@ -74,14 +76,14 @@ export function UserMenu() {
           <img
             src={avatar}
             alt=""
-            className={`h-9 w-9 border-2 object-cover transition-colors ${
-              open ? "border-ink" : "border-hair hover:border-ink"
+            className={`h-9 w-9 border-2 object-cover transition-all duration-200 hover:scale-105 ${
+              open ? "border-line" : "border-hair hover:border-line"
             }`}
           />
         ) : (
           <span
             aria-hidden="true"
-            className={`flex h-9 w-9 items-center justify-center border-2 border-ink font-body text-[15px] font-bold transition-colors ${
+            className={`flex h-9 w-9 items-center justify-center border-2 border-line font-body text-[15px] font-bold transition-all duration-200 hover:scale-105 ${
               open ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-sun"
             }`}
           >
@@ -96,7 +98,7 @@ export function UserMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-[10px] w-[262px] border-2 border-ink bg-paper"
+          className="anim-pop absolute right-0 top-full z-50 mt-[10px] w-[262px] origin-top-right border-2 border-line bg-paper"
         >
           <div className="px-[16px] py-[14px]">
             <p className="truncate font-body text-[15px] font-bold text-ink">{name}</p>

@@ -110,6 +110,15 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang={i18n.language || "en"} suppressHydrationWarning>
       <head>
         <HeadContent />
+        {/*
+          Innrullingsanimasjonen starter skjult (`[data-reveal]` i styles.css) og
+          settes synlig av `Reveal` når elementet treffer skjermen. Uten
+          JavaScript kommer den beskjeden aldri — derfor slår vi av
+          starttilstanden helt i det tilfellet, så innholdet alltid vises.
+        */}
+        <noscript>
+          <style>{`[data-reveal]{opacity:1!important;transform:none!important}`}</style>
+        </noscript>
       </head>
       <body>
         {children}

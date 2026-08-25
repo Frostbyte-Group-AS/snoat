@@ -20,9 +20,9 @@ import type { DeploymentStatus } from "@/lib/database.types";
 type Tone = "live" | "work" | "wait" | "fail" | "rest";
 
 const TONES: Record<Tone, string> = {
-  live: "bg-ink text-paper border-ink",
-  work: "bg-sun text-ink border-ink",
-  wait: "bg-paper text-ink border-ink",
+  live: "bg-ink text-paper border-line",
+  work: "bg-sun text-ink border-line",
+  wait: "bg-paper text-ink border-line",
   fail: "bg-paper text-error border-error",
   rest: "bg-ash text-ink border-ash",
 };
@@ -66,9 +66,15 @@ export function DeploymentStatusBadge({
     info = { label: "Stoppet", tone: "rest" };
   }
 
+  // `key` på etiketten gjør at merket toner inn på nytt når tilstanden faktisk
+  // endrer seg – «I kø» → «Bygger» → «Live» leses da som tre hendelser, ikke som
+  // en tekst som stille ble byttet ut. Gult fyll puster mens noe pågår.
   return (
     <span
-      className={`inline-flex shrink-0 items-center border-2 px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] ${TONES[info.tone]}`}
+      key={info.label}
+      className={`anim-pop inline-flex shrink-0 items-center border-2 px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] transition-colors duration-300 ${
+        TONES[info.tone]
+      } ${info.tone === "work" ? "anim-breathe" : ""}`}
     >
       {info.label}
     </span>

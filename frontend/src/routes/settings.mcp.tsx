@@ -109,7 +109,7 @@ function ConnectCard({ connectorUrl }: { connectorUrl: string }) {
   const steps = [t("mcp.step_open"), t("mcp.step_add"), t("mcp.step_paste"), t("mcp.step_approve")];
 
   return (
-    <section className="ink-card-lg flex flex-col gap-6 px-[30px] py-[32px]">
+    <section className="ink-card-lg anim-rise flex flex-col gap-6 px-[30px] py-[32px]">
       <div className="flex flex-col gap-2">
         <span className="w-fit bg-sun px-[8px] py-[2px] font-body text-[12px] font-bold uppercase tracking-[0.1em] text-ink">
           {t("mcp.eyebrow")}
@@ -139,7 +139,7 @@ function ConnectCard({ connectorUrl }: { connectorUrl: string }) {
         </div>
       </div>
 
-      <ol className="flex flex-col gap-4">
+      <ol className="stagger flex flex-col gap-4">
         {steps.map((step, index) => (
           <li key={step} className="flex items-start gap-4">
             <span
@@ -181,7 +181,7 @@ function ConnectionsCard({
     });
 
   return (
-    <section className="ink-card flex flex-col gap-5 px-[30px] py-[28px]">
+    <section className="ink-card anim-rise [--anim-delay:90ms] flex flex-col gap-5 px-[30px] py-[28px]">
       <div className="flex flex-col gap-1">
         <h2 className="font-display text-[22px] font-bold text-ink">
           {t("mcp.connections_title")}
@@ -194,7 +194,7 @@ function ConnectionsCard({
       ) : !connections || connections.length === 0 ? (
         <p className="font-body text-[16px] italic text-ink/60">{t("mcp.connections_empty")}</p>
       ) : (
-        <ul className="divide-y divide-hair border-y border-hair">
+        <ul className="stagger divide-y divide-hair border-y border-hair">
           {connections.map((connection) => (
             <li
               key={connection.clientId}
@@ -268,7 +268,7 @@ function CommandLineCard({ connectorUrl }: { connectorUrl: string }) {
   const claudeCodeCommand = `claude mcp add --transport http snoat ${connectorUrl}`;
 
   return (
-    <details className="group ink-card px-[30px] py-[28px]">
+    <details className="group ink-card anim-rise [--anim-delay:180ms] px-[30px] py-[28px]">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h2 className="font-display text-[22px] font-bold text-ink">{t("mcp.advanced_title")}</h2>
@@ -276,7 +276,7 @@ function CommandLineCard({ connectorUrl }: { connectorUrl: string }) {
         </div>
         <span
           aria-hidden="true"
-          className="flex h-[28px] w-[28px] shrink-0 items-center justify-center border-2 border-ink font-body text-[18px] font-bold leading-none text-ink"
+          className="flex h-[28px] w-[28px] shrink-0 items-center justify-center border-2 border-line font-body text-[18px] font-bold leading-none text-ink"
         >
           <span className="group-open:hidden">+</span>
           <span className="hidden group-open:inline">–</span>
@@ -319,7 +319,7 @@ function CommandLineCard({ connectorUrl }: { connectorUrl: string }) {
           </div>
 
           {newKey && (
-            <div className="flex flex-col gap-3 border-2 border-ink bg-sun px-[18px] py-[16px]">
+            <div className="flex flex-col gap-3 border-2 border-line bg-sun px-[18px] py-[16px]">
               <p className="font-body text-[14px] font-bold text-ink">
                 {t("mcp.keys_once_warning")}
               </p>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFormatters } from "@/lib/format";
 import type { Project } from "@/lib/database.types";
@@ -97,7 +97,7 @@ function KpiCard({
   loading: boolean;
 }) {
   return (
-    <div className="ink-card flex flex-col justify-between px-[23px] py-[25px]">
+    <div className="ink-card lift flex flex-col justify-between px-[23px] py-[25px]">
       <span className="font-body text-[15px] font-normal uppercase tracking-[0.08em] text-ink/70">
         {label}
       </span>
@@ -172,23 +172,23 @@ export function AnalyticsTab({ project }: { project: Project }) {
   return (
     <div className="flex flex-col gap-8">
       {/* Overskrift og tidsfilter */}
-      <div className="ink-card-lg p-6 md:p-8 flex flex-wrap items-center justify-between gap-4">
+      <div className="ink-card-lg anim-rise flex flex-wrap items-center justify-between gap-4 p-6 md:p-8">
         <div>
           <h2 className="font-display text-[26px] font-bold text-ink">Trafikkanalyse</h2>
-          <span className="swoosh mt-[6px]" aria-hidden="true" />
+          <span className="swoosh anim-draw mt-[6px]" aria-hidden="true" />
           <p className="mt-1 font-body text-[16px] text-ink/70">
             Måles automatisk for {project.name}. Ingen sporingskode i appen din, ingen cookies,
             ingen IP-adresser lagret.
           </p>
         </div>
 
-        <div className="inline-flex border-2 border-ink">
+        <div className="inline-flex border-2 border-line">
           {TIME_RANGES.map((r) => (
             <button
               key={r.key}
               type="button"
               onClick={() => setSelectedRange(r.key)}
-              className={`border-r-2 border-ink px-[14px] py-[7px] font-body text-[13px] transition-colors last:border-r-0 md:text-[15px] ${
+              className={`border-r-2 border-line px-[14px] py-[7px] font-body text-[13px] transition-colors last:border-r-0 md:text-[15px] ${
                 selectedRange === r.key
                   ? "bg-ink font-bold text-paper"
                   : "bg-paper text-ink hover:bg-sun"
@@ -229,14 +229,14 @@ export function AnalyticsTab({ project }: { project: Project }) {
       </div>
 
       {/* Driftstall – dette ser en logg, men aldri et sporingsskript. */}
-      <div className="grid grid-cols-2 gap-[16px] lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-[16px] lg:grid-cols-4">
         {[
           { label: "Forespørsler", value: format.number(totals?.requests ?? 0) },
           { label: "Båndbredde", value: formatBytes(totals?.bytes_out ?? 0) },
           { label: "Serverfeil (5xx)", value: `${errorRate} %` },
           { label: "Robottrafikk", value: format.number(totals?.bot_requests ?? 0) },
         ].map((stat) => (
-          <div key={stat.label} className="border-2 border-ink px-[16px] py-[14px]">
+          <div key={stat.label} className="lift border-2 border-line px-[16px] py-[14px]">
             <p className="truncate font-mono text-[15px] font-bold text-ink">
               {query.isLoading ? "…" : stat.value}
             </p>
@@ -248,7 +248,7 @@ export function AnalyticsTab({ project }: { project: Project }) {
       </div>
 
       {/* Graf */}
-      <div className="ink-card-lg p-6 md:p-8 flex flex-col gap-6">
+      <div className="ink-card-lg anim-rise [--anim-delay:90ms] flex flex-col gap-6 p-6 md:p-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h3 className="font-display text-[22px] font-bold text-ink">Besøk over tid</h3>
           <div className="flex items-center gap-4 text-xs font-body">
@@ -285,20 +285,34 @@ export function AnalyticsTab({ project }: { project: Project }) {
                   key={point.t}
                   className="group relative flex-1 h-full flex flex-col justify-end items-center"
                 >
-                  <div className="absolute -top-12 z-20 hidden group-hover:flex flex-col items-center rounded-none bg-mutedest px-3 py-1.5 text-xs font-mono pointer-events-none whitespace-nowrap">
+                  <div className="anim-pop pointer-events-none absolute -top-14 z-20 hidden flex-col items-center whitespace-nowrap rounded-none border-2 border-line bg-paper px-3 py-1.5 font-mono text-xs group-hover:flex">
                     <span className="text-ink font-semibold">{labelFor(point.t)}</span>
                     <span className="text-ink">{format.number(point.pageviews)} sidevisninger</span>
                     <span className="text-ink">{format.number(point.visits)} besøk</span>
                   </div>
 
                   <div className="w-full flex items-end justify-center gap-0.5 h-full">
+                    {/* Søylene vokser opp fra aksen når grafen kommer til syne.
+                        Forsinkelsen følger x-aksen, så grafen leses fra venstre
+                        mot høyre – men taket på 400 ms hindrer at en 90-dagers
+                        graf bruker halvannet sekund på å tegne seg selv. */}
                     <div
-                      className="w-full max-w-[12px] bg-sun rounded-t-sm transition-all group-hover:bg-ink"
-                      style={{ height: `${Math.max(2, (point.pageviews / maxValue) * 100)}%` }}
+                      className="anim-grow w-full max-w-[12px] rounded-t-sm bg-sun transition-colors group-hover:bg-ink"
+                      style={
+                        {
+                          height: `${Math.max(2, (point.pageviews / maxValue) * 100)}%`,
+                          "--anim-delay": `${Math.min(idx * 14, 400)}ms`,
+                        } as CSSProperties
+                      }
                     />
                     <div
-                      className="w-full max-w-[12px] bg-sun rounded-t-sm transition-all group-hover:bg-sun"
-                      style={{ height: `${Math.max(0, (point.visits / maxValue) * 100)}%` }}
+                      className="anim-grow w-full max-w-[12px] rounded-t-sm bg-sun transition-colors group-hover:bg-sun"
+                      style={
+                        {
+                          height: `${Math.max(0, (point.visits / maxValue) * 100)}%`,
+                          "--anim-delay": `${Math.min(idx * 14 + 60, 460)}ms`,
+                        } as CSSProperties
+                      }
                     />
                   </div>
 
@@ -313,7 +327,7 @@ export function AnalyticsTab({ project }: { project: Project }) {
       </div>
 
       {/* Dimensjoner */}
-      <div className="ink-card-lg p-6 md:p-8 flex flex-col gap-6">
+      <div className="ink-card-lg anim-rise [--anim-delay:180ms] flex flex-col gap-6 p-6 md:p-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h3 className="font-display text-[22px] font-bold text-ink">Målinger og trafikkilder</h3>
           <div className="flex flex-wrap gap-2">
@@ -322,7 +336,7 @@ export function AnalyticsTab({ project }: { project: Project }) {
                 key={tab.key}
                 type="button"
                 onClick={() => setDimension(tab.key)}
-                className={`border-2 border-ink px-[12px] py-[6px] font-body text-[13px] transition-colors md:text-[15px] ${
+                className={`border-2 border-line px-[12px] py-[6px] font-body text-[13px] transition-colors md:text-[15px] ${
                   dimension === tab.key
                     ? "bg-ink font-bold text-paper"
                     : "bg-paper text-ink hover:bg-sun"
@@ -339,15 +353,21 @@ export function AnalyticsTab({ project }: { project: Project }) {
         ) : items.length === 0 ? (
           <p className="font-body text-[16px] text-ink/70">Ingen data i denne kategorien ennå.</p>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="stagger flex flex-col gap-3">
             {items.map((item, idx) => (
               <div
                 key={item.value}
-                className="relative overflow-hidden rounded-[12px] bg-muted p-3 flex items-center justify-between gap-3"
+                className="relative flex items-center justify-between gap-3 overflow-hidden rounded-[12px] bg-muted p-3"
               >
+                {/* Andelsstolpen tegner seg ut fra venstre kant. */}
                 <div
-                  className="absolute inset-y-0 left-0 bg-sun rounded-[12px] transition-all duration-500 pointer-events-none"
-                  style={{ width: `${Math.round((item.hits / maxHits) * 100)}%` }}
+                  className="anim-widen pointer-events-none absolute inset-y-0 left-0 rounded-[12px] bg-sun transition-all duration-500"
+                  style={
+                    {
+                      width: `${Math.round((item.hits / maxHits) * 100)}%`,
+                      "--anim-delay": `${idx * 55}ms`,
+                    } as CSSProperties
+                  }
                 />
 
                 <div className="relative z-10 flex items-center gap-3 min-w-0">

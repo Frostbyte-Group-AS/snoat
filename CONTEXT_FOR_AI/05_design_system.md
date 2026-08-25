@@ -33,11 +33,27 @@ bredeste faktiske blokken i designet.
 
 ## ⚠️ Tre regler som bærer hele uttrykket
 
-### 1. Svart strek, ikke skygge
-Flater defineres av **2 px ramme i ren svart**. Det finnes ikke én `box-shadow`
+### 1. Mørk strek, ikke skygge
+Flater defineres av **2 px ramme i `#242424`**. Det finnes ikke én `box-shadow`
 i systemet. (Dette er motsatt av forrige generasjon, som forbød borders og
 løste alt med skygge.) `@layer base` setter `border-color: var(--border)`, som
-er `#000000` — en `border`-klasse uten fargeangivelse blir altså svart.
+er `--color-line` — en `border`-klasse uten fargeangivelse blir altså mørk grå.
+
+**Streken er ikke ren svart, og det er med vilje.** Ett kort med `#000`-ramme
+ser knivskarpt ut; et dashboard som viser tjue av dem samtidig skjærer i
+kanten. `#242424` er 86 % svart: 7,9:1 mot papir — godt over AA — men uten den
+harde eggen. Skillet mellom de to er meningsbærende:
+
+| Token | Verdi | Brukes til |
+| --- | --- | --- |
+| `--color-ink` | `#000000` | **Tekst og fylte flater.** Overskrifter, brødtekst, svart knappeflate, statusmerket «Live». |
+| `--color-line` | `#242424` | **Alle streker.** Kortrammer, feltrammer, konturknapper, fokusring. Tailwind: `border-line`. |
+
+Bruk aldri `border-ink`. Den finnes ikke lenger i kodebasen; alle 43 treffene
+ble byttet til `border-line` da streken ble myknet. Den eneste ramma som
+fortsatt er ren svart er `.btn-ink` sin egen — en fylt svart knapp med lysere
+kant får en synlig glorie rundt seg. Ved hover snur knappen til papir, og da
+tar `.btn-ink:hover` over med `--color-line`.
 
 ### 2. Firkantet handling, rundet innhold
 - **Knapper og skjemafelt: `border-radius: 0`.**
@@ -54,7 +70,8 @@ enkelt element.
 
 | Token | Verdi | Rolle |
 | --- | --- | --- |
-| `--color-ink` | `#000000` | Tekst, rammer, primærknapp |
+| `--color-ink` | `#000000` | Tekst og fylte flater |
+| `--color-line` | `#242424` | **Alle rammer og streker** |
 | `--color-ink-soft` | `#171717` | Streken i illustrasjonene |
 | `--color-paper` | `#FFFFFF` | Bakgrunn, kortflate |
 | `--color-sun` | `#FFED88` | Aksent, markør, «pågår» |
@@ -137,6 +154,35 @@ er for markedsflater; et prosjektpanel med 32 px brødtekst er ikke lesbart.
 | `.numeral` | Konturtall (`#1`…`#6`): 86 px, transparent fyll, 2,3 px svart kontur |
 | `.swoosh` | Den håndtegnede gule understrekingen, 74 × 10 px |
 
+### Terminalen
+
+| Utility | Hva |
+| --- | --- |
+| `.terminal-shell` | Setter `color-scheme`, så rullefeltet følger loggen |
+| `.terminal-bar` | Verktøyraden over loggen |
+| `.terminal-body` | Selve loggflata |
+| `.terminal-btn` | Kopier-knappen — `btn-outline` er låst til svart på papir |
+| `.terminal-dim`, `.terminal-rule` | Dempet tekst og skillelinje i loggen |
+| `.terminal-caret` | Blokkmarkøren som blinker mens bygget kjører |
+
+### Bevegelse
+
+| Utility | Hva |
+| --- | --- |
+| `.anim-rise` | Toner inn og stiger 14 px. Standard for innhold som dukker opp |
+| `.anim-fade` / `.anim-pop` / `.anim-slide-in` | Toning, skalering fra 0,96 og innglidning fra venstre |
+| `.anim-grow` / `.anim-widen` | Søyler og stolper som vokser fram (`transform`, ikke `height`) |
+| `.anim-breathe` | Pusten på «pågår»-tilstander. Erstatter `animate-pulse` |
+| `.anim-draw` | Den gule håndstreken som tegner seg selv (`clip-path`) |
+| `.stagger` | Barna kommer inn radvis, 45 ms mellom hver, samlet fra og med det 12. |
+| `.lift` | Kortet løftes 3 px ved hover |
+| `.collapse-grid` | Utfelling: `grid-template-rows` 0fr → 1fr, styrt av `data-open` |
+| `.skeleton` | Lasteflate med vandrende gult lys |
+| `<Reveal>` | Toner inn ved rulling. `data-reveal` i base-laget, satt av en `IntersectionObserver` |
+
+Forsinkelsen på `.anim-*` settes med `--anim-delay`, enten som Tailwind-variant
+(`[--anim-delay:120ms]`) eller som inline `style` når den regnes ut.
+
 ## Illustrasjoner
 
 `frontend/public/illustrations/` inneholder de to SVG-ene fra malen
@@ -161,6 +207,40 @@ Prisekortene bygges av **reelle grenser** fra `/api/pricing` (`PlanOption.limits
 ikke av håndskrevne funksjonslister. Da kan ikke prissiden komme i utakt med
 `PLAN_LIMITS` i backend. Midtkortet er større og løftet 20 px, som i malen.
 
+## Bevegelse
+
+Bevegelse følger samme prinsipp som flatene: få virkemidler, brukt likt overalt.
+
+1. **Én kurve.** `--ease-snoat: cubic-bezier(0.2, 0.8, 0.2, 1)` — rask start,
+   mykt anslag. Tre varigheter (`--dur-fast` 0,16 s, `--dur-base` 0,28 s,
+   `--dur-slow` 0,48 s), ikke tjue.
+2. **Alt som dukker opp, stiger og toner inn.** Aldri et hopp.
+3. **Alt som endrer størrelse, animerer størrelsen — med `.collapse-grid`.**
+   `transition: height` på en boks med `height: auto` gjør *ingenting*: vokser
+   innholdet, er den beregnede verdien fortsatt `auto`, og det finnes ingen
+   verdiendring å animere. (`interpolate-size: allow-keywords` hjelper bare når
+   man går til eller fra et nøkkelord — det er verifisert i Chrome, ikke antatt.)
+   Derfor er utfelling alltid `grid-template-rows: 0fr → 1fr` på et rutenett med
+   én rad, som virker i alle nettlesere. Bokser som «dukker opp» — feilmeldinger,
+   lagret-kvitteringer, varselet etter GitHub-tilkobling — ligger derfor i DOM-en
+   hele tiden med `data-open` og `inert`, i stedet for bak en `&&` som får resten
+   av siden til å hoppe.
+4. **Alt som kan trykkes, gir etter.** Knappene har
+   `transform: translateY(1px) scale(0.985)` på `:active`. Uten skygge er det
+   den eneste tilbakemeldingen en firkantet knapp kan gi.
+5. **Vi animerer `transform` og `opacity`.** Grafens søyler vokser med
+   `scaleY`, ikke med `height`, slik at de ikke tvinger fram ny layout per
+   ramme.
+6. **`prefers-reduced-motion` slår av alt.** Varigheten nulles, animasjonene
+   fjernes ikke — grensesnittet skal fortsatt vise sluttilstanden.
+7. **Uten JavaScript vises alt.** `__root.tsx` legger en `<noscript>`-regel som
+   overstyrer starttilstanden til `[data-reveal]`. Ellers ville landingssiden
+   vært usynlig for en leser uten JS.
+
+Tilstandsbytter markeres med `key`: statusmerket, byggesteget og DNS-merket får
+`key` på verdien sin, slik at «I kø» → «Bygger» → «Live» leses som tre
+hendelser i stedet for tekst som stille ble byttet ut.
+
 ## Mønstre i dashboardet
 
 ### Kopiering til utklippstavle
@@ -175,6 +255,31 @@ og etiketten blir hvit. Indikatoren posisjoneres i piksler og **må lese både
 `offsetTop`/`offsetHeight` og `offsetLeft`/`offsetWidth`** – med seks faner
 brekker raden på mobil, og en indikator som bare kjenner `left` blir liggende
 igjen på første linje. Posisjonen regnes på nytt ved `resize`.
+
+### Terminalen følger systemets mørk/lys-innstilling
+
+Appen er lys. Byggeloggen er **det eneste unntaket**: den leses som en
+terminal, ikke som en side, og en kullsvart boks midt i et lyst dashboard ser
+ut som en feil. Loggen var tidligere hardkodet til `#070a12` med grønn tekst —
+en farge som ikke fantes noe annet sted i paletten.
+
+Fargene ligger som tokens i `:root`, og én mediespørring snur hele terminalen:
+
+| Token | Lyst system | Mørkt system |
+| --- | --- | --- |
+| `--terminal-surface` | `#f6f6f2` | `#121212` |
+| `--terminal-bar` | `#ecece6` | `#1d1d1d` |
+| `--terminal-text` | `#1c1c1c` | `#ededea` |
+| `--terminal-dim` | svart 62 % | hvit 62 % |
+| `--terminal-line` | svart 12 % | hvit 14 % |
+| `--terminal-scheme` | `light` | `dark` |
+
+`--terminal-scheme` settes som `color-scheme` på `.terminal-shell`, slik at
+rullefeltet inne i loggen følger med — en mørk logg med hvitt rullefelt ser
+ødelagt ut. Avkryssingsboksen «autorull» får `accent-color` fra samme token.
+
+**Ingenting annet i appen snur.** Det er ikke et mørkt tema; det er én flate
+som respekterer at brukeren har sagt hva slags terminal hen vil ha.
 
 ### Statusmerker
 Firkantet, 2 px ramme, versaler med `tracking`. Fyllet er tilstanden:

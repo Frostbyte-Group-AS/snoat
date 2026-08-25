@@ -31,14 +31,15 @@ const AccordionTrigger = React.forwardRef<
         Pluss/minus i en rute i stedet for en chevron. Designet har ingen
         ikoner, og et fortegn leses like umiddelbart som en pil – dessuten
         slipper vi et bibliotek for én glyf. Tilstanden kommer fra `data-state`
-        på selve triggeren, som Radix setter.
+        på selve triggeren, som Radix setter. Tegnene roterer forbi hverandre i
+        stedet for å byttes brått ut – se `.accordion-glyph` i styles.css.
       */}
       <span
         aria-hidden="true"
-        className="flex h-[26px] w-[26px] shrink-0 items-center justify-center border-2 border-ink font-body text-[16px] font-bold leading-none text-ink"
+        className="accordion-mark grid h-[26px] w-[26px] shrink-0 place-items-center border-2 border-line font-body text-[16px] font-bold leading-none text-ink"
       >
-        <span className="[[data-state=open]_&]:hidden">+</span>
-        <span className="hidden [[data-state=open]_&]:inline">–</span>
+        <span className="accordion-glyph accordion-glyph-plus">+</span>
+        <span className="accordion-glyph accordion-glyph-minus">–</span>
       </span>
     </AccordionPrimitive.Trigger>
   </AccordionPrimitive.Header>

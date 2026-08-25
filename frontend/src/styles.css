@@ -68,6 +68,12 @@
   /* ---- Råfarger fra designet ---- */
   --color-ink: #000000;
   --color-ink-soft: #171717;
+  /* Streken. Ren svart på hvitt ga et hardere uttrykk enn designet trenger:
+     én ramme er greit, men et dashboard viser tjue av dem samtidig, og da
+     skjærer #000 i kanten. #242424 er 86 % svart — nok kontrast til å bære
+     flatene (7,9:1 mot papir, godt over AA), men uten den harde eggen.
+     `--color-ink` er fortsatt ren svart og brukes til tekst og fylte flater. */
+  --color-line: #242424;
   --color-paper: #ffffff;
   --color-sun: #ffed88;
   --color-sun-soft: #fff8d1;
@@ -180,10 +186,47 @@
   --error: #d81e06;
   --success: #000000;
 
-  --border: #000000;
-  --outline: #000000;
-  --input: #000000;
-  --ring: #000000;
+  /* ---- Terminalen ----
+     Byggeloggen er den eneste flata i appen som ikke er papir. Den fulgte
+     ingen innstilling før — den var bare svart — og en kullsvart boks midt i
+     et lyst dashboard er det som ser ut som en feil. Nå leser den
+     `prefers-color-scheme`: lyst system gir en rolig papirterminal, mørkt
+     system gir den mørke. Fargene ligger som tokens slik at én mediespørring
+     under snur hele terminalen. */
+  --terminal-surface: #f6f6f2;
+  --terminal-bar: #ecece6;
+  --terminal-text: #1c1c1c;
+  --terminal-dim: rgba(28, 28, 28, 0.62);
+  --terminal-line: rgba(0, 0, 0, 0.12);
+  --terminal-scheme: light;
+
+  /* ---- Bevegelse ----
+     Én kurve for alt som beveger seg: rask start, mykt anslag. Varighetene
+     er tre trinn, ikke tjue, slik at grensesnittet får én rytme. */
+  --ease-snoat: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --dur-fast: 0.16s;
+  --dur-base: 0.28s;
+  --dur-slow: 0.48s;
+
+  --border: #242424;
+  --outline: #242424;
+  --input: #242424;
+  --ring: #242424;
+}
+
+/* Appen er lys. Terminalen er det ene stedet der brukerens egen
+   mørk/lys-innstilling faktisk skal bestemme, fordi en byggelogg leses som en
+   terminal og ikke som en side. Ingenting annet snur her. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --terminal-surface: #121212;
+    --terminal-bar: #1d1d1d;
+    --terminal-text: #ededea;
+    --terminal-dim: rgba(237, 237, 234, 0.62);
+    --terminal-line: rgba(255, 255, 255, 0.14);
+    --terminal-scheme: dark;
+  }
 }
 
 @layer base {
@@ -210,7 +253,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-ink);
+    outline: 2px solid var(--color-line);
     outline-offset: 2px;
   }
 }
@@ -222,21 +265,21 @@
 /* Kort. Figma: border 1,301 → 2 px, radius 7,806 → 12 px. Ingen skygge. */
 @utility ink-card {
   background: var(--color-paper);
-  border: 2px solid var(--color-ink);
+  border: 2px solid var(--color-line);
   border-radius: 12px;
 }
 
 /* Det store kortet: border 1,687 → 2,6 px, radius 10,123 → 16 px. */
 @utility ink-card-lg {
   background: var(--color-paper);
-  border: 2.6px solid var(--color-ink);
+  border: 2.6px solid var(--color-line);
   border-radius: 16px;
 }
 
 /* Prisekort: radius 11,059 → 18 px. */
 @utility ink-card-xl {
   background: var(--color-paper);
-  border: 2px solid var(--color-ink);
+  border: 2px solid var(--color-line);
   border-radius: 18px;
 }
 
@@ -250,10 +293,15 @@
   background: var(--color-ink);
   color: var(--color-paper);
   font-weight: 700;
+  /* Fylt svart knapp: ramma er samme farge som flata, ellers får knappen en
+     lysere kant rundt seg. Ved hover snur den til papir, og da tar
+     `.btn-ink:hover` over med den myke streken. */
   border: 2px solid var(--color-ink);
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-snoat);
 }
 
 @utility btn-outline {
@@ -264,10 +312,12 @@
   background: var(--color-paper);
   color: var(--color-ink);
   font-weight: 700;
-  border: 2px solid var(--color-ink);
+  border: 2px solid var(--color-line);
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-snoat);
 }
 
 @utility btn-sun {
@@ -278,8 +328,11 @@
   background: var(--color-sun);
   color: var(--color-ink);
   font-weight: 700;
-  border: 2px solid var(--color-ink);
-  transition: background-color 0.18s ease;
+  border: 2px solid var(--color-line);
+  transition:
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-snoat);
 }
 
 @utility btn-quiet {
@@ -292,17 +345,20 @@
   font-weight: 400;
   border: 2px solid transparent;
   transition:
-    background-color 0.18s ease,
-    border-color 0.18s ease;
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-snoat);
 }
 
 /* Skjemafelt. Figma: nyhetsbrevfeltet er en ren firkant med 2 px ramme. */
 @utility field-ink {
   border-radius: 0;
   background: var(--color-paper);
-  border: 2px solid var(--color-ink);
+  border: 2px solid var(--color-line);
   color: var(--color-ink);
-  transition: background-color 0.18s ease;
+  transition:
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
 }
 
 /* Hårstrek — Figma bruker svart på 10 % som eneste skillelinje. */
@@ -363,5 +419,472 @@
   .btn-quiet:disabled {
     opacity: 0.35;
     cursor: not-allowed;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Terminalen
+
+   Loggflata er bygd av tokens (se `:root` og mediespørringen over), slik at
+   den snur med systemets mørk/lys-innstilling uten at markupen vet om det.
+   `color-scheme` settes på selve boksen slik at rullefeltet inne i loggen
+   følger med — en mørk logg med et hvitt rullefelt ser ødelagt ut.
+   ------------------------------------------------------------------------- */
+
+@utility terminal-shell {
+  color-scheme: var(--terminal-scheme);
+}
+
+@utility terminal-bar {
+  background: var(--terminal-bar);
+  color: var(--terminal-text);
+  border-bottom: 1px solid var(--terminal-line);
+  /* Avkryssingsboksen «autorull» tegnes av nettleseren og må få terminalens
+     farge, ellers står den svart på svart i den mørke varianten. */
+  accent-color: var(--terminal-text);
+  transition:
+    background-color var(--dur-base) ease,
+    color var(--dur-base) ease;
+}
+
+@utility terminal-body {
+  background: var(--terminal-surface);
+  color: var(--terminal-text);
+  transition:
+    background-color var(--dur-base) ease,
+    color var(--dur-base) ease;
+}
+
+/* Knappen og avkryssingen i terminallista må bruke terminalens egen farge, ikke
+   blekk — `btn-outline` er hardkodet til svart på papir og forsvinner i den
+   mørke varianten. */
+@utility terminal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  background: transparent;
+  border: 2px solid var(--terminal-line);
+  color: var(--terminal-dim);
+  font-weight: 700;
+  transition:
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-snoat);
+
+  &:hover {
+    color: var(--terminal-text);
+    border-color: var(--terminal-text);
+  }
+
+  &:active {
+    transform: translateY(1px) scale(0.985);
+  }
+}
+
+@utility terminal-dim {
+  color: var(--terminal-dim);
+}
+
+@utility terminal-rule {
+  border-color: var(--terminal-line);
+}
+
+/* Blokkmarkøren som blinker bak siste loggrad mens bygget kjører. Den er den
+   eneste indikasjonen på at loggen fortsatt vokser når byggesteget står stille
+   i noen sekunder. */
+@utility terminal-caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  margin-left: 0.15em;
+  vertical-align: text-bottom;
+  background: currentColor;
+  animation: snoat-caret 1.05s steps(1, end) infinite;
+}
+
+/* ---------------------------------------------------------------------------
+   Bevegelse
+
+   Prinsippet er det samme som for flatene: få virkemidler, brukt likt overalt.
+   Alt som dukker opp, stiger 12–18 px og toner inn. Alt som endrer størrelse,
+   animerer størrelsen i stedet for å hoppe. Alt som kan trykkes, gir etter.
+   Alt sammen slås av under `prefers-reduced-motion`.
+   ------------------------------------------------------------------------- */
+
+@keyframes snoat-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes snoat-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes snoat-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes snoat-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes snoat-caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Pusten på «pågår»-tilstander. `animate-pulse` fra Tailwind går helt ned til
+   0,5 i opasitet og blir urolig på en gul flate; denne holder seg i toppen. */
+@keyframes snoat-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Søyler og stolper som vokser fram i stedet for å stå ferdig tegnet. Vi
+   animerer `transform`, ikke `height`/`width`, slik at grafen ikke tvinger fram
+   en ny layout for hver ramme. */
+@keyframes snoat-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes snoat-widen {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Lyset som vandrer over en flate mens noe lastes. Brukes på skjelettene. */
+@keyframes snoat-sheen {
+  from {
+    background-position: -150% 0;
+  }
+  to {
+    background-position: 250% 0;
+  }
+}
+
+/* Den gule streken som tegner seg selv under en overskrift. */
+@keyframes snoat-draw {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@utility anim-rise {
+  animation: snoat-rise var(--dur-slow) var(--ease-snoat) both;
+  animation-delay: var(--anim-delay, 0ms);
+}
+
+@utility anim-fade {
+  animation: snoat-fade var(--dur-base) ease both;
+  animation-delay: var(--anim-delay, 0ms);
+}
+
+@utility anim-pop {
+  animation: snoat-pop var(--dur-base) var(--ease-snoat) both;
+  animation-delay: var(--anim-delay, 0ms);
+}
+
+@utility anim-slide-in {
+  animation: snoat-slide-in var(--dur-base) var(--ease-snoat) both;
+  animation-delay: var(--anim-delay, 0ms);
+}
+
+@utility anim-grow {
+  transform-origin: bottom;
+  animation: snoat-grow 0.55s var(--ease-snoat) both;
+  animation-delay: var(--anim-delay, 0ms);
+}
+
+@utility anim-widen {
+  transform-origin: left;
+  animation: snoat-widen 0.6s var(--ease-snoat) both;
+  animation-delay: var(--anim-delay, 0ms);
+}
+
+@utility anim-breathe {
+  animation: snoat-breathe 1.9s ease-in-out infinite;
+}
+
+@utility anim-draw {
+  animation: snoat-draw 0.7s var(--ease-snoat) both;
+  animation-delay: var(--anim-delay, 120ms);
+}
+
+/* Lister som kommer inn radvis. Forsinkelsen ligger på barna slik at kallstedet
+   slipper å regne ut en delay per element. Over tolv elementer faller resten
+   inn samtidig — venting er verre enn koreografi. */
+@utility stagger {
+  & > * {
+    animation: snoat-rise var(--dur-slow) var(--ease-snoat) both;
+  }
+  & > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  & > *:nth-child(2) {
+    animation-delay: 45ms;
+  }
+  & > *:nth-child(3) {
+    animation-delay: 90ms;
+  }
+  & > *:nth-child(4) {
+    animation-delay: 135ms;
+  }
+  & > *:nth-child(5) {
+    animation-delay: 180ms;
+  }
+  & > *:nth-child(6) {
+    animation-delay: 225ms;
+  }
+  & > *:nth-child(7) {
+    animation-delay: 270ms;
+  }
+  & > *:nth-child(8) {
+    animation-delay: 315ms;
+  }
+  & > *:nth-child(9) {
+    animation-delay: 360ms;
+  }
+  & > *:nth-child(10) {
+    animation-delay: 405ms;
+  }
+  & > *:nth-child(11) {
+    animation-delay: 450ms;
+  }
+  & > *:nth-child(n + 12) {
+    animation-delay: 495ms;
+  }
+}
+
+/* Boksen som løftes når den kan trykkes. Designet har ingen skygge å løfte med,
+   så løftet er ren forflytning pluss den gule hover-flata kortet har fra før. */
+@utility lift {
+  transition:
+    transform var(--dur-base) var(--ease-snoat),
+    background-color var(--dur-base) ease,
+    border-color var(--dur-base) ease;
+
+  &:hover {
+    transform: translateY(-3px);
+  }
+
+  &:active {
+    transform: translateY(-1px);
+  }
+}
+
+/* Alt som endrer høyde.
+   
+   `transition: height` på en boks med `height: auto` gjør ingenting: endrer
+   innholdet seg, er den beregnede verdien fortsatt `auto`, og da finnes det
+   ingen verdiendring å animere. `interpolate-size` hjelper bare når man går
+   *til eller fra* et nøkkelord, ikke når innholdet vokser. Derfor er dette den
+   eneste utfellingsmekanismen i systemet: 0fr → 1fr på et rutenett med én rad,
+   som virker i alle nettlesere. Barnet må ha `overflow: hidden`, ellers renner
+   innholdet ut mens raden er null høy.
+
+   Bruk `data-open` på elementet, og `inert` når det er lukket – ellers kan
+   tabulator nå knapper og felt som ikke er synlige. */
+@utility collapse-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition:
+    grid-template-rows var(--dur-base) var(--ease-snoat),
+    opacity var(--dur-base) ease;
+  opacity: 0;
+
+  & > * {
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  &[data-open="true"] {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+
+/* Lasteskjelett med vandrende lys, i stedet for en tom flate eller «Laster …». */
+@utility skeleton {
+  background-color: var(--muted);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 237, 136, 0.55) 45%,
+    transparent 90%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: snoat-sheen 1.5s linear infinite;
+}
+
+/* Elementer som skal tone inn når de rulles inn i bildet. `Reveal` setter
+   `data-reveal="visible"` når de treffer skjermen. Uten JavaScript overstyrer
+   `<noscript>`-regelen i __root.tsx dette, slik at innholdet alltid er synlig. */
+@layer base {
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+      opacity var(--dur-slow) var(--ease-snoat),
+      transform var(--dur-slow) var(--ease-snoat);
+    transition-delay: var(--anim-delay, 0ms);
+  }
+
+  [data-reveal="visible"] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Alt som kan trykkes eller fylles ut svarer mykt. Utilities som
+     `transition-colors` vinner over dette der de er satt eksplisitt. */
+  a,
+  button,
+  summary,
+  input,
+  select,
+  textarea,
+  [role="button"] {
+    transition:
+      color var(--dur-fast) ease,
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease,
+      opacity var(--dur-fast) ease,
+      transform var(--dur-fast) var(--ease-snoat);
+  }
+
+  /* Kortene puster med når innholdet i dem endrer seg. */
+  .ink-card,
+  .ink-card-lg,
+  .ink-card-xl {
+    transition:
+      background-color var(--dur-base) ease,
+      border-color var(--dur-base) ease,
+      transform var(--dur-base) var(--ease-snoat);
+  }
+}
+
+@layer components {
+  /* Knapper gir etter når de trykkes. Uten dette er en firkantet knapp uten
+     skygge helt død i hånda. */
+  .btn-ink:active:not(:disabled),
+  .btn-outline:active:not(:disabled),
+  .btn-sun:active:not(:disabled),
+  .btn-quiet:active:not(:disabled) {
+    transform: translateY(1px) scale(0.985);
+  }
+
+  .btn-ink:hover:not(:disabled) {
+    border-color: var(--color-line);
+  }
+
+  /* Trekkspillets pluss/minus-rute. Tegnene byttet før brått med `hidden`;
+     nå roterer de forbi hverandre, slik at ruta viser at den åpner noe i
+     stedet for bare å skifte glyf. Ruta fylles gul når seksjonen står åpen. */
+  .accordion-mark {
+    transition:
+      background-color var(--dur-fast) ease,
+      border-color var(--dur-fast) ease;
+  }
+
+  [data-state="open"] .accordion-mark {
+    background: var(--color-sun);
+  }
+
+  .accordion-glyph {
+    grid-column: 1;
+    grid-row: 1;
+    transition:
+      opacity var(--dur-base) ease,
+      transform var(--dur-base) var(--ease-snoat);
+  }
+
+  .accordion-glyph-minus {
+    opacity: 0;
+    transform: rotate(-90deg);
+  }
+
+  [data-state="open"] .accordion-glyph-plus {
+    opacity: 0;
+    transform: rotate(90deg);
+  }
+
+  [data-state="open"] .accordion-glyph-minus {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Én bryter slår av alt. Systemet skal ikke bevege seg for noen som har bedt
+   om ro — men grensesnittet skal fortsatt fungere, så vi nuller varigheten i
+   stedet for å fjerne animasjonene. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
   }
 }

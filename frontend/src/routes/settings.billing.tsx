@@ -103,14 +103,14 @@ function PlanCard({
   const isCurrent = billing.billedPlan === plan.id;
 
   return (
-    <div className={`ink-card-lg flex flex-col gap-5 p-6 ${isCurrent ? "bg-sun-soft" : ""}`}>
+    <div className={`ink-card-lg lift flex flex-col gap-5 p-6 ${isCurrent ? "bg-sun-soft" : ""}`}>
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
           <h3 className="font-display text-[22px] font-bold text-ink">
             {t(`billing.plan_${plan.id}`)}
           </h3>
           {isCurrent && (
-            <span className="border-2 border-ink bg-ink px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] text-paper">
+            <span className="border-2 border-line bg-ink px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] text-paper">
               {t("billing.current")}
             </span>
           )}
@@ -237,7 +237,7 @@ function BillingPage() {
       {notice && (
         <div
           role="status"
-          className="mb-[24px] border-2 border-ink bg-sun px-[18px] py-[14px] duration-300 animate-in fade-in-50 slide-in-from-top-2"
+          className="anim-rise mb-[24px] border-2 border-line bg-sun px-[18px] py-[14px]"
         >
           <p className="font-body text-[16px] font-normal text-ink">{notice}</p>
         </div>
@@ -263,7 +263,7 @@ function BillingPage() {
         <div className="flex flex-col gap-[24px]">
           {/* Betalingen har feilet. Skal stå øverst og si hva som skjer når. */}
           {(state.status === "past_due" || state.status === "unpaid") && (
-            <div role="alert" className="ink-card-lg flex flex-col gap-3 p-6 md:p-8">
+            <div role="alert" className="ink-card-lg anim-rise flex flex-col gap-3 p-6 md:p-8">
               <h2 className="font-display text-[22px] font-bold text-error">
                 {t("billing.payment_failed_title")}
               </h2>
@@ -289,7 +289,7 @@ function BillingPage() {
           )}
 
           {/* Nåværende plan og forbruk */}
-          <section className="ink-card-lg flex flex-col gap-6 p-6 md:p-8">
+          <section className="ink-card-lg anim-rise flex flex-col gap-6 p-6 md:p-8">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex flex-col gap-1">
                 <span className="font-body text-[13px] uppercase tracking-wide text-ink/70">
@@ -356,7 +356,7 @@ function BillingPage() {
               </p>
             )}
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="stagger grid gap-4 md:grid-cols-3">
               {state.plans.map((plan) => (
                 <PlanCard
                   key={plan.id}
@@ -397,7 +397,7 @@ function BillingPage() {
                 e-postfaktura-varianten, ikke en oppfordring om å sende
                 organisasjonsnummeret sitt til Peppol. `invoiceChannel` kommer
                 fra markedet i backend, ikke fra en test på språket her. */}
-          <section className="ink-card-lg flex flex-col gap-3 p-6 md:p-8">
+          <section className="ink-card-lg anim-rise [--anim-delay:120ms] flex flex-col gap-3 p-6 md:p-8">
             <h2 className="font-display text-[22px] font-bold text-ink">
               {t(`billing.invoice_${state.market.invoiceChannel}_title`)}
             </h2>
