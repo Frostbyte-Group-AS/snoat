@@ -441,12 +441,18 @@ async function runPipeline(
   await setStatus(deployment.id, "building");
 
   try {
+    // `branch` er NULL for de aller fleste prosjektene, og betyr da «bruk
+    // repoets default branch» – nøyaktig slik Snoat alltid har oppført seg.
+    // Er den satt, er det den grenen som bygges, og `cloneRepository` skriver
+    // valget til byggeloggen slik at det er etterprøvbart hvilken kode som ble
+    // rullet ut.
     const { directory, commitHash } = await cloneRepository(
       project.repo_url,
       project.id,
       deployment.id,
       logs,
       project.github_installation_id,
+      project.branch,
     );
     await setStatus(deployment.id, "building", { commit_hash: commitHash });
 

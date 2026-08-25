@@ -6,6 +6,7 @@ import { SnoatLogo } from "@/components/SnoatLogo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Mark } from "@/components/Mark";
 import { DeploymentStatusBadge } from "@/components/DeploymentStatusBadge";
+import { BranchPicker } from "@/components/BranchPicker";
 import { DnsSettingsTab } from "@/components/DnsSettingsTab";
 import { AnalyticsTab } from "@/components/AnalyticsTab";
 import {
@@ -1457,6 +1458,7 @@ function SettingsTab({ project }: { project: Project }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const [branch, setBranch] = useState(project.branch ?? "");
   const [buildCommand, setBuildCommand] = useState(project.build_command ?? "");
   const [staticOutputDir, setStaticOutputDir] = useState(project.static_output_dir ?? "");
   const [spaFallback, setSpaFallback] = useState(project.static_spa_fallback);
@@ -1472,6 +1474,11 @@ function SettingsTab({ project }: { project: Project }) {
       const { error } = await getSupabase()
         .from("projects")
         .update({
+          // Tomt felt = NULL = repoets standardgren. Verdien valideres av
+          // check-constrainten `projects_branch_check` her, og av
+          // `assertSafeBranch()` når backend kloner – dashboardet skriver raden
+          // selv, uten å gå gjennom API-et.
+          branch: branch.trim() || null,
           build_command: buildCommand.trim() || null,
           static_output_dir: staticOutputDir.trim() || null,
           static_spa_fallback: spaFallback,
@@ -1514,6 +1521,10 @@ function SettingsTab({ project }: { project: Project }) {
         {message && (
           <div className="rounded-[12px] bg-sun p-4 font-body text-[16px] text-ink">{message}</div>
         )}
+
+        {/* Grenen er ikke en avansert innstilling – den avgjør hvilken kode som
+            står på nett. Derfor ligger den over trekkspillet, ikke inni det. */}
+        <BranchPicker repo={project.repo_url} value={branch} onChange={setBranch} />
 
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="advanced" className="border-b-0">

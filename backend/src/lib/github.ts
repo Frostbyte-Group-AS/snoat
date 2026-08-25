@@ -244,6 +244,64 @@ export async function listRepositories(installationId: number): Promise<GithubRe
   return repos;
 }
 
+interface BranchResponse {
+  name: string;
+}
+
+export interface RepoBranches {
+  /** Grenen GitHub bruker når ingen er valgt. Det Snoat gjør med NULL. */
+  defaultBranch: string;
+  branches: string[];
+}
+
+/**
+ * Grenene i ett repo, slik dashboardet kan tilby en liste å velge fra.
+ *
+ * Uten denne måtte grenvalget vært et fritekstfelt, og et fritekstfelt for et
+ * navn som må stemme tegn for tegn med noe på GitHub er en skrivefeil som først
+ * viser seg som en feilet build. Med lista er valget et valg.
+ *
+ * `defaultBranch` er med fordi det er den grenen «ingen gren valgt» faktisk
+ * betyr. Skal dashboardet kunne skrive *hvilken* gren standardvalget er, må det
+ * vite navnet – ellers står det bare «standardgren», og brukeren må gjette.
+ *
+ * `owner/repo` legges i stien, så verdien må være et par enkle segmenter – vi
+ * bruker normalformen fra `repoIdentity()` og ikke noe brukeren har skrevet.
+ * `MAX_PAGES` er samme tak som for repo-listen: 1000 grener er langt mer enn en
+ * nedtrekksliste er nyttig for.
+ */
+export async function listBranches(installationId: number, repo: string): Promise<RepoBranches> {
+  const identity = repoIdentity(repo);
+  if (!identity) throw new GithubError(400, `Ukjent repository: ${repo}`);
+
+  const token = await installationToken(installationId);
+
+  // Rekkefølgen er ikke tilfeldig: dette kallet er også tilgangssjekken. Rekker
+  // ikke installasjonen repoet, svarer GitHub 404 her, og vi slipper å hente en
+  // grenliste vi ikke har lov til å se.
+  const repository = await githubFetch<{ default_branch?: string }>(
+    `/repos/${identity}`,
+    token,
+  );
+
+  const branches: string[] = [];
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const data = await githubFetch<BranchResponse[]>(
+      `/repos/${identity}/branches?per_page=100&page=${page}`,
+      token,
+    );
+
+    for (const branch of data) branches.push(branch.name);
+
+    // GitHub sender ingen totalsum for grener, så en side som ikke er full er
+    // den eneste stoppbetingelsen vi har.
+    if (data.length < 100) break;
+  }
+
+  return { defaultBranch: repository.default_branch ?? "main", branches };
+}
+
 // --- Installasjonsflyt ------------------------------------------------------
 
 /**

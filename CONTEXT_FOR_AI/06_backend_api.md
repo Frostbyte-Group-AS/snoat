@@ -91,6 +91,7 @@ ikke har noen sesjon å skrive med.
 {
   "name": "kundenavn",
   "repoUrl": "https://github.com/leadlab-sites/kundenavn-a1b2c3",
+  "branch": "dev",
   "externalRef": "1f0c…",
   "githubInstallationId": 12345,
   "staticOutputDir": "out",
@@ -101,6 +102,15 @@ ikke har noen sesjon å skrive med.
 `name` er subdomenet og valideres mot samme regex som check-constrainten i
 databasen. `githubInstallationId` er det som gjør private repoer klonbare.
 `staticOutputDir` gjør prosjektet statisk – ingen container, kun filer.
+
+`branch` er grenen som skal bygges og deployes. **Utelates den – eller sendes den
+som `null` eller tom streng – brukes repoets default branch**, som er standarden
+og det plattformen alltid har gjort. Feltet styrer samtidig hvilke push-events
+auto-deploy reagerer på; de to kan ikke settes hver for seg, fordi et prosjekt som
+bygger `dev` men lytter på `main` ville rullet ut kode ingen ba om. Verdien
+valideres mot samme regel som `assertSafeBranch()` i `services/git.ts` – den blir
+et argument til `git clone`, så et navn som starter med bindestrek avvises med
+400 (`--upload-pack=…` er kommandokjøring på byggeverten).
 
 **`externalRef` gjør kallet idempotent.** Kalleren legger sin egen ID der, og et
 gjentatt POST svarer `200` med `created: false` og den eksisterende raden i
@@ -113,11 +123,37 @@ interne ID-er uten å kollidere.
 | --- | --- |
 | 201 | Opprettet (`created: true`) |
 | 200 | Fantes allerede, funnet via `externalRef` (`created: false`) |
-| 400 | Ugyldig `name` eller `repoUrl` |
+| 400 | Ugyldig `name`, `repoUrl` eller `branch` |
 | 409 | Navnet er i bruk av et annet prosjekt på samme konto |
 
 ⚠️ **Plangrensene håndheves ikke her**, like lite som for dashboardet. Et prosjekt
 uten deployment koster ingenting; det er `startDeployment()` som sperrer.
+
+### `PATCH /api/projects/:projectId`
+
+Endrer konfigurasjon på et prosjekt som finnes. Alle feltene er valgfrie, og
+**bare de som er med i kroppen røres** – `undefined` betyr «la stå», ikke «sett
+til null».
+
+```json
+{
+  "branch": "dev",
+  "buildCommand": "npm run build",
+  "envVars": { "DATABASE_URL": "…" },
+  "staticOutputDir": "dist",
+  "staticSpaFallback": true,
+  "githubInstallationId": 12345
+}
+```
+
+`branch: null` (eller `""`) setter prosjektet tilbake til repoets default branch.
+At grenen kan endres i det hele tatt er poenget: en kunde som flytter
+produksjonen fra `main` til `dev` skal ikke måtte opprette prosjektet på nytt og
+miste subdomene, historikk og miljøvariabler. Endringen får effekt ved neste
+deployment – og fra samme øyeblikk er det den nye grenen webhooken lytter på.
+
+`envVars` **erstatter hele settet**. Hent prosjektet først og send med alle
+nøklene som skal bestå.
 
 ### `DELETE /api/projects/:projectId`
 
@@ -265,6 +301,38 @@ foreldede raden vår og listen bygges videre fra de øvrige installasjonene –
 
 Svarer `503` når App-en ikke er konfigurert.
 
+### `GET /api/github/branches?repo=…`
+
+Grenene i ett repo, til grenvelgeren i dashboardet. `repo` kan være en klone-URL
+eller `owner/repo`; begge normaliseres av `repoIdentity()`, av samme grunn som i
+webhooken – `projects.repo_url` finnes i alle varianter, og velgeren skal virke
+uansett hvilken som er lagret.
+
+```json
+{ "repo": "frostbyte/api", "installationId": 12345, "defaultBranch": "main", "branches": ["main", "dev"] }
+```
+
+`defaultBranch` er med fordi det er den grenen «ingen gren valgt» *betyr*. Uten
+navnet kunne dashboardet bare skrive «standardgren», og brukeren måtte gjette
+hvilken.
+
+⚠️ **Installasjonen kommer aldri fra klienten.** Endepunktet går gjennom kontoens
+egne koblinger og bruker den første som faktisk rekker repoet. Tok det imot en
+`installationId` fra forespørselen, ville det vært en vei til å lese grenlisten i
+andres private repoer med et gjettet tall – `installation_id` er ingen
+hemmelighet.
+
+| Kode | Betydning |
+| --- | --- |
+| 200 | Grenene, med `defaultBranch` |
+| 400 | `repo` mangler, eller er ikke et repository vi kjenner igjen |
+| 404 | Ingen av kontoens GitHub-koblinger rekker repoet |
+| 503 | App-en er ikke konfigurert |
+
+404 er bevisst ikke en tom liste: en tom liste leses som «repoet har ingen
+grener», og dashboardet skal da falle tilbake til et validert tekstfelt – ikke
+vise en nedtrekksliste som lyver.
+
 ### `GET /api/pricing?market=no|eu`
 
 **Offentlig – utenfor `requireAuth`.** Plankatalogen landingssiden viser til folk
@@ -364,7 +432,10 @@ HMAC-signaturen i `x-hub-signature-256`, verifisert mot `GITHUB_WEBHOOK_SECRET`.
 Ruten monteres derfor **før** `/api` i `index.ts` – se `03_deployment_flow.md`.
 
 Starter en deployment av hvert prosjekt hvis `repo_url` peker på repoet i
-payloaden, forutsatt at pushen gikk til hovedgrenen.
+payloaden **og prosjektet deployer fra grenen som ble pushet** – altså
+`projects.branch`, eller repoets `default_branch` når feltet er NULL. Vurderingen
+er per prosjekt: to prosjekter på samme repo med ulike grener får hver sin
+avgjørelse av samme push.
 
 ```json
 {
@@ -378,7 +449,7 @@ payloaden, forutsatt at pushen gikk til hovedgrenen.
 
 | Kode | Betydning |
 | --- | --- |
-| 200 | Mottatt, men ingenting å gjøre (`ping`, annet event, tag, annen gren, ukjent repo) |
+| 200 | Mottatt, men ingenting å gjøre (`ping`, annet event, tag, ukjent repo, eller ingen prosjekter som deployer fra den pushede grenen) |
 | 202 | Minst ett prosjekt matchet. `results[]` sier `deploying` eller `already_building` per prosjekt |
 | 400 | Payloaden kunne ikke tolkes, eller mangler `repository.full_name` |
 | 401 | Ugyldig eller manglende signatur |

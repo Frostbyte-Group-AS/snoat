@@ -20,6 +20,14 @@ export interface Project {
   /** Eget domene knyttet til prosjektet (valgfritt) */
   custom_domain: string | null;
   repo_url: string;
+  /**
+   * Grenen som klones og deployes (migrasjon 0012).
+   *
+   * NULL = bruk repoets default branch, altså den GitHub har pekt ut. Feltet
+   * styrer både hva som bygges og hvilke push-events auto-deploy reagerer på, så
+   * et tomt felt i innstillingene er et bevisst valg – ikke en manglende verdi.
+   */
+  branch: string | null;
   build_command: string | null;
   env_vars: Record<string, string>;
   /**

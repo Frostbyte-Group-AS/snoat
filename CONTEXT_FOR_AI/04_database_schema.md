@@ -24,6 +24,7 @@ Hvert repository som er koblet til plattformen.
   - `user_id` (FK -> `profiles`)
   - `name` (URL-vennlig slug)
   - `repo_url`
+  - `branch` (grenen som bygges; NULL = repoets default branch)
   - `build_command` (valgfri override)
   - `env_vars` (JSONB for `.env`)
   - `github_installation_id` (valgfri, se under)
@@ -53,6 +54,30 @@ Er den satt, kloner backend med et installasjonstoken – det er dette som gjør
 private repoer mulige. `NULL` betyr at URL-en ble limt inn for hånd, og repoet
 må da være offentlig.
 
+`branch` (migrasjon 0012) er grenen prosjektet bygges fra. **NULL betyr «bruk
+repoets default branch»**, og det er ikke en manglende verdi – det er den eneste
+verdien som ikke kan bli feil. Hadde migrasjonen backfill-et `'main'`, ville
+hvert eksisterende prosjekt med en annen hovedgren (`master`, `trunk`,
+`produksjon`) sluttet å deploye i samme øyeblikk den kjørte. Med NULL fortsetter
+GitHub å være autoriteten for alle som ikke har valgt noe, og oppførselen er
+identisk med slik plattformen alltid har fungert.
+
+Kolonnen styrer **to** ting samtidig, og det er med vilje: hva
+`cloneRepository()` henter (`git clone --branch`), og hvilke push-events
+webhooken bygger på. De to må følge hverandre – et prosjekt som bygger `dev` men
+auto-deployer på `main` ville rullet ut `dev`-koden hver gang noen pushet til
+`main`, altså deployet kode ingen hadde bedt om.
+
+Verdien blir et argument til `git clone`, og kommer fra brukeren. Den valideres
+derfor to steder: check-constrainten `projects_branch_check` (som dashboardet
+møter, siden det skriver raden selv med brukerens sesjon) og `assertSafeBranch()`
+i `backend/src/services/git.ts` (som backend møter, siden service-role-nøkkelen
+omgår constrainten). Reglene er git sine egne fra `git check-ref-format`, i
+konservativ form, med én ekstra: **første tegn kan ikke være en bindestrek.** Et
+grennavn som starter med `-` leses av git som en opsjon, og `--upload-pack=…` er
+vilkårlig kommandokjøring på byggeverten – samme angrep `assertSafeRepoUrl`
+verner mot for `repo_url`.
+
 **`repo_url` er ikke bare noe vi kloner fra – den er også nøkkelen webhooks slår
 opp på.** Et push-event kjenner bare `owner/repo`, så
 `backend/src/routes/webhooks.ts` normaliserer begge sider til `owner/repo` med
@@ -64,7 +89,10 @@ repoer på, er det denne normalformen som må holde, ellers slutter auto-deploy 
 finne prosjektet uten at noe annet ser galt ut.
 
 Kombinasjonen `(user_id, repo_url)` er **ikke** unik: flere prosjekter kan peke
-på samme repo, og ett push-event starter da en deployment per prosjekt.
+på samme repo. Med `branch` er det en funksjon og ikke bare en tålt tilstand –
+`main` og `dev` fra samme repo kan ligge som to prosjekter på hvert sitt
+subdomene. Et push-event starter da en deployment per prosjekt **som deployer fra
+den grenen som ble pushet**, og lar de øvrige stå.
 
 `external_ref` (migrasjon 0010) er integrasjonens egen ID for prosjektet, satt av
 `POST /api/projects`. Den gjør opprettelsen idempotent: unik på

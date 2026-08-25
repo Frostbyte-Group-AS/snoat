@@ -297,6 +297,19 @@
     "delete_project_warning": "Sletting av prosjektet vil fjerne alle deployments og innstillinger permanent.",
     "start_project": "Start på nytt"
   },
+  "branch": {
+    "label": "Gren",
+    "default_option": "Repoets standardgren ({{branch}})",
+    "default_option_unknown": "Repoets standardgren",
+    "loading": "Henter grener fra GitHub…",
+    "filter_placeholder": "Filtrer grener…",
+    "no_match": "Ingen grener matcher.",
+    "missing_on_github": "Ikke på GitHub",
+    "placeholder": "standardgren",
+    "pattern_title": "Bokstaver, tall, punktum, understrek, bindestrek og skråstrek. Må begynne med en bokstav, et tall eller en understrek.",
+    "help": "Grenen bestemmer både hvilken kode som bygges og hvilke push-er som utløser en ny deployment. Velger du standardgrenen, følger Snoat den GitHub peker på — også hvis den byttes senere.",
+    "manual_hint": "Grenlisten kunne ikke hentes fra GitHub, så navnet må skrives. La feltet stå tomt for å bruke repoets standardgren."
+  },
   "forgot": {
     "title": "Glemt passord",
     "desc": "Skriv inn e-postadressen din, så sender vi deg en lenke for å sette et nytt passord.",

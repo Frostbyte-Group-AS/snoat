@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { BranchPicker } from "@/components/BranchPicker";
 import { DashboardNav } from "@/components/DashboardNav";
 
 import { DeploymentStatusBadge } from "@/components/DeploymentStatusBadge";
@@ -468,6 +469,8 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [repoUrl, setRepoUrl] = useState("");
+  const [branch, setBranch] = useState("");
+  const [repoDefaultBranch, setRepoDefaultBranch] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [search, setSearch] = useState("");
@@ -492,16 +495,28 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
   const selectRepo = (repo: GithubRepo) => {
     setRepoUrl(repo.cloneUrl);
     setInstallationId(repo.installationId);
+    setRepoDefaultBranch(repo.defaultBranch);
+    // Grenvalget hører til repoet. Bytter man repo, er «dev» fra det forrige et
+    // navn som kanskje ikke finnes her – og et prosjekt som peker på en gren som
+    // ikke finnes, feiler først ved første build.
+    setBranch("");
   };
 
   const create = useMutation({
     mutationFn: async () => {
-      const { error } = await getSupabase().from("projects").insert({
-        user_id: userId,
-        name: effectiveName,
-        repo_url: repoUrl.trim(),
-        github_installation_id: installationId,
-      });
+      const { error } = await getSupabase()
+        .from("projects")
+        .insert({
+          user_id: userId,
+          name: effectiveName,
+          repo_url: repoUrl.trim(),
+          // NULL = repoets standardgren. Feltet er tomt for de aller fleste, og
+          // da oppfører prosjektet seg som alle prosjekter gjorde før grenvalget
+          // fantes. Check-constrainten `projects_branch_check` er det som stopper
+          // et ugyldig navn her – dashboardet skriver raden selv, ikke gjennom API-et.
+          branch: branch.trim() || null,
+          github_installation_id: installationId,
+        });
       if (error) throw new Error(error.message);
     },
     onSuccess: async () => {
@@ -548,6 +563,8 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
                     setPasteUrl(!pasteUrl);
                     setRepoUrl("");
                     setInstallationId(null);
+                    setRepoDefaultBranch(null);
+                    setBranch("");
                   }}
                   className="font-body text-[15px] font-normal text-ink underline underline-offset-[4px] hover:decoration-sun hover:decoration-[3px]"
                 >
@@ -577,6 +594,7 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
                 onChange={(event) => {
                   setRepoUrl(event.target.value);
                   setInstallationId(null);
+                  setRepoDefaultBranch(null);
                 }}
                 placeholder="https://github.com/brukernavn/repo"
                 className="field-ink h-[46px] px-[14px] font-mono text-[14px] outline-none placeholder:text-ink/40"
@@ -589,6 +607,17 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
               </span>
             )}
           </div>
+
+          {/* Grenvalget er meningsløst uten et repo å hente grener fra, så det
+              dukker opp først når repoet er valgt. */}
+          {repoUrl.trim() && (
+            <BranchPicker
+              repo={repoUrl}
+              value={branch}
+              onChange={setBranch}
+              defaultBranch={repoDefaultBranch}
+            />
+          )}
 
           <label className="flex flex-col gap-[8px]">
             <span className="font-body text-[15px] font-normal text-ink">

@@ -4,6 +4,67 @@ Denne filen dokumenterer nye funksjonaliteter og forbedringer som er innført i 
 
 ---
 
+## 0c. Velg hvilken gren som deployes
+
+Snoat kunne én gren per repo: den GitHub hadde pekt ut som default branch.
+`git clone --depth 1` uten `--branch` henter den, og webhooken bygget kun ved push
+til `default_branch`. For alle som holder `main` produksjonsklar er det riktig –
+men ikke for dem som gjør det motsatte, og de er ikke få: et repo der `main` er
+kundens egen kode og `dev` er det som skal stå på nett, en kunde som vil se neste
+versjon på et eget subdomene før den slås sammen, et repo Snoat deler med en
+annen plattform som eier `main`.
+
+Å bytte default branch på GitHub var ingen vei rundt: den styrer pull requests,
+beskyttelsesregler og klonestandarden for alle som jobber i repoet – langt mer enn
+hva Snoat skal bygge.
+
+* **`projects.branch` (migrasjon 0012).** Nullable, og **NULL betyr «bruk repoets
+  default branch»**. Det er ikke latskap: hadde migrasjonen backfill-et `'main'`,
+  ville hvert eksisterende prosjekt med en annen hovedgren (`master`, `trunk`)
+  sluttet å deploye i samme øyeblikk den kjørte. NULL bevarer dagens oppførsel for
+  hver rad som finnes, uten backfill.
+* **Kloningen.** `services/git.ts` legger til `--single-branch --branch <gren>`
+  når feltet er satt. Grenen skrives til byggeloggen – også når den ikke er valgt,
+  for da er det GitHub som bestemte, og «hvilken gren ble egentlig bygget?» er
+  spørsmålet som kommer hver gang en endring ikke er med. En gren som ikke finnes
+  får sin egen feilmelding; før sa loggen «Er repoet offentlig?» om et repo som var
+  både offentlig og klonbart.
+* **Webhooken avgjør per prosjekt.** Grensjekken lå før prosjektoppslaget og
+  sammenlignet mot `default_branch`. Nå ligger den etter, fordi kriteriet er
+  prosjektets valgte gren – og flere prosjekter kan peke på samme repo med *ulike*
+  grener. En push til `dev` starter dem som deployer fra `dev` og lar de andre
+  stå. Logglinjene sier nå «ingen av prosjektene deployer fra denne grenen», ikke
+  «ikke hovedgrenen», siden det ikke lenger er kriteriet.
+* **Sikkerhet: samme port som for `repo_url`.** Verdien blir et
+  `git clone`-argument, så et navn som starter med bindestrek avvises – git leser
+  `--upload-pack=…` som en opsjon, og det er vilkårlig kommandokjøring på
+  byggeverten. Reglene er git sine egne fra `git check-ref-format` i konservativ
+  form, håndhevet både av check-constrainten `projects_branch_check` (som
+  dashboardet møter, siden det skriver raden selv) og av `assertSafeBranch()` (som
+  backend møter, siden service-role-nøkkelen omgår constrainten).
+* **API og MCP.** `POST /api/projects` og `PATCH /api/projects/:id` tar imot og
+  returnerer `branch`; `null` eller tom streng betyr standardgrenen.
+  `snoat_create_project` og `snoat_update_project` har feltet, så en byrå-integrasjon
+  eller Claude kan sette grenen uten å gå via dashboardet.
+* **`GET /api/github/branches?repo=…`** lister grenene i et repo, med
+  `defaultBranch`. Installasjonen slås opp fra kontoens egne koblinger og tas
+  aldri fra forespørselen – en `installation_id` er ingen hemmelighet, og
+  endepunktet skal ikke kunne lese grenlisten i andres private repoer.
+* **Frontend: `components/BranchPicker.tsx`.** Grenen velges fra en liste når
+  Snoat rekker repoet, og skrives i et validert tekstfelt ellers (URL limt inn for
+  hånd). Uttrykket følger `RepoPicker`: innrammet liste, gult fyll på valgt rad,
+  ingen ikoner. Første rad er «Repoets standardgren (main)» – tomt valg, med
+  navnet på grenen det faktisk betyr. Feltet ligger i «Nytt prosjekt» og øverst
+  under Innstillinger, ikke i trekkspillet for avanserte byggeinnstillinger:
+  grenen avgjør hvilken kode som står på nett.
+
+**Dette er ikke deploy-previews.** Et prosjekt bygger én gren, valgt på forhånd.
+En push til en vilkårlig feature-gren gir fortsatt ingen midlertidig URL, og en
+pull request får ingen egen adresse. Vil man se `dev` på nett, opprettes `dev` som
+et eget prosjekt med sitt eget subdomene – manuelt, én gang.
+
+---
+
 ## 0b. MCP som custom connector, og kontoinnstillinger bak profilbildet
 
 * **Den lokale stdio-serveren er slettet.** `mcp-server/` (npm-pakken
@@ -132,8 +193,10 @@ Vercel gir, uten at koden forlater norsk infrastruktur.
   `GITHUB_WEBHOOK_SECRET` med HMAC-sha256 over råkroppen og `timingSafeEqual`.
   Er secreten ikke satt, tas webhooken imot uverifisert med en `warn` i loggen –
   en bevisst, dokumentert åpning (`08_security_model.md`).
-* **Eventfiltrering:** `ping` svarer `pong`; kun `push` behandles. Tags, slettede
-  grener og alle andre grener enn repoets `default_branch` kvitteres og ignoreres.
+* **Eventfiltrering:** `ping` svarer `pong`; kun `push` behandles. Tags og
+  slettede grener kvitteres og ignoreres. Grensjekken var opprinnelig et treff mot
+  repoets `default_branch`; den avgjøres nå per prosjekt mot `projects.branch` –
+  se 0c.
 * **Prosjektoppslag:** `repository.full_name` og `projects.repo_url` normaliseres
   begge til `owner/repo` i små bokstaver (`repoIdentity()` i `lib/github.ts`), slik
   at `.git`-suffiks, skråstrek til slutt og vilkårlig case likevel treffer. Flere
@@ -150,9 +213,10 @@ Vercel gir, uten at koden forlater norsk infrastruktur.
   selv skal ikke én rar deployment kunne velte backend for alle brukere.
 
 ### Gjenstår
-* **Deploy-preview per gren/PR.** Kun hovedgrenen bygges; ingen midlertidig URL
-  per pull request. Dette er den største gjenværende forskjellen mot Vercel på
-  dette området.
+* **Deploy-preview per gren/PR.** Prosjektet bygger den grenen det har valgt (se
+  0c) – men bare den. En push til en vilkårlig feature-gren gir ingen midlertidig
+  URL, og en pull request får ingen egen adresse. Dette er den største
+  gjenværende forskjellen mot Vercel på dette området.
 * **`installation`-eventet.** Avinstallasjon av App-en oppdages fortsatt først
   ved neste repo-listing.
 * **Trigger-kilden vises ikke i UI.** `deployments` har ingen kolonne som skiller

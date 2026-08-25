@@ -297,6 +297,19 @@
     "delete_project_warning": "Deleting the project will permanently remove all deployments and settings.",
     "start_project": "Start again"
   },
+  "branch": {
+    "label": "Branch",
+    "default_option": "The repository's default branch ({{branch}})",
+    "default_option_unknown": "The repository's default branch",
+    "loading": "Fetching branches from GitHub…",
+    "filter_placeholder": "Filter branches…",
+    "no_match": "No branches match.",
+    "missing_on_github": "Not on GitHub",
+    "placeholder": "default branch",
+    "pattern_title": "Letters, digits, dots, underscores, hyphens and slashes. Must start with a letter, a digit or an underscore.",
+    "help": "The branch decides both which code is built and which pushes trigger a new deployment. Pick the default branch and Snoat follows whatever GitHub points at — even if that changes later.",
+    "manual_hint": "The branch list could not be fetched from GitHub, so type the name instead. Leave the field empty to use the repository's default branch."
+  },
   "forgot": {
     "title": "Forgot password",
     "desc": "Enter your email address and we'll send you a link to set a new password.",

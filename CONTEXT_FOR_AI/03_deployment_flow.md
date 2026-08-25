@@ -5,19 +5,24 @@ Implementert i `backend/src/services/deploy.ts`, som orkestrerer de øvrige
 tjenestene i `backend/src/services/`.
 
 **To ting kan utløse en deployment:** brukeren trykker «Deploy» i dashboardet,
-eller det kommer en push til hovedgrenen på GitHub. Begge veier ender i
+eller det kommer en push til prosjektets gren på GitHub. Begge veier ender i
 `startDeployment()`, og resten av flyten er identisk.
+
+**Hvilken gren?** Den prosjektet har valgt (`projects.branch`), eller repoets
+default branch hvis feltet er NULL – som det er for de aller fleste. Valget
+gjelder begge veier: det er grenen som klones, og den eneste grenen en push
+utløser en deployment fra.
 
 ## Oversikt
 
 ```
 Dashboard ──POST /api/projects/:id/deploy──▶ backend
-GitHub ────POST /api/webhooks/github ──────▶ backend   (push til hovedgrenen)
+GitHub ────POST /api/webhooks/github ──────▶ backend   (push til prosjektets gren)
                                               │
                                               ├─ 1. Insert deployments (queued) ──▶ Supabase
                                               │    svarer 202 med én gang
                                               │
-                                              ├─ 2. git clone --depth 1
+                                              ├─ 2. git clone --depth 1 [--branch]
                                               ├─ 3. nixpacks build   ──▶ Docker-daemon
                                               ├─ 4. dockerode run    ──▶ snoat_apps-nettverket
                                               │       ny container *ved siden av* den gamle
@@ -58,6 +63,26 @@ ferdig.
 `$SNOAT_WORKSPACE_DIR/<projectId>/<deploymentId>`. Bare arbeidstreet trengs, ikke
 historikken. `GIT_TERMINAL_PROMPT=0` gjør at private repoer feiler raskt i stedet
 for å henge til build-timeouten. Commit-hashen lagres på deploymenten.
+
+Har prosjektet valgt en gren, legges `--single-branch --branch <gren>` til.
+`--depth 1` impliserer allerede én gren, men eksplisitt er bedre enn å hvile på
+en implikasjon som kan endre seg mellom git-versjoner. Er `projects.branch` NULL,
+sendes ingen `--branch`, og git henter repoets default branch – uendret fra slik
+det alltid har vært.
+
+Grenen skrives til byggeloggen (`Gren: dev`, eller `Gren: main (repoets
+standardgren – ingen gren er valgt for prosjektet)`, lest tilbake fra
+arbeidstreet med `rev-parse --abbrev-ref HEAD`). Spørsmålet «hvilken gren ble
+egentlig bygget?» kommer hver gang noen lurer på hvorfor en endring ikke er med,
+og svaret skal stå i loggen – også når det var GitHub som bestemte.
+
+En gren som ikke finnes gir sin egen feilmelding, ikke den generelle. Uten det
+sa loggen «Kunne ikke klone repositoryet. Er det offentlig?» om et repo som er
+både offentlig og klonbart – feilen lå i ett tegn i et innstillingsfelt, og
+ingenting pekte dit. `services/git.ts` kjenner igjen `not found in upstream`,
+`Could not find remote branch` og `couldn't find remote ref` (tre formuleringer
+fordi git har byttet ordlyd mellom versjoner) og svarer med grennavnet og hva som
+må gjøres.
 
 **0. Kø.** `startDeployment()` oppretter raden med status `queued` og legger den i
 en **global kø** med `SNOAT_MAX_CONCURRENT_BUILDS` plasser (standard 1). `inFlight`
@@ -355,10 +380,7 @@ på de to linjene, begynner GitHub å få 401.
    ikke feil, bare ikke vårt bord.
 3. **Ref.** `refs/heads/<gren>` plukkes ut av `ref`. Tags, slettede grener
    (`deleted: true`) og andre refs ignoreres.
-4. **Gren.** Kun repoets `default_branch` bygges; `main`/`master` er fallback
-   hvis payloaden mangler feltet. En push til en feature-gren kvitteres og
-   ignoreres.
-5. **Prosjektoppslag.** `repository.full_name` normaliseres til `owner/repo` med
+4. **Prosjektoppslag.** `repository.full_name` normaliseres til `owner/repo` med
    små bokstaver, og sammenlignes med samme normalform av `projects.repo_url`.
    Dette er nødvendig fordi `repo_url` finnes i alle varianter – med og uten
    `.git`, med skråstrek til slutt, med `/tree/main` hengende på, i vilkårlig
@@ -366,15 +388,28 @@ på de to linjene, begynner GitHub å få 401.
    skjer i JS, fordi `%eier/app%` også ville truffet `eier/app-docs`.
    Verten må være `github.com`, ellers kunne en webhook trigget en deployment av
    et likt navngitt repo hos en annen leverandør.
+5. **Gren, per prosjekt.** For hvert kandidat-prosjekt: har det valgt en gren
+   (`projects.branch`), bygges det kun ved push til nøyaktig den. Er feltet NULL,
+   gjelder repoets `default_branch`, med `main`/`master` som fallback for en
+   payload som mangler feltet.
+
+   **Rekkefølgen her er byttet med vilje.** Grensjekken lå tidligere før
+   oppslaget, som en enkelt sjekk mot `default_branch`. Det kan den ikke gjøre
+   lenger: kriteriet er «prosjektets valgte gren», og det finnes ikke før vi vet
+   hvilke prosjekter pushen gjelder. Flere prosjekter kan peke på samme repo med
+   *ulike* grener – `main` i produksjon og `dev` på et forhåndsvisnings-subdomene
+   – og en push til `dev` skal starte det andre og la det første stå urørt.
+   Prisen er én databasespørring også for pusher vi ender med å ignorere.
 6. **Trigger.** `startDeployment(project)` per treff. Flere prosjekter kan peke
-   på samme repo – to kolleger i samme organisasjon, eller ett repo deployet
-   under to slugs – og alle bygges.
+   på samme repo – to kolleger i samme organisasjon, ett repo deployet under to
+   slugs, eller `main` og `dev` side om side – og alle som deployer fra den
+   pushede grenen bygges.
 
 ### Svar til GitHub
 
 | Kode | Når |
 | --- | --- |
-| 200 | `ping`, ukjent event, tag/slettet gren, annen gren enn hovedgrenen, eller ingen prosjekter som bruker repoet |
+| 200 | `ping`, ukjent event, tag/slettet gren, ingen prosjekter som bruker repoet, eller ingen av dem som deployer fra den pushede grenen |
 | 202 | Minst ett prosjekt matchet. `results[]` sier per prosjekt om det startet (`deploying`) eller ble hoppet over (`already_building`) |
 | 400 | Payloaden kunne ikke tolkes, eller mangler `repository.full_name` |
 | 401 | Signaturen stemmer ikke (og secret er konfigurert) |
@@ -427,11 +462,17 @@ logges det som en `warn`; neste deployment rydder dem.
   offentlig.
 - Skal auto-deploy virke, må App-en være installert på repoet – ellers sender
   GitHub ingen push-events til oss.
+- Skal en annen gren enn repoets standardgren bygges, settes den under
+  Innstillinger (eller ved opprettelsen). Feltet er tomt som standard, og et tomt
+  felt betyr «følg det GitHub peker på» – også hvis default branch byttes senere.
 
 ## Ikke implementert ennå
 
-- **Deploy-preview per gren.** Webhooken bygger kun hovedgrenen. En push til en
-  feature-gren kvitteres og forkastes; det finnes ingen midlertidig URL per PR.
+- **Deploy-preview per gren/PR.** Et prosjekt bygger *én* gren, valgt på
+  forhånd. Det er ikke det samme som Vercel sine previews: en push til en
+  vilkårlig feature-gren gir fortsatt ingen midlertidig URL, og en pull request
+  får ingen egen adresse. Vil man se `dev` på nett, opprettes `dev` som et eget
+  prosjekt med sitt eget subdomene – manuelt, én gang, ikke automatisk per gren.
 - **Trigger-kilden vises ikke i UI.** En webhook-build og en manuell build ser
   identiske ut i dashboardet – `deployments` har ingen kolonne som skiller dem.
 - **Helsesjekk over HTTP.** Vi verifiserer at containeren *står*, ikke at appen

@@ -102,6 +102,58 @@ githubApi.get("/repos", async (c) => {
 });
 
 /**
+ * Grenene i ett repo, til grenvelgeren i dashboardet.
+ *
+ * `repo` kan være en klone-URL eller `owner/repo` – begge normaliseres av
+ * `repoIdentity()`, av samme grunn som i webhooken: `projects.repo_url` finnes i
+ * alle varianter, og velgeren skal virke uansett hvilken som er lagret.
+ *
+ * **Installasjonen kommer aldri fra klienten.** Vi går gjennom kontoens egne
+ * koblinger og bruker den første som faktisk rekker repoet. Tok vi imot en
+ * `installationId` fra forespørselen, ville endepunktet vært en vei til å lese
+ * grenlisten i andres private repoer med et gjettet tall – `installation_id` er
+ * ingen hemmelighet.
+ *
+ * Rekker ingen av koblingene repoet, er svaret 404 og ikke en tom liste: en tom
+ * liste leses som «repoet har ingen grener», og da er et fritekstfelt bedre enn
+ * en nedtrekksliste som lyver.
+ */
+githubApi.get("/branches", async (c) => {
+  if (!github.isConfigured()) {
+    throw new HTTPException(503, { message: "GitHub-integrasjonen er ikke konfigurert" });
+  }
+
+  const repo = c.req.query("repo")?.trim();
+  if (!repo) throw new HTTPException(400, { message: "«repo» mangler" });
+
+  const identity = github.repoIdentity(repo);
+  if (!identity) {
+    throw new HTTPException(400, { message: `Kjenner ikke igjen repositoryet «${repo}»` });
+  }
+
+  const rows = await installationsFor(c.get("userId"));
+
+  for (const row of rows) {
+    try {
+      const result = await github.listBranches(row.installation_id, identity);
+      return c.json({ repo: identity, installationId: row.installation_id, ...result });
+    } catch (error) {
+      // 404 betyr «denne installasjonen rekker ikke repoet» – eller at App-en er
+      // avinstallert. Vi prøver de øvrige koblingene før vi gir opp, akkurat som
+      // repo-listen gjør.
+      if (error instanceof github.GithubError && error.status === 404) continue;
+      throw error;
+    }
+  }
+
+  throw new HTTPException(404, {
+    message:
+      `Snoat rekker ikke ${identity} gjennom noen av GitHub-kontoene som er koblet til. ` +
+      "Skriv grennavnet manuelt, eller gi Snoat tilgang til repoet.",
+  });
+});
+
+/**
  * Registrerer en GitHub App-installasjon på den som kaller.
  *
  * Dette er `/github/setup` uten nettleseren. Setup-URL-en får `installation_id`

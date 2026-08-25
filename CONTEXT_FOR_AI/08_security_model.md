@@ -80,6 +80,17 @@ til å holde den av.
 kunne `repo_url` vært `ext::sh -c …`, som får git til å kjøre vilkårlige
 kommandoer på byggemaskinen.
 
+**Grennavn valideres på samme måte.** `projects.branch` (migrasjon 0012) blir
+`--branch <verdi>` på samme kommandolinje, og er dermed samme angrepsflate: git
+leser et argument som starter med `-` som en opsjon, og `--upload-pack=…` er
+kommandokjøring på byggeverten. `assertSafeBranch()` krever at første tegn er en
+bokstav, et tall eller en understrek, og avviser ellers alt som ikke er et
+konservativt gyldig refnavn (`..`, `//`, avsluttende `/`, `.lock`, `@{`,
+mellomrom, `~^:?*[`). Regelen står **to** steder – også som check-constrainten
+`projects_branch_check` – fordi dashboardet skriver prosjektraden selv med sin
+egen sesjon, mens backend omgår constrainten med service-role-nøkkelen. Ingen av
+de to veiene inn skal være uvoktet.
+
 **Ingen shell-interpolasjon.** Nixpacks kalles med et argument-array via `execa`,
 ikke som en bash-streng. Brukerens miljøvariabler går derfor aldri gjennom et
 shell. (Dokploy, som vi henter mønstre fra, bygger en bash-streng og må

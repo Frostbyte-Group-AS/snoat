@@ -37,13 +37,26 @@ const MAX_BODY_BYTES = 5 * 1024 * 1024;
 const FALLBACK_BRANCHES = ["main", "master"];
 
 /**
- * Skal en push til denne grenen utløse en deployment?
+ * Skal en push til denne grenen utløse en deployment av *dette* prosjektet?
  *
- * Repoets egen `default_branch` er autoriteten – det er den brukeren har valgt
- * som hovedgren på GitHub. `main`/`master` er kun en fallback for en payload som
- * mangler feltet.
+ * Har prosjektet valgt en gren (`projects.branch`, migrasjon 0012), er det den
+ * som gjelder, og bare den. Ellers er repoets egen `default_branch` autoriteten
+ * – det er grenen brukeren har pekt ut på GitHub – med `main`/`master` som
+ * fallback for en payload som mangler feltet.
+ *
+ * ⚠️ Avgjørelsen er **per prosjekt**, ikke per push, og det er hele forskjellen
+ * fra før. Flere prosjekter kan peke på samme repo med ulike grener: ett som
+ * bygger `main` og ett som bygger `dev` for et forhåndsvisnings-subdomene. En
+ * push til `dev` skal da starte deployment for det andre og la det første stå
+ * urørt. Sammenligningen kan derfor ikke gjøres før vi vet hvilke prosjekter
+ * pushen gjelder.
  */
-function isDeployBranch(branch: string, defaultBranch: string | undefined): boolean {
+function isDeployBranch(
+  branch: string,
+  project: Project,
+  defaultBranch: string | undefined,
+): boolean {
+  if (project.branch) return branch === project.branch;
   return defaultBranch ? branch === defaultBranch : FALLBACK_BRANCHES.includes(branch);
 }
 
@@ -80,7 +93,9 @@ function parsePayload(body: Buffer, contentType: string | undefined): github.Git
  * ingenting annet.
  *
  * Flere prosjekter kan peke på samme repo – to brukere i samme organisasjon,
- * eller ett repo deployet under to slugs. Alle skal bygges.
+ * ett repo deployet under to slugs, eller `main` og `dev` side om side på hvert
+ * sitt subdomene. Alle kandidatene hentes her; `isDeployBranch()` avgjør etterpå
+ * hvem av dem den pushede grenen faktisk angår.
  */
 async function projectsForRepository(fullName: string): Promise<Project[]> {
   const wanted = github.repoIdentity(fullName);
@@ -173,15 +188,10 @@ githubWebhooks.post(
       });
     }
 
-    if (!isDeployBranch(branch, payload.repository?.default_branch)) {
-      log.info({ repository: fullName, branch }, "Push til en annen gren enn hovedgrenen");
-      return c.json({
-        received: true,
-        ignored: true,
-        message: `«${branch}» er ikke hovedgrenen – ingen deployment`,
-      });
-    }
-
+    // Grensjekken kommer *etter* prosjektoppslaget, ikke før. Kriteriet er
+    // «prosjektets valgte gren», og det kjenner vi ikke uten radene. Prisen er
+    // én databasespørring også for pusher vi ender med å ignorere; alternativet
+    // var å låse hele plattformen til repoets default branch.
     try {
       const projects = await projectsForRepository(fullName);
 
@@ -196,9 +206,27 @@ githubWebhooks.post(
         });
       }
 
+      // Hvem av dem deployer fra grenen som ble pushet? De øvrige er ikke en
+      // feil og ikke noe å rapportere – de bygger bare fra en annen gren.
+      const matched = projects.filter((project) =>
+        isDeployBranch(branch, project, payload.repository?.default_branch),
+      );
+
+      if (matched.length === 0) {
+        log.info(
+          { repository: fullName, branch, candidates: projects.length },
+          "Push til en gren ingen av prosjektene deployer fra",
+        );
+        return c.json({
+          received: true,
+          ignored: true,
+          message: `Ingen prosjekter som bruker ${fullName} deployer fra «${branch}»`,
+        });
+      }
+
       const results: TriggerResult[] = [];
 
-      for (const project of projects) {
+      for (const project of matched) {
         // Sjekken gir en presis melding for det vanlige tilfellet – en push som
         // kommer mens forrige build fortsatt kjører. Det er `startDeployment`
         // som er den reelle låsen; den kaster hvis vi kappløper med den.
@@ -241,6 +269,9 @@ githubWebhooks.post(
           commit: payload.after?.slice(0, 7),
           installation: payload.installation?.id,
           pusher: payload.pusher?.name,
+          // Prosjekter som bruker repoet, og de av dem som deployer fra denne
+          // grenen. Er de ulike, er det fordi noen har valgt en annen gren.
+          candidates: projects.length,
           matched: results.length,
           started: count("deploying"),
         },

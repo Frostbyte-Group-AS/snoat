@@ -12,6 +12,16 @@ export interface Project {
   name: string;
   custom_domain: string | null;
   repo_url: string;
+  /**
+   * Grenen som klones og deployes (migrasjon 0012).
+   *
+   * NULL = bruk repoets default branch, altså den GitHub allerede har pekt ut.
+   * Feltet styrer to ting samtidig: hva `cloneRepository()` henter, og hvilke
+   * push-events webhooken bygger på. De to *må* følge hverandre – et prosjekt
+   * som bygger `dev` men auto-deployer på `main` ville rullet ut `dev`-koden
+   * hver gang noen pushet til `main`.
+   */
+  branch: string | null;
   build_command: string | null;
   env_vars: Record<string, string> | null;
   /**

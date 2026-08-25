@@ -289,7 +289,8 @@ export const MCP_TOOLS: McpTool[] = [
     name: "snoat_get_project",
     title: "Hent prosjekt",
     description:
-      "Henter detaljene for ett prosjekt: byggekommando, miljøvariabelnavn, eget domene og siste deployment.",
+      "Henter detaljene for ett prosjekt: gren, byggekommando, miljøvariabelnavn, eget domene og siste deployment. " +
+      "branch = null betyr at repoets standardgren bygges.",
     inputSchema: {
       type: "object",
       properties: {
@@ -329,6 +330,12 @@ export const MCP_TOOLS: McpTool[] = [
           type: "string",
           description: "Full URL til GitHub-repositoryet, f.eks. https://github.com/eier/repo.",
         },
+        branch: {
+          type: "string",
+          description:
+            "Grenen som skal bygges og deployes, f.eks. «dev». Utelates den, brukes repoets standardgren – " +
+            "og da er det også standardgrenen auto-deploy ved push lytter på.",
+        },
         buildCommand: {
           type: "string",
           description: "Valgfri overstyring av byggekommandoen, f.eks. «npm run build».",
@@ -367,6 +374,7 @@ export const MCP_TOOLS: McpTool[] = [
         .object({
           name: z.string().min(1),
           repoUrl: z.string().min(1),
+          branch: z.string().optional(),
           buildCommand: z.string().optional(),
           envVars: z.record(z.string()).optional(),
           githubInstallationId: z.number().optional(),
@@ -408,13 +416,19 @@ export const MCP_TOOLS: McpTool[] = [
     name: "snoat_update_project",
     title: "Oppdater prosjekt",
     description:
-      "Endrer byggekommando, miljøvariabler eller statiske innstillinger. " +
+      "Endrer gren, byggekommando, miljøvariabler eller statiske innstillinger. " +
       "Merk at envVars erstatter hele settet – hent prosjektet først og send med alle nøklene som skal bestå. " +
       "Endringen får effekt ved neste deployment.",
     inputSchema: {
       type: "object",
       properties: {
         projectId: { type: "string", description: "Prosjektets ID." },
+        branch: {
+          type: ["string", "null"],
+          description:
+            "Ny gren å bygge og deploye, eller null for å gå tilbake til repoets standardgren. " +
+            "Styrer også hvilken gren auto-deploy ved push lytter på.",
+        },
         buildCommand: { type: "string", description: "Ny byggekommando." },
         envVars: {
           type: "object",
@@ -437,6 +451,7 @@ export const MCP_TOOLS: McpTool[] = [
       const { projectId, ...updates } = z
         .object({
           projectId: z.string().min(1),
+          branch: z.string().nullable().optional(),
           buildCommand: z.string().optional(),
           envVars: z.record(z.string()).optional(),
           staticOutputDir: z.string().optional(),

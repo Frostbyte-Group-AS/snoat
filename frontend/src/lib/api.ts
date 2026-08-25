@@ -156,6 +156,29 @@ export function listGithubRepos(): Promise<{ repos: GithubRepo[] }> {
   return request("/api/github/repos");
 }
 
+/** Grenene i ett repo, og hvilken av dem GitHub regner som standard. */
+export interface RepoBranches {
+  repo: string;
+  installationId: number;
+  defaultBranch: string;
+  branches: string[];
+}
+
+/**
+ * Grenene Snoat kan bygge fra i et repo.
+ *
+ * Brukes til å gjøre grenvalget til en liste i stedet for et fritekstfelt: et
+ * grennavn må stemme tegn for tegn med noe på GitHub, og en skrivefeil vises
+ * ellers ikke før bygget feiler. Kallet krever at Snoat har tilgang til repoet
+ * gjennom GitHub App-en – svarer det 404, er et validert tekstfelt riktig
+ * fallback, ikke en tom liste.
+ *
+ * `repo` kan være en klone-URL eller `owner/repo`; backend normaliserer begge.
+ */
+export function listGithubBranches(repo: string): Promise<RepoBranches> {
+  return request(`/api/github/branches?repo=${encodeURIComponent(repo)}`);
+}
+
 /** Grensene som følger en plan. Speiler `PlanLimits` i backend. */
 export interface PlanLimits {
   maxRunningProjects: number;

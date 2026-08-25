@@ -9,7 +9,7 @@ import { invalidateHostMap } from "../services/analytics-ingest.js";
 import * as deploy from "../services/deploy.js";
 import { ensureProjectRoute, type RouteStatus } from "../services/deploy.js";
 import { checkDomain } from "../services/domain-status.js";
-import { assertSafeRepoUrl } from "../services/git.js";
+import { assertSafeBranch, assertSafeRepoUrl } from "../services/git.js";
 import { entitlementFor } from "../services/plans.js";
 import { logger } from "../lib/logger.js";
 import { DeployError, type Deployment, type ErrorDetail } from "../types.js";
@@ -86,6 +86,39 @@ async function verifiedInstallationId(
 }
 
 /**
+ * Tolker `branch` fra en forespørsel.
+ *
+ * `undefined` betyr «feltet var ikke med», `null` og tom streng betyr «bruk
+ * repoets default branch» – som er standardverdien og det eneste svaret vi kan
+ * gi uten å gjette. En tom streng behandles altså som et bevisst nullstill, ikke
+ * som en ugyldig verdi; det er slik et tomt tekstfelt i dashboardet leser.
+ *
+ * Valideringen er `assertSafeBranch()` fra `services/git.ts`, samme funksjon
+ * kloningen bruker. Den skal ikke finnes i to utgaver: verdien ender som et
+ * argument til `git clone`, og et grennavn som slipper gjennom her men stoppes
+ * der er et prosjekt som ser ferdig konfigurert ut og feiler ved neste build.
+ */
+function parseBranch(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+
+  if (typeof value !== "string") {
+    throw new HTTPException(400, {
+      message: "«branch» må være en streng, eller null for å bruke repoets standardgren.",
+    });
+  }
+
+  if (!value.trim()) return null;
+
+  try {
+    return assertSafeBranch(value);
+  } catch (error) {
+    throw new HTTPException(400, {
+      message: error instanceof Error ? error.message : `Ugyldig grennavn: «${value}»`,
+    });
+  }
+}
+
+/**
  * Oppretter et prosjekt.
  *
  * Dashboardet trenger ikke dette – det skriver raden rett i Supabase med sin
@@ -101,6 +134,7 @@ api.post("/projects", async (c) => {
   const body = await c.req.json<{
     name?: unknown;
     repoUrl?: unknown;
+    branch?: unknown;
     externalRef?: unknown;
     githubInstallationId?: unknown;
     buildCommand?: unknown;
@@ -164,6 +198,9 @@ api.post("/projects", async (c) => {
     user_id: userId,
     name,
     repo_url: repoUrl,
+    // NULL = repoets default branch. Uten feltet oppfører prosjektet seg som
+    // alle prosjekter gjorde før migrasjon 0012, som er den riktige standarden.
+    branch: parseBranch(body.branch),
     external_ref: externalRef,
     build_command: typeof body.buildCommand === "string" ? body.buildCommand : null,
     env_vars:
@@ -495,6 +532,7 @@ api.patch("/projects/:projectId", async (c) => {
   const project = await loadOwnedProject(c, c.req.param("projectId"));
 
   const body = await c.req.json<{
+    branch?: unknown;
     buildCommand?: unknown;
     envVars?: unknown;
     staticOutputDir?: unknown;
@@ -515,6 +553,15 @@ api.patch("/projects/:projectId", async (c) => {
       c.get("userId"),
       body.githubInstallationId,
     );
+  }
+
+  // Grenen er konfigurasjon som skal kunne endres, ikke et valg som låses ved
+  // opprettelsen: en kunde som flytter produksjonen fra `main` til `dev` skal
+  // ikke måtte opprette prosjektet på nytt og miste subdomene, historikk og
+  // miljøvariabler. Endringen får effekt ved neste deployment – og fra samme
+  // øyeblikk er det den nye grenen webhooken lytter på.
+  if (body.branch !== undefined) {
+    updates.branch = parseBranch(body.branch);
   }
 
   if (body.buildCommand !== undefined) {
