@@ -30,6 +30,11 @@ async function fetchProjects(): Promise<ProjectWithLatestDeployment[]> {
   const { data, error } = await getSupabase()
     .from("projects")
     .select("*, deployments(*)")
+    // Dev-sider hører hjemme under prosjektet sitt, ikke som egne kort i
+    // oversikten. De *er* prosjektrader (migrasjon 0013), så uten dette filteret
+    // dobles listen for alle som bruker dem – og «mittvel» og «mittvel-dev» ville
+    // stått side om side som to likestilte apper.
+    .is("parent_project_id", null)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -382,6 +387,66 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
   );
 }
 
+/**
+ * Normaliserer det kunden skriver i navnefeltet, tastetrykk for tastetrykk.
+ *
+ * Navnet *er* vertsnavnet (`<navn>.snoat.com`), så det må tåle å stå i en URL.
+ * `projects_name_slug_check` (migrasjon 0001) håndhever det samme i databasen,
+ * og dashboardet skriver raden direkte gjennom RLS – uten denne funksjonen er
+ * check-constrainten den første som sier fra, og den svarer med rå
+ * Postgres-tekst («violates check constraint …») midt i skjemaet.
+ *
+ * Vi normaliserer i stedet for å avvise: en stor bokstav er ikke en feil kunden
+ * skal rette, det er en bokstav vi kan gjøre liten selv.
+ *
+ * ⚠️ Bindestrek på slutten får stå her, og fjernes først i `toProjectSlug()`.
+ * Fjernes den ved hvert tastetrykk, blir «min-app» umulig å skrive: bindestreken
+ * forsvinner i samme øyeblikk den trykkes.
+ */
+function normalizeNameInput(value: string): string {
+  return value
+    .toLowerCase()
+    // æøå før det generelle sveipet, ellers blir «blå» til «bl-».
+    .replace(/æ/g, "ae")
+    .replace(/ø/g, "oe")
+    .replace(/å/g, "aa")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, 63);
+}
+
+/** Navnet slik det skal lagres: normalisert, og uten bindestrek i endene. */
+function toProjectSlug(value: string): string {
+  return normalizeNameInput(value).replace(/-+$/, "");
+}
+
+/**
+ * Oversetter Postgres sine constraint-navn til noe kunden kan gjøre noe med.
+ *
+ * Raden inserter direkte mot Supabase, så feilen som kommer tilbake er databasens
+ * egen: «new row for relation "projects" violates check constraint
+ * "projects_name_slug_check"». Den er presis, men den forteller ikke hvilket felt
+ * det gjelder eller hva som er lovlig – og den står midt i et skjema på norsk.
+ *
+ * Ukjente feil slipper gjennom urørt. En feil vi ikke har sett før er mer nyttig
+ * i sin egen ordlyd enn oversatt til «noe gikk galt».
+ */
+function insertMessage(message: string): string {
+  if (message.includes("projects_name_slug_check")) {
+    return "Prosjektnavnet kan bare inneholde små bokstaver, tall og bindestrek, og må begynne og slutte med en bokstav eller et tall.";
+  }
+  if (message.includes("projects_user_name_unique")) {
+    return "Du har allerede et prosjekt med dette navnet. Velg et annet.";
+  }
+  if (message.includes("projects_branch_check")) {
+    return "Grennavnet inneholder tegn som ikke er lovlige i en git-gren.";
+  }
+  return message;
+}
+
 function slugFromRepoUrl(repoUrl: string): string {
   const last =
     repoUrl
@@ -390,11 +455,7 @@ function slugFromRepoUrl(repoUrl: string): string {
       .split("/")
       .filter(Boolean)
       .pop() ?? "";
-  return last
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 63);
+  return toProjectSlug(last);
 }
 
 function RepoPicker({
@@ -538,7 +599,9 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
         .from("projects")
         .insert({
           user_id: userId,
-          name: effectiveName,
+          // `toProjectSlug` og ikke `effectiveName`: feltet tillater en
+          // bindestrek på slutten mens man skriver, databasen gjør det ikke.
+          name: toProjectSlug(effectiveName),
           repo_url: repoUrl.trim(),
           // NULL = repoets standardgren. Feltet er tomt for de aller fleste, og
           // da oppfører prosjektet seg som alle prosjekter gjorde før grenvalget
@@ -547,7 +610,7 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
           branch: branch.trim() || null,
           github_installation_id: installationId,
         });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(insertMessage(error.message));
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -659,9 +722,12 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
               value={effectiveName}
               onChange={(event) => {
                 setNameTouched(true);
-                setName(event.target.value);
+                // Normaliseres ved hvert tastetrykk, ikke ved innsending. Da ser
+                // kunden vertsnavnet sitt bli til mens hen skriver, i stedet for
+                // at feltet ser greit ut og forslaget under sier noe annet.
+                setName(normalizeNameInput(event.target.value));
               }}
-              pattern="[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
+              pattern="[a-z0-9][a-z0-9-]{0,62}"
               title="Små bokstaver, tall og bindestrek."
               placeholder="min-app"
               className="field-ink h-[46px] px-[14px] font-mono text-[14px] outline-none placeholder:text-ink/40"

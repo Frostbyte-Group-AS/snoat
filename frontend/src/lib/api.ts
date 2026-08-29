@@ -1,4 +1,4 @@
-import type { Deployment, SubscriptionStatus, SubscriptionTier } from "./database.types";
+import type { Deployment, Project, SubscriptionStatus, SubscriptionTier } from "./database.types";
 import type { MarketId } from "./market";
 import { getSupabase } from "./supabase";
 
@@ -98,6 +98,47 @@ export function deployProject(projectId: string): Promise<{ deployment: Deployme
 /** Stopper containeren og fjerner ruten, uten å slette prosjektet. */
 export function stopProject(projectId: string): Promise<{ stopped: boolean }> {
   return request(`/api/projects/${projectId}/stop`, { method: "POST" });
+}
+
+/**
+ * Sletter prosjektet.
+ *
+ * Går gjennom API-et og ikke direkte mot Supabase, selv om RLS ville tillatt det
+ * siste. `DELETE /api/projects/:id` river ned containeren, fjerner Caddy-ruten og
+ * tar med eventuelle dev-sider først. En `delete()` fra nettleseren fjerner bare
+ * raden, og etterlater en app som fortsatt kjører og et vertsnavn som fortsatt
+ * svarer – helt til noen restarter Caddy.
+ */
+export function deleteProject(projectId: string): Promise<{ success: boolean }> {
+  return request(`/api/projects/${projectId}`, { method: "DELETE" });
+}
+
+/** En dev-side: samme repo, en annen gren, eget vertsnavn og passord foran. */
+export function createDevSite(
+  projectId: string,
+  branch: string,
+  password: string,
+): Promise<{ project: Project }> {
+  return request(`/api/projects/${projectId}/dev-sites`, {
+    method: "POST",
+    body: JSON.stringify({ branch, password }),
+  });
+}
+
+/** Dev-sidene som hører til prosjektet. */
+export function listDevSites(projectId: string): Promise<{ devSites: Project[] }> {
+  return request(`/api/projects/${projectId}/dev-sites`);
+}
+
+/** Setter passordet foran appen, eller fjerner det med `null`. */
+export function setAccessPassword(
+  projectId: string,
+  password: string | null,
+): Promise<{ success: boolean; access_protected: boolean }> {
+  return request(`/api/projects/${projectId}/access`, {
+    method: "PATCH",
+    body: JSON.stringify({ password }),
+  });
 }
 
 /** Oppdaterer eget domene for et prosjekt. */

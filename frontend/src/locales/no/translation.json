@@ -289,13 +289,18 @@
     "delete_project_error": "Kunne ikke slette prosjektet",
     "project_settings": "Prosjektinnstillinger",
     "advanced_build_settings": "Avanserte byggeinnstillinger",
-    "static_output_dir": "Statisk output-katalog",
-    "static_output_dir_placeholder": "f.eks. dist — la stå tom for å kjøre som server",
-    "static_output_dir_help": "Produserer prosjektet bare filer, serverer Caddy dem direkte fra disk — ingen container kjører, og siden koster ingenting når ingen besøker den. Vite og Astro bygger til <code class=\"font-mono\">dist</code>, Next.js med <code class=\"font-mono\">output: 'export'</code> til <code class=\"font-mono\">out</code>. La feltet stå tomt for apper som trenger en server (vanlig Next.js, Express, API-er).",
+    "static_output_dir": "Katalog med de ferdige filene",
+    "static_output_dir_help": "Relativt til reporoten. Vite og Astro bygger til <code class=\"font-mono\">dist</code>, Next.js med <code class=\"font-mono\">output: 'export'</code> til <code class=\"font-mono\">out</code>, Create React App til <code class=\"font-mono\">build</code>.",
     "spa_fallback": "Klientruting (SPA)",
     "spa_fallback_help": "Serverer <code class=\"font-mono\">index.html</code> for adresser som ikke finnes som fil, slik at dype lenker virker ved direkte innlasting. Skru på for React Router eller TanStack Router. La stå av for Astro, Hugo og Eleventy — de har sin egen 404-side.",
     "delete_project_warning": "Sletting av prosjektet vil fjerne alle deployments og innstillinger permanent.",
-    "start_project": "Start på nytt"
+    "start_project": "Start på nytt",
+    "runtime_mode": "Kjøremodus",
+    "runtime_server": "Server",
+    "runtime_server_help": "Appen kjører i en container og svarer på forespørsler. Riktig for vanlig Next.js, Express, Nuxt med SSR og API-er.",
+    "runtime_static": "Statiske filer",
+    "runtime_static_help": "Bygget produserer bare filer, og Caddy serverer dem rett fra disk. Ingen container kjører, og siden koster ingenting når ingen besøker den.",
+    "runtime_static_dir_required": "Velg hvilken katalog bygget legger filene i. Vite og Astro bruker <code class=\"font-mono\">dist</code>, Next.js med <code class=\"font-mono\">output: 'export'</code> bruker <code class=\"font-mono\">out</code>."
   },
   "branch": {
     "label": "Gren",
@@ -392,7 +397,7 @@
     "free_desc": "For hobbyprosjekter og personlige nettsider (ikke-kommersiell bruk).",
     "free_f1": "Standard byggekø",
     "free_f2": "Snoat-subdomene (*.snoat.com)",
-    "free_f3": "Inkludert statistikk & analysetall",
+    "free_f3": "Ubegrenset med statiske sider",
     "free_f4": "Kun for ikke-kommersiell bruk",
     "pro_desc": "For kommersielle prosjekter, bedrifter og profesjonelle nettsider.",
     "pro_f1": "Eget domene (dittdomene.no)",
@@ -407,8 +412,11 @@
     "contact_price": "Skreddersydd",
     "contact_us": "Kontakt oss",
     "gated_dns_title": "Eget domene krever Pro- eller Business-plan",
-    "gated_dns_desc": "Oppgrader dette prosjektet for å koble til eget domene (f.eks. dittdomene.no) og få tilgang til statistikk.",
-    "free_price": "Gratis"
+    "gated_dns_desc": "Oppgrader dette prosjektet for å koble til eget domene (f.eks. dittdomene.no).",
+    "free_price": "Gratis",
+    "free_f5": "Statistikk og besøkstall",
+    "gated_analytics_title": "Statistikk krever Pro- eller Business-plan",
+    "gated_analytics_desc": "Oppgrader dette prosjektet for å se besøkstall, responstider og hvor trafikken kommer fra. Vi måler allerede – du trenger ikke sette opp noe."
   },
   "errors": {
     "unknown": "Noe gikk galt. Prøv igjen.",
@@ -418,11 +426,20 @@
     "plan": {
       "build_minutes_exhausted": "Du har brukt {{used}} av {{limit}} byggeminutter denne måneden. Kvoten nullstilles den 1. – oppgrader planen for å bygge mer nå.",
       "apps_limit_reached": "Planen din tillater {{limit}} apper samtidig, og du har {{running}} som kjører. Oppgrader planen, eller stopp en app du ikke bruker.",
-      "apps_limit_reached_downgraded": "Betalingen har feilet, så kontoen kjører på gratisgrensene: {{limit}} apper samtidig, og du har {{running}} som kjører. Oppdater betalingsmåten, så er alt tilbake."
+      "apps_limit_reached_downgraded": "Betalingen har feilet, så kontoen kjører på gratisgrensene: {{limit}} apper samtidig, og du har {{running}} som kjører. Oppdater betalingsmåten, så er alt tilbake.",
+      "analytics_requires_paid": "Statistikk er en del av Pro- og Business-planen. Oppgrader prosjektet for å se besøkstallene."
     },
     "deploy": {
       "already_building": "Prosjektet bygges allerede. Vent til det kjørende bygget er ferdig.",
-      "building_now": "Prosjektet bygges akkurat nå. Vent til bygget er ferdig."
+      "building_now": "Prosjektet bygges akkurat nå. Vent til bygget er ferdig.",
+      "static_declaration_mismatch": "{{file}} i repoet erklærer «output: \"export\"», som betyr at {{framework}} bare produserer filer. Prosjektet står i server-modus, og byggeresultatet kan ikke serveres slik. Velg «Statiske filer» under Kjøremodus og sett katalogen til «{{dir}}» — eller fjern erklæringen hvis appen skal ha en server."
+    },
+    "dev_site": {
+      "already_exists": "Det finnes allerede en dev-side som heter «{{name}}». Velg en annen gren, eller slett den gamle først.",
+      "parent_is_dev_site": "En dev-side kan ikke ha egne dev-sider.",
+      "password_too_short": "Passordet må være minst {{min}} tegn.",
+      "password_required": "Dev-siden må ha et passord.",
+      "branch_required": "Velg hvilken gren dev-siden skal bygge fra."
     }
   },
   "mcp": {
@@ -500,13 +517,13 @@
   },
   "why": {
     "title": "Hvorfor velge Snoat?",
-    "body": "Alt du elsker med Vercel — lynraske bygg, automatiske deploys og egne domener — på sikker, norsk infrastruktur med full datakontroll.",
+    "body": "Du trykker publiser — vi tar resten. Nettsiden din ligger trygt i Norge, på maskiner vi eier og drifter selv, så du kan bruke tiden på det du lager i stedet for på drift.",
     "fact1_value": "100 %",
-    "fact1_label": "Norsk lagring og drift",
+    "fact1_label": "Lagret og driftet i Norge",
     "fact2_value": "1 klikk",
-    "fact2_label": "Fra GitHub til produksjon",
-    "fact3_value": "Auto-SSL",
-    "fact3_label": "Gratis HTTPS på alle domener",
+    "fact2_label": "Fra koden din til levende nettside",
+    "fact3_value": "Alltid trygt",
+    "fact3_label": "Kryptering og angrepsvern er inkludert",
     "footnote": "Driftet i Norge av Frostbyte Group AS"
   },
   "cta": {
@@ -519,5 +536,37 @@
     "menu_label": "Kontomeny",
     "settings_title": "Innstillinger",
     "connector": "AI-tilkobling"
+  },
+  "dev_sites": {
+    "title": "Dev-side",
+    "desc": "En passordbeskyttet utgave av appen fra en annen gren. Hovedsiden og domenet ditt står urørt – dev-siden får sin egen adresse, og bygges automatisk når du pusher til grenen den følger.",
+    "from_branch": "Bygger fra {{branch}}",
+    "locked": "Passordbeskyttet",
+    "open": "Åpen",
+    "password": "Passord for dev-siden",
+    "password_hint": "Minst 8 tegn. Nettleseren spør om det første gang siden åpnes – brukernavnet er «snoat».",
+    "create": "Opprett dev-side",
+    "creating": "Oppretter …"
+  },
+  "access": {
+    "title": "Passord foran appen",
+    "state_locked": "Appen er passordbeskyttet. Ingen kommer inn uten passordet, heller ikke søkemotorer.",
+    "state_open": "Appen er åpen for alle som har adressen.",
+    "password": "Passord",
+    "new_password": "Nytt passord",
+    "username_note": "Minst 8 tegn. Brukernavnet er alltid «snoat» – det er appen som er beskyttet, ikke en konto.",
+    "save": "Lagre passord",
+    "saving": "Lagrer …",
+    "remove": "Fjern passordet"
+  },
+  "site_toggle": {
+    "on": "På",
+    "off": "Av",
+    "turn_on": "Slå på siden",
+    "turn_off": "Slå av siden",
+    "turning_on": "Bygger og starter …",
+    "turning_off": "Slår av …",
+    "hint_on": "Siden svarer. Slår du av, forsvinner adressen og appen slutter å bruke minne.",
+    "hint_off": "Siden er av. Slår du på, bygges den fra grenen på nytt – det tar noen minutter."
   }
 }

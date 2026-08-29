@@ -285,3 +285,39 @@ Migrasjonene kjøres på nytt ved hver oppstart og **må være idempotente**
 sitt initdb og setter passord på tjenesterollene. Det tar kun effekt på en tom
 datakatalog – endrer du `POSTGRES_PASSWORD` eller `JWT_SECRET` må du kjøre
 `docker compose down -v`.
+
+## `project_access` — passord foran en app (migrasjon 0013)
+
+| Kolonne | Type | Notat |
+| --- | --- | --- |
+| `project_id` | uuid PK → projects | Cascade ved sletting av prosjektet. |
+| `password_hash` | text | bcrypt, cost 12. Caddy verifiserer selv. |
+| `updated_at` | timestamptz | |
+
+**RLS er på, og det finnes ingen policy.** Det er ikke en forglemmelse: for
+`authenticated` er tabellen tom uansett hva man spør om, og `service_role` omgår
+RLS. Backend er derfor den eneste som ser hashen.
+
+Grunnen til at hashen ikke ligger som en kolonne på `projects`: dashboardet leser
+`projects` **direkte** fra Supabase gjennom RLS, så en kolonne der er en kolonne
+som havner i nettleseren. `projects.access_protected` (boolean) er det UI-et
+trenger for å tegne en hengelås, og den kan alle lese uten at det koster noe.
+
+Prisen er at to felt må holdes i takt. Det skjer på ett sted: `setAccessPassword()`
+i `backend/src/services/dev-sites.ts`.
+
+### `projects.parent_project_id` (samme migrasjon)
+
+NULL = et ordinært prosjekt. Satt = en dev-side, altså et miljø for prosjektet
+det peker på. En trigger (`projects_parent_is_root`) håndhever to ting en
+check-constraint ikke kan, fordi de krever oppslag i en annen rad:
+
+- **Dybde 1.** En dev-side kan ikke ha egne dev-sider. Hvert nivå er et
+  vertsnavn, en container og en plass i byggekøen, og et tre uten tak er en konto
+  som kan lage seg selv uendelig mange apper ved å bygge nedover.
+- **Samme eier.** Fremmednøkkelen sier ingenting om `user_id`, så uten dette
+  kunne en rad pekt på en annen brukers prosjekt.
+
+Funksjonen er med vilje ikke `security definer`: under RLS ser en innlogget bruker
+ikke andres rader, så forsøket får «finnes ikke» i stedet for «feil eier». Eier-
+sjekken har likevel en jobb, for backend bruker service-role og omgår RLS.

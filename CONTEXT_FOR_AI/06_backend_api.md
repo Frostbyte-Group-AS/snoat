@@ -531,3 +531,31 @@ diagnostikk blandet med verktøy-output, og frontend faller da tilbake på
 - **`DELETE /api/projects/:id` finnes nå**, men frontend bruker den ikke – den
   sletter fortsatt raden direkte via Supabase, med de foreldreløse containerne
   det gir. Ruten er der; kallstedet mangler.
+
+## Dev-sider og passordbeskyttelse (migrasjon 0013)
+
+| Metode | Sti | Gjør |
+| --- | --- | --- |
+| `POST` | `/api/projects/:id/dev-sites` | Oppretter en dev-side. Kropp: `{ branch, password }`. Svarer 201 med den nye prosjektraden. Bygger **ikke**. |
+| `GET` | `/api/projects/:id/dev-sites` | Dev-sidene som hører til prosjektet. |
+| `PATCH` | `/api/projects/:id/access` | Setter passordet foran appen. `{ password: null }` fjerner det. Caddy-ruten skrives om umiddelbart. |
+
+`POST` svarer **409** og ikke 400 på det kunden kan rette: grenen har allerede en
+dev-side (`dev_site.already_exists`), eller raden er selv en dev-side
+(`dev_site.parent_is_dev_site`). Forespørselen er velformet – det er tilstanden
+som ikke tillater den.
+
+Bygget startes ikke av `POST`. Opprettelse og utrulling er to beslutninger, samme
+skille som `POST /api/projects` har. Dashboardet kaller `deployProject()` selv rett
+etter, fordi ingen lager en dev-side for å la den stå tom – men et maskin-API skal
+kunne opprette miljøet uten å betale for et bygg.
+
+`PATCH /access` gjelder alle prosjekter, ikke bare dev-sider: «legg et passord
+foran denne appen» er like nyttig for en kundedemo eller en app som ikke er klar.
+
+### Statistikk krever betalt plan
+
+`GET /api/projects/:id/analytics` svarer **402** med koden
+`plan.analytics_requires_paid` på gratisplanen. Sperren står i endepunktet og ikke
+bare i dashboardet fordi `snoat_get_analytics` over MCP treffer det samme
+endepunktet – en skjult fane er ingen grense.

@@ -190,6 +190,25 @@ rammeverk *ikke* et container-image i det hele tatt – de kjører bygget på en
 forberedt maskin og pakker resultatet som statiske filer pluss functions. Vi
 betaler både nix-provisjonering og fulle OCI-lag-commits.
 
+**3b. Kjøremodus sjekkes mot koden – før bygget.**
+`assertKjoremodusStemmer()` i `services/deploy.ts` leser rammeverkets egen
+konfigurasjon rett etter klonen. Erklærer den at bygget bare produserer filer,
+men prosjektet står uten `static_output_dir`, feiler deploymenten *før*
+`buildImage()` med koden `deploy.static_declaration_mismatch`.
+
+I dag dekker det Next.js med `output: "export"`, se
+`services/static-declaration.ts`. Grunnen til at det er en hard feil og ikke en
+advarsel: `next start` avviser en export-build eksplisitt og avslutter med kode
+1. Kombinasjonen har ikke et utfall der den virker, så sjekken kan ikke ta feil.
+Og grunnen til at den ligger før bygget: bygget som avdekket dette tok 549
+sekunder, og ni minutter er lang tid å vente på en beskjed vi kan gi etter tolv.
+
+Dette bryter ikke med regelen i `static-site.ts` om at Snoat aldri gjetter på om
+et prosjekt er statisk. Å se en `dist/`-katalog og konkludere er et gjett;
+`output: "export"` i appens egen konfigurasjon er en erklæring. Vi bytter
+uansett ikke modus selv – vi nekter å bygge noe som ikke kan kjøre, og sier
+hvilken innstilling som må endres.
+
 **4b. Statiske sider hopper over hele resten.** Har prosjektet
 `static_output_dir` satt, startes ingen container. `services/static-site.ts`
 kjører `docker create` på image-et (den startes aldri – bare filsystemet
@@ -244,13 +263,34 @@ deployments slik at apper kan nå hverandre på prosjektnavnet. I sekundene der 
 versjoner kjører samtidig peker aliaset på begge (round-robin). Caddy dial-er
 containernavnet, som alltid er entydig.
 
-**Helsesjekk.** `assertStillRunning()` poller containeren i tre sekunder og
-krever at den står stabilt: `RestartCount` må være 0 og `State.Restarting` falsk.
+**Helsesjekk.** `assertStillRunning()` poller containeren og krever at den har
+kjørt **sammenhengende** i `SNOAT_STABLE_FOR_MS` (15 s som standard) siden
+`State.StartedAt`, med `RestartCount` 0 og `State.Restarting` falsk. Nås
+`SNOAT_STABLE_TIMEOUT_MS` (90 s) uten at den blir stabil, feiler deploymenten
+framfor å henge. Feiler sjekken, hentes de siste 50 linjene fra applikasjonens
+egen logg inn i byggeloggen.
+
 Ett enkelt øyeblikksbilde er ikke nok – `RestartPolicy: unless-stopped` starter
 en krasjende app på nytt igjen og igjen, og `State.Running` er sann i glimtene
 mellom omstartene. En app i krasj-loop ville ellers sluppet gjennom som «Live»
-*og* fått en fungerende versjon revet ned under seg. Feiler sjekken, hentes de
-siste 50 linjene fra applikasjonens egen logg inn i byggeloggen.
+*og* fått en fungerende versjon revet ned under seg.
+
+Kriteriet var tidligere et FAST vindu på tre sekunder, og det slapp gjennom en
+app som beviselig ikke virket: `eierfullstack` med `output: "export"` deployet som
+container. `next start` avviser en export-build, men containeren har 256 MB og
+0,5 CPU, og `npm run start` → npm → `next start` rakk ikke gjennom oppstarten før
+vinduet lukket. Sjekken så `Running=true, RestartCount=0` – en oppstart
+*underveis* – og skrev «Containeren står stabilt». Krasjet kom etterpå, og siden
+svarte 502 på hver rute mens loggen sa «Live på …». Med oppetid som kriterium
+nullstilles klokka av at `StartedAt` flyttes fram ved en omstart.
+
+**Hva helsesjekken fortsatt ikke vet:** om noe LYTTER på porten. En app som
+starter fint og binder feil port passerer, og svarer 502 etterpå. Det riktige
+signalet er én HTTP-forespørsel mot containeren før byttet, men backend ligger
+med vilje utenfor `snoat_apps` – appene skal bare være nåbare gjennom Caddy – så
+det krever en egen vei inn: en `HEALTHCHECK` på image-et, eller en kortlevd
+container på appnettverket. Til da dekker oppetid klassen «krasjer under eller
+rett etter oppstart», som er den vanligste.
 
 **6. Ruting.** `PATCH http://caddy:2019/id/snoat_app_<slug>` med en rute som
 matcher `<slug>.snoat.localhost` og proxier til den nye containeren. PATCH
@@ -277,6 +317,105 @@ nye containeren, og den gamle logges som noe som må ryddes manuelt.
 
 **8. Fullført.** Status settes til `success` med `url`. Arbeidsområdet slettes –
 image-et er artefakten vi beholder.
+
+## Dev-sider: to grener av samme repo, samtidig
+
+Grenvalget i 0012 byttet *hvilken* gren et prosjekt bygger. En dev-side er å ha
+begge samtidig – `main` på domenet kundene ser, og en annen gren på en adresse
+bare teamet kommer inn på.
+
+**En dev-side er en ordinær prosjektrad.** `parent_project_id` peker på
+prosjektet den er et miljø for, `branch` er grenen den følger, og `name` er
+`<prosjekt>-<gren>`, som gir vertsnavnet. Begrunnelsen står i migrasjon 0013:
+`tls-ask`, Caddy-rutene, analytics-hostmapet og `assertCanDeploy` slår alle opp
+på `projects.name`, og de virker uendret for en rad som ser ut som alle andre.
+
+**Push-webhooken trengte ingen endring.** Den henter alle prosjekter på repoet og
+spør per rad om grenen stemmer (`isDeployBranch`, `routes/webhooks.ts`). To rader
+på samme repo med ulik gren gir dermed riktig oppførsel av seg selv: push til
+`dev` bygger bare dev-siden, push til `main` bare hovedsiden.
+
+**Plangrensen håndheves ikke ved opprettelsen**, men i `startDeployment` – som for
+alle andre prosjekter. En dev-side som kjører *er* en kjørende app, så en
+Free-konto med én app i drift får nei ved bygget. Det er riktig sted: raden
+koster ingenting, containeren koster.
+
+**Sletting av forelderen river ned barna først.** `on delete cascade` fjerner
+radene, men ingen container og ingen Caddy-rute, så `DELETE /api/projects/:id`
+kaller `teardownProject` på hver dev-side før den rører forelderen. Dashboardet
+sletter derfor gjennom API-et nå og ikke med `getSupabase().delete()` – den gamle
+veien etterlot en app som fortsatt kjørte.
+
+### Av/på på en dev-side
+
+En dev-side skal stå når noen jobber og ligge nede resten av tiden. Prosjektsiden
+til en dev-side bytter derfor Stopp/Start-knappene for én bryter (`SiteToggle`),
+og hver rad i dev-side-lista har den samme bryteren.
+
+**Av** er `POST /projects/:id/stop`: container fjernet, Caddy-rute slettet,
+`stopped_at` satt. En stoppet app teller ikke mot `maxRunningProjects`, så en
+dev-side som ligger nede koster ingenting mot plangrensen.
+
+**På** er `POST /projects/:id/deploy`, altså et nytt bygg. Snoat beholder ikke
+containeren over et stopp – det er hele hensikten med å stoppe – så veien tilbake
+går gjennom pipelinen. En bryter later som det er umiddelbart, og derfor står det
+under den at det tar noen minutter.
+
+**Hovedprosjekter beholder Stopp-knappen.** Å ta ned produksjonen skal kreve at
+man leser hva knappen heter, ikke bare treffer en bryter.
+
+Deploy-knappen skjules på en avslått dev-side: der ville den hett «Start» og gjort
+nøyaktig det bryteren ved siden av gjør.
+
+### Passordet foran appen
+
+`access_protected` på `projects` sier *at* appen er beskyttet. Hashen ligger i
+`project_access`, en tabell med RLS på og **ingen** policy: bare service-role ser
+den. Delingen er ikke ryddighet – dashboardet leser `projects` direkte fra
+Supabase, så en hash på den raden er en hash i nettleseren.
+
+Vakten er Caddys egen `authentication`-handler med `http_basic` og bcrypt, lagt
+**først** i handler-kjeden for ruten, slik at en 401 kommer før `reverse_proxy`
+har åpnet en forbindelse. `hash_cache` er slått på: bcrypt cost 12 er ~250 ms med
+vilje, og uten cachen ville hvert bilde og hver JS-fil på siden betalt den prisen.
+
+Brukernavnet er alltid `snoat`. Basic auth krever et brukernavn, men det er
+*appen* som er beskyttet, ikke en konto – ett fast navn er mer ærlig enn å late
+som det betyr noe.
+
+Hashen leses per ruteskriving (`accessHashFor()` i `deploy.ts`), og bare når
+`access_protected` er sant. Feiler oppslaget, svarer vi null – en dev-side som er
+åpen i noen minutter er dårlig, men en dev-side som ikke kan deployes er verre.
+Skal det snus til fail closed, må `runPipeline` også kunne feile på det.
+
+## Varsel til drift når en app blir live
+
+Etter at ruten er skrevet og statusen satt til `success`, kaller begge
+suksess-grenene `notifyFirstDeploymentLive()` i `services/notify.ts`. Den sender
+én e-post over Resend sitt HTTP-API – ikke SMTP – med prosjekt, adresse, repo,
+gren, type, plan og eierens e-post.
+
+**Bare ved første vellykkede deployment.** «Noen har spunnet opp en webapp» skjer
+én gang per prosjekt. Ett varsel per deploy ville betydd én e-post per push for
+hver kunde med auto-deploy, og da er det ingen som leser dem – heller ikke den
+ene som betydde noe. Vi teller vellykkede rader i `deployments` framfor å
+innføre et `notified_at`-felt: databasen kan svare på spørsmålet selv, og en
+kolonne til er en kolonne til å holde synkron.
+
+**Opprettelsen av prosjektet kan ikke varsles.** Dashboardet inserter raden
+direkte i Supabase gjennom RLS, uten å røre backend. Første vellykkede
+deployment er det tidligste tidspunktet backend med sikkerhet vet at appen
+finnes – og også det første tidspunktet den faktisk svarer på et vertsnavn.
+
+Kallet er `void`, ikke `await`: et varsel som henger skal ikke holde en
+byggeplass okkupert. Ingenting i `notify.ts` kaster – et varsel som feiler er en
+tapt e-post, og skal aldri bli en tapt deploy.
+
+**Konfigurasjon.** `RESEND_API_KEY` (samme nøkkel som GoTrue bruker over SMTP),
+`SNOAT_NOTIFY_FROM` og `SNOAT_NOTIFY_TO` (komma-separert). Mangler nøkkelen
+*eller* mottakerlisten, sendes ingenting og varselet blir en `debug`-linje i
+loggen. Begge de nye nøklene ligger i `scripts/bootstrap-env.mjs` – variabler som
+ikke står i den malen slettes fra `.env` ved neste deploy.
 
 ## Feilhåndtering
 

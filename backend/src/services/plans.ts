@@ -24,6 +24,16 @@ export interface PlanLimits {
   buildMinutesPerMonth: number;
   /** Høyere tall går foran i byggekøen. */
   queuePriority: number;
+  /**
+   * Om trafikkstatistikken er synlig for planen.
+   *
+   * Innsamlingen er ikke betinget – `analytics-ingest.ts` leser Caddys
+   * access-logg for alle prosjekter uansett, fordi loggen er én felles strøm.
+   * Det som koster er *oppslaget*: en aggregering over rader for hele kontoen,
+   * hvert halvminutt så lenge fanen står åpen. Derfor er dette en visnings-
+   * grense, ikke en innsamlingsgrense.
+   */
+  analytics: boolean;
 }
 
 /**
@@ -45,6 +55,7 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
     cpus: 0.5,
     buildMinutesPerMonth: 100,
     queuePriority: 0,
+    analytics: false,
   },
   pro: {
     maxRunningProjects: 5,
@@ -52,6 +63,7 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
     cpus: 1,
     buildMinutesPerMonth: 500,
     queuePriority: 10,
+    analytics: true,
   },
   business: {
     maxRunningProjects: 20,
@@ -59,6 +71,7 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
     cpus: 4,
     buildMinutesPerMonth: 2000,
     queuePriority: 20,
+    analytics: true,
   },
   /**
    * Integrasjonspartnere som drifter mange kundesider under én konto.
@@ -79,6 +92,7 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
     cpus: 1,
     buildMinutesPerMonth: 20_000,
     queuePriority: 5,
+    analytics: true,
   },
 };
 
@@ -202,10 +216,22 @@ export async function entitlementFor(userId: string): Promise<Entitlement> {
   return entitlementFrom(await loadSubscription(userId));
 }
 
+/**
+ * Grensene som gjelder for ett prosjekt.
+ *
+ * Prosjektets egen plan går foran kontoens. En byråkonto kan ha prosjekter på
+ * ulike planer samtidig, og da er det raden som gjelder – ikke abonnementet.
+ * Faller planen bort (ukjent verdi i databasen), brukes kontoens grenser, aldri
+ * de løseste.
+ */
+export function limitsFor(entitlement: Entitlement, project?: Project): PlanLimits {
+  const tier: SubscriptionTier = project?.plan ?? entitlement.plan;
+  return PLAN_LIMITS[tier] ?? entitlement.limits;
+}
+
 /** Ressurstaket containeren skal kjøres under. */
 export function resourcesFor(entitlement: Entitlement, project?: Project): containers.ContainerResources {
-  const tier: SubscriptionTier = project?.plan ?? entitlement.plan;
-  const limits = PLAN_LIMITS[tier] ?? entitlement.limits;
+  const limits = limitsFor(entitlement, project);
   return { memoryMb: limits.memoryMb, cpus: limits.cpus };
 }
 

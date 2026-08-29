@@ -152,12 +152,18 @@ export async function ping(): Promise<void> {
  * DELETE etterfulgt av POST ville hatt et vindu der subdomenet ikke matchet
  * noen rute i det hele tatt, og brukerne ville fått 404.
  */
-export async function upsertAppRoute(slug: string, customDomain: string | null, upstream: string): Promise<string> {
+export async function upsertAppRoute(
+  slug: string,
+  customDomain: string | null,
+  upstream: string,
+  accessPasswordHash: string | null = null,
+): Promise<string> {
   return await upsertRoute(
     slug,
     customDomain,
     [{ handler: "reverse_proxy", upstreams: [{ dial: upstream }] }],
-    { upstream },
+    { upstream, protected: Boolean(accessPasswordHash) },
+    accessPasswordHash,
   );
 }
 
@@ -179,8 +185,15 @@ export async function upsertStaticRoute(
   customDomain: string | null,
   root: string,
   spaFallback: boolean,
+  accessPasswordHash: string | null = null,
 ): Promise<string> {
-  return await upsertRoute(slug, customDomain, staticHandlers(root, spaFallback), { root, spaFallback });
+  return await upsertRoute(
+    slug,
+    customDomain,
+    staticHandlers(root, spaFallback),
+    { root, spaFallback, protected: Boolean(accessPasswordHash) },
+    accessPasswordHash,
+  );
 }
 
 function staticHandlers(root: string, spaFallback: boolean): Array<Record<string, unknown>> {
@@ -219,11 +232,47 @@ function staticHandlers(root: string, spaFallback: boolean): Array<Record<string
   ];
 }
 
+/**
+ * Brukernavnet på en passordbeskyttet app.
+ *
+ * Basic auth krever et brukernavn, men det finnes ingen brukere her – det er
+ * *appen* som er beskyttet, ikke en konto. Ett fast navn er da mer ærlig enn å
+ * late som det betyr noe, og det er én ting mindre å formidle til den som skal
+ * inn. Nettleseren husker paret uansett.
+ */
+export const ACCESS_USERNAME = "snoat";
+
+/**
+ * Caddy-handleren som krever passord før forespørselen slipper videre.
+ *
+ * `http_basic` sammenligner mot en bcrypt-hash Caddy selv verifiserer. Passordet
+ * forlater derfor aldri Caddy, og backend er ikke i veien for en enkelt
+ * forespørsel til appen – hadde vi brukt `forward_auth`, ville hver visning av
+ * dev-siden vært avhengig av at backend svarer.
+ *
+ * `hash_cache` er ikke pynt: bcrypt med cost 12 er ~250 ms med vilje, og uten
+ * cachen betaler hver enkelt forespørsel – også hvert bilde og hver JS-fil på
+ * siden – den prisen på nytt.
+ */
+function basicAuthHandler(hash: string): Record<string, unknown> {
+  return {
+    handler: "authentication",
+    providers: {
+      http_basic: {
+        hash: { algorithm: "bcrypt" },
+        hash_cache: {},
+        accounts: [{ username: ACCESS_USERNAME, password: hash }],
+      },
+    },
+  };
+}
+
 async function upsertRoute(
   slug: string,
   customDomain: string | null,
   handle: Array<Record<string, unknown>>,
   logContext: Record<string, unknown>,
+  accessPasswordHash: string | null = null,
 ): Promise<string> {
   const hostname = appHostname(slug);
 
@@ -234,10 +283,16 @@ async function upsertRoute(
     ? [hostname, customDomain, `*.${customDomain}`]
     : [hostname];
 
+  // Vakten står *først*: en 401 skal komme før reverse_proxy har åpnet en
+  // forbindelse til appen, og før file_server har lest en fil fra disk.
+  const handlers = accessPasswordHash
+    ? [basicAuthHandler(accessPasswordHash), ...handle]
+    : handle;
+
   const route: CaddyRoute = {
     "@id": routeId(slug),
     match: [{ host: hosts }],
-    handle,
+    handle: handlers,
     terminal: true,
   };
 

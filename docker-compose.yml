@@ -353,6 +353,8 @@ services:
       SNOAT_APPS_NETWORK: ${SNOAT_APPS_NETWORK:-snoat_apps}
       SNOAT_FRONTEND_ORIGIN: ${SNOAT_FRONTEND_ORIGIN:-http://localhost:8080}
       SNOAT_APP_PORT: ${SNOAT_APP_PORT:-3000}
+      SNOAT_STABLE_FOR_MS: ${SNOAT_STABLE_FOR_MS:-15000}
+      SNOAT_STABLE_TIMEOUT_MS: ${SNOAT_STABLE_TIMEOUT_MS:-90000}
       SNOAT_APP_MEMORY_MB: ${SNOAT_APP_MEMORY_MB:-512}
       SNOAT_APP_CPUS: ${SNOAT_APP_CPUS:-1}
       SNOAT_APP_STOP_TIMEOUT_S: ${SNOAT_APP_STOP_TIMEOUT_S:-10}
@@ -389,6 +391,13 @@ services:
       STRIPE_AUTOMATIC_TAX: ${STRIPE_AUTOMATIC_TAX:-false}
       SNOAT_BILLING_GRACE_DAYS: ${SNOAT_BILLING_GRACE_DAYS:-14}
       SNOAT_BILLING_SUSPEND_ENABLED: ${SNOAT_BILLING_SUSPEND_ENABLED:-false}
+
+      # Resend – varsler til drift. Valgfri: uten RESEND_API_KEY *eller*
+      # SNOAT_NOTIFY_TO sendes ingenting, og varslene blir en linje i loggen.
+      # Avsenderdomenet må være verifisert i Resend.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SNOAT_NOTIFY_FROM: ${SNOAT_NOTIFY_FROM:-Snoat <varsel@snoat.com>}
+      SNOAT_NOTIFY_TO: ${SNOAT_NOTIFY_TO:-}
     volumes:
       # Backend styrer Docker-daemonen på hosten (Dockerode + nixpacks).
       # Docker Desktop legger ikke alltid socketen på /var/run/docker.sock –

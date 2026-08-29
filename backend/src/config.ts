@@ -136,6 +136,26 @@ const schema = z.object({
   SNOAT_APP_PORT: z.coerce.number().int().positive().default(3000),
 
   /**
+   * Hvor lenge en ny container må ha kjørt sammenhengende før trafikken flyttes
+   * til den. Se `assertStillRunning()` i services/containers.ts.
+   *
+   * Verdien er en avveining, ikke en konstant: for lav slipper en app som
+   * krasjer under oppstart rett gjennom, for høy forsinker hver vellykket
+   * deployment. 15 sekunder er valgt fordi en container på 0,5 CPU bruker
+   * flere sekunder bare på å komme gjennom `npm run start` før den rekker å
+   * krasje — og det var nettopp den timingen som gjorde at en app i krasj-loop
+   * ble meldt som «Live».
+   */
+  SNOAT_STABLE_FOR_MS: z.coerce.number().int().positive().default(15_000),
+
+  /**
+   * Taket på hvor lenge vi venter på at containeren skal bli stabil. Nås det,
+   * feiler deploymenten framfor å henge — en app som starter, kjører litt,
+   * krasjer, og starter igjen, blir aldri stabil.
+   */
+  SNOAT_STABLE_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000),
+
+  /**
    * Ressurstak per applikasjonscontainer. Dette er mekanismen som gjør
    * gratisplanen mulig uten at ett prosjekt kan spise opp verten
    * (01_vision_and_brand.md).
@@ -318,6 +338,30 @@ const schema = z.object({
   SNOAT_BILLING_SUSPEND_ENABLED: z
     .preprocess((value) => value === "true" || value === true, z.boolean())
     .default(false),
+
+  /**
+   * Resend – utgående e-post.
+   *
+   * Valgfri. Uten nøkkelen sender vi ingenting, og varslene blir en linje i
+   * loggen i stedet. Det er med vilje: en plattform som ikke kan deploye fordi
+   * en e-postleverandør er nede, er en dårligere plattform enn en som deployer
+   * i stillhet.
+   */
+  RESEND_API_KEY: optionalEnv,
+
+  /**
+   * Avsender på varsler. Domenet må være verifisert i Resend, ellers avvises
+   * sendingen med 403 – det er ikke noe vi kan sjekke herfra.
+   */
+  SNOAT_NOTIFY_FROM: z.string().min(1).default("Snoat <varsel@snoat.com>"),
+
+  /**
+   * Hvem interne varsler går til. Komma-separert, så drift kan være flere.
+   *
+   * Er den tom, er varslene av selv om `RESEND_API_KEY` er satt. En liste vi
+   * ikke har fått oppgitt skal ikke gjettes.
+   */
+  SNOAT_NOTIFY_TO: optionalEnv,
 });
 
 const parsed = schema.safeParse(process.env);

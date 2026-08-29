@@ -8,6 +8,8 @@ import { Mark } from "@/components/Mark";
 import { DeploymentStatusBadge } from "@/components/DeploymentStatusBadge";
 import { BranchPicker } from "@/components/BranchPicker";
 import { DnsSettingsTab } from "@/components/DnsSettingsTab";
+import { AccessPasswordCard, DevSitesCard } from "@/components/DevSitesCard";
+import { SiteToggle } from "@/components/SiteToggle";
 import { AnalyticsTab } from "@/components/AnalyticsTab";
 import {
   Accordion,
@@ -19,6 +21,7 @@ import { useAuth, displayName, avatarUrl } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import {
   createCheckout,
+  deleteProject as deleteProjectRequest,
   deployProject,
   getPricing,
   stopProject,
@@ -107,6 +110,9 @@ function ProjectDetailPage() {
     latestDeployment?.status === "queued" || latestDeployment?.status === "building";
   /** Brukeren har slått av appen. Backend nullstiller feltet ved neste deployment. */
   const isStopped = Boolean(project?.stopped_at);
+  // En dev-side er en prosjektrad med en forelder (migrasjon 0013). Den styres
+  // med en av/på-bryter i stedet for Stopp/Start, se kommentaren ved bryteren.
+  const isDevSite = Boolean(project?.parent_project_id);
 
   const deployMutation = useMutation({
     mutationFn: () => deployProject(projectId),
@@ -171,10 +177,15 @@ function ProjectDetailPage() {
   return (
     <div className="flex min-h-screen flex-col bg-paper">
       {/* Top Navigation */}
-      {/* Papir med strek under, som i dashboardet. Den lå tidligere på
-          `bg-ink/40` — en halvgjennomsiktig svart flate som ble grå over
-          innholdet og skiftet farge når siden rullet under den. */}
-      <header className="sticky top-0 z-40 border-b-2 border-line bg-paper/95 backdrop-blur-sm">
+      {/* Samme topprad som dashboardet (`DashboardNav`): papir, hårstrek under,
+          ingen skygge og ingen blur.
+
+          Den lå tidligere på `bg-ink/40` – en halvgjennomsiktig svart flate som
+          ble grå over innholdet og skiftet farge når siden rullet under den.
+          Deretter på `bg-paper/95`, som er det samme problemet i mildere form:
+          fem prosent gjennomsiktighet er nok til at fargen på headeren avhenger
+          av hva som ligger bak den. En sticky flate skal ha én farge. */}
+      <header className="sticky top-0 z-50 border-b-2 border-line bg-paper">
         <div className="mx-auto flex max-w-[1334px] items-center justify-between px-5 py-4 lg:px-0">
           <div className="flex items-center gap-6">
             <Link to="/" className="anim-slide-in inline-flex">
@@ -287,33 +298,51 @@ function ProjectDetailPage() {
             </div>
           </div>
 
-          <div className="anim-rise [--anim-delay:90ms] flex items-center gap-3">
-            {/* Skjules når appen allerede er stoppet – det er ingenting igjen å
-                stoppe, og en knapp som ikke gjør noe er akkurat det som fikk
-                stoppen til å se ødelagt ut. */}
-            {latestDeployment?.status === "success" && !isStopped && (
-              <button
-                type="button"
-                onClick={() => stopMutation.mutate()}
-                disabled={stopMutation.isPending}
-                className="btn-outline border-error px-[16px] py-[10px] font-body text-[15px] text-error hover:bg-error hover:text-paper"
-              >
-                {stopMutation.isPending ? t("project_details.stopping") : t("project.stop_project")}
-              </button>
+          <div className="anim-rise [--anim-delay:90ms] flex items-center gap-4">
+            {/* På en dev-side er av/på det man gjør oftest: den skal stå når man
+                jobber og ligge nede resten av tiden, uten å telle mot
+                plangrensen. En bryter viser dessuten *tilstanden* – to knapper
+                der den ene forsvinner gjorde ikke det, og et stopp så ødelagt ut
+                fordi knappen bare var borte.
+
+                Hovedprosjekter beholder Stopp-knappen. Å slå av produksjonen skal
+                kreve at man leser hva knappen heter, ikke bare treffe en bryter. */}
+            {isDevSite ? (
+              <SiteToggle project={project} busy={isBuilding || deployMutation.isPending} />
+            ) : (
+              latestDeployment?.status === "success" &&
+              !isStopped && (
+                <button
+                  type="button"
+                  onClick={() => stopMutation.mutate()}
+                  disabled={stopMutation.isPending}
+                  className="btn-outline border-error px-[16px] py-[10px] font-body text-[15px] text-error hover:bg-error hover:text-paper"
+                >
+                  {stopMutation.isPending
+                    ? t("project_details.stopping")
+                    : t("project.stop_project")}
+                </button>
+              )
             )}
 
-            <button
-              type="button"
-              onClick={() => deployMutation.mutate()}
-              disabled={deployMutation.isPending || isBuilding || stopMutation.isPending}
-              className="btn-ink px-6 py-2.5 font-body text-[15px] disabled:opacity-50"
-            >
-              {isBuilding
-                ? t("project.deploying")
-                : isStopped
-                  ? t("project.start_project")
-                  : t("project.redeploy")}
-            </button>
+            {/* På en avslått dev-side ville denne knappen hett «Start» og gjort
+                nøyaktig det bryteren ved siden av gjør. To kontroller for samme
+                handling er verre enn én, så den viker – bryteren er veien
+                tilbake på. */}
+            {!(isDevSite && isStopped) && (
+              <button
+                type="button"
+                onClick={() => deployMutation.mutate()}
+                disabled={deployMutation.isPending || isBuilding || stopMutation.isPending}
+                className="btn-ink px-6 py-2.5 font-body text-[15px] disabled:opacity-50"
+              >
+                {isBuilding
+                  ? t("project.deploying")
+                  : isStopped
+                    ? t("project.start_project")
+                    : t("project.redeploy")}
+              </button>
+            )}
           </div>
         </div>
 
@@ -552,12 +581,16 @@ function BuildStageCard({ deployment }: { deployment: Deployment | null }) {
         <div className="flex items-center gap-3">
           {/* Tilstanden som en 28 px rute: fylt gul mens noe skjer, fylt svart
               når det gikk bra, rød ramme når det feilet, grå når den hviler.
-              Formen skiller dem, ikke bare fargen. */}
+              Formen skiller dem, ikke bare fargen.
+
+              Mens det bygges løper `anim-trace` rundt ramma – samme virkemiddel
+              som statusmerket, og her er flaten stor nok til at bevegelsen
+              faktisk leses på avstand. */}
           <span
             aria-hidden="true"
-            className={`flex h-7 w-7 shrink-0 items-center justify-center border-2 font-body text-[14px] font-bold leading-none ${
+            className={`relative isolate flex h-7 w-7 shrink-0 items-center justify-center border-2 font-body text-[14px] font-bold leading-none ${
               isBuilding
-                ? "anim-breathe border-line bg-sun text-ink"
+                ? "border-line bg-sun text-ink"
                 : isSuccess
                   ? "border-line bg-ink text-paper"
                   : isFailed
@@ -565,6 +598,7 @@ function BuildStageCard({ deployment }: { deployment: Deployment | null }) {
                     : "border-ash bg-ash text-ink"
             }`}
           >
+            {isBuilding ? <span aria-hidden className="anim-trace" /> : null}
             {isBuilding ? "·" : isSuccess ? "✓" : isFailed ? "✕" : "–"}
           </span>
 
@@ -1346,6 +1380,9 @@ function ProjectPlanCard({ project }: { project: Project }) {
                       <Mark on size={18} /> {t("project_plan.free_f3")}
                     </li>
                     <li className="flex items-center gap-2 text-ink/40">
+                      <Mark on={false} size={18} /> {t("project_plan.free_f5")}
+                    </li>
+                    <li className="flex items-center gap-2 text-ink/40">
                       <Mark on={false} size={18} /> {t("project_plan.free_f4")}
                     </li>
                   </ul>
@@ -1487,11 +1524,30 @@ function SettingsTab({ project }: { project: Project }) {
   const [buildCommand, setBuildCommand] = useState(project.build_command ?? "");
   const [staticOutputDir, setStaticOutputDir] = useState(project.static_output_dir ?? "");
   const [spaFallback, setSpaFallback] = useState(project.static_spa_fallback);
+  /*
+   * Kjøremodusen var tidligere IMPLISITT i om katalogfeltet var tomt, og feltet
+   * lå inne i trekkspillet «Avanserte byggeinnstillinger». Det gjorde det
+   * umulig å finne: for å velge om appen kjører som server eller som filer
+   * måtte man åpne et avansert panel og skjønne at en tom tekstboks betydde
+   * «server».
+   *
+   * Nå er valget en egen tilstand med to synlige alternativer. Katalogen er en
+   * FØLGE av valget, ikke selve valget. `null` i databasen betyr fortsatt
+   * server – kontrakten mot backend er uendret.
+   */
+  const [runtimeMode, setRuntimeMode] = useState<"server" | "static">(
+    project.static_output_dir ? "static" : "server",
+  );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const saveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (runtimeMode === "static" && staticOutputDir.trim() === "") {
+      setMessage(t("project.runtime_static_dir_required"));
+      return;
+    }
+
     setSaving(true);
     setMessage(null);
 
@@ -1505,8 +1561,11 @@ function SettingsTab({ project }: { project: Project }) {
           // selv, uten å gå gjennom API-et.
           branch: branch.trim() || null,
           build_command: buildCommand.trim() || null,
-          static_output_dir: staticOutputDir.trim() || null,
-          static_spa_fallback: spaFallback,
+          // Server-modus nullstiller katalogen. Uten det ville en bruker som
+          // byttet fra statisk til server fått en rad som fortsatt sa
+          // «serveres fra disk», og backend ville aldri startet en container.
+          static_output_dir: runtimeMode === "static" ? staticOutputDir.trim() : null,
+          static_spa_fallback: runtimeMode === "static" ? spaFallback : false,
         })
         .eq("id", project.id);
 
@@ -1523,8 +1582,12 @@ function SettingsTab({ project }: { project: Project }) {
   const deleteProject = async () => {
     if (!window.confirm(t("project.settings_delete_confirm"))) return;
     try {
-      const { error } = await getSupabase().from("projects").delete().eq("id", project.id);
-      if (error) throw error;
+      // Gjennom API-et, ikke `getSupabase().delete()`. En sletting rett i
+      // databasen fjerner raden, men lar containeren kjøre og Caddy-ruten stå –
+      // og med dev-sider ville den dessuten etterlatt deres containere også,
+      // siden `on delete cascade` bare rører rader. `DELETE /api/projects/:id`
+      // river ned alt, dev-sidene først.
+      await deleteProjectRequest(project.id);
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
       void navigate({ to: "/dashboard" });
     } catch (err) {
@@ -1536,6 +1599,12 @@ function SettingsTab({ project }: { project: Project }) {
     <div className="flex flex-col gap-8">
       {/* Project Plan & Subscription Card */}
       <ProjectPlanCard project={project} />
+
+      {/* Passordet foran appen gjelder alle prosjekter. Dev-sidene gjelder bare
+          hovedprosjekter: databasen håndhever dybde 1, så et kort på en dev-side
+          kunne bare sagt nei. */}
+      <AccessPasswordCard project={project} />
+      {!project.parent_project_id && <DevSitesCard project={project} />}
 
       {/* General Settings */}
       <form
@@ -1558,6 +1627,89 @@ function SettingsTab({ project }: { project: Project }) {
             står på nett. Derfor ligger den over trekkspillet, ikke inni det. */}
         <BranchPicker repo={project.repo_url} value={branch} onChange={setBranch} />
 
+        {/* Kjøremodus hører her av samme grunn som grenen: den avgjør om appen
+            i det hele tatt kommer opp. En Next-app med output: "export" som
+            står i server-modus bygger grønt og svarer 502 på alt. */}
+        <fieldset className="flex flex-col gap-3">
+          <legend className="font-body text-[15px] text-ink">{t("project.runtime_mode")}</legend>
+
+          {(["server", "static"] as const).map((mode) => (
+            <label key={mode} className="flex max-w-lg cursor-pointer items-start gap-3">
+              <input
+                type="radio"
+                name="runtime-mode"
+                value={mode}
+                checked={runtimeMode === mode}
+                onChange={() => {
+                  setRuntimeMode(mode);
+                  // Fyller inn den vanligste katalogen med én gang, slik at
+                  // valget er komplett og SYNLIG i stedet for at vi gjetter
+                  // den i det stille ved lagring.
+                  if (mode === "static" && staticOutputDir.trim() === "") {
+                    setStaticOutputDir("out");
+                  }
+                }}
+                className="mt-1 h-5 w-5 accent-primary"
+              />
+              <span className="flex flex-col gap-1">
+                <span className="font-body text-[15px] text-ink">
+                  {t(`project.runtime_${mode}`)}
+                </span>
+                <span
+                  className="font-body text-[14px] text-ink/70"
+                  dangerouslySetInnerHTML={{ __html: t(`project.runtime_${mode}_help`) }}
+                />
+              </span>
+            </label>
+          ))}
+
+          {/* Katalogen og SPA-valget er følger av «Statiske filer». De folder
+              seg ut i stedet for å dukke opp, av samme grunn som SPA-boksen
+              gjorde det før: et hopp midt i skjemaet er vanskelig å følge. */}
+          <div
+            className="collapse-grid max-w-lg"
+            data-open={runtimeMode === "static" ? "true" : "false"}
+            inert={runtimeMode !== "static"}
+          >
+            <div className="flex flex-col gap-4 pt-2 pl-8">
+              <label className="flex flex-col gap-2">
+                <span className="font-body text-[15px] text-ink">
+                  {t("project.static_output_dir")}
+                </span>
+                <input
+                  type="text"
+                  value={staticOutputDir}
+                  onChange={(e) => setStaticOutputDir(e.target.value)}
+                  placeholder="out"
+                  className="field-ink max-w-xs px-[14px] py-[12px] font-body text-[16px] outline-none"
+                />
+                <span
+                  className="font-body text-[14px] text-ink/70"
+                  dangerouslySetInnerHTML={{ __html: t("project.static_output_dir_help") }}
+                />
+              </label>
+
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={spaFallback}
+                  onChange={(e) => setSpaFallback(e.target.checked)}
+                  className="mt-1 h-5 w-5 rounded-none accent-primary"
+                />
+                <span className="flex flex-col gap-1">
+                  <span className="font-body text-[15px] text-ink">
+                    {t("project.spa_fallback")}
+                  </span>
+                  <span
+                    className="font-body text-[14px] text-ink/70"
+                    dangerouslySetInnerHTML={{ __html: t("project.spa_fallback_help") }}
+                  />
+                </span>
+              </label>
+            </div>
+          </div>
+        </fieldset>
+
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="advanced" className="border-b-0">
             <AccordionTrigger className="hover:no-underline text-[15px] font-body py-0 pb-4">
@@ -1576,54 +1728,6 @@ function SettingsTab({ project }: { project: Project }) {
                   className="field-ink max-w-lg px-[14px] py-[12px] font-body text-[16px] outline-none"
                 />
               </label>
-
-              <label className="flex flex-col gap-2">
-                <span className="font-body text-[15px] text-ink">
-                  {t("project.static_output_dir")}
-                </span>
-                <input
-                  type="text"
-                  value={staticOutputDir}
-                  onChange={(e) => setStaticOutputDir(e.target.value)}
-                  placeholder={t("project.static_output_dir_placeholder")}
-                  className="field-ink max-w-lg px-[14px] py-[12px] font-body text-[16px] outline-none"
-                />
-                <span
-                  className="font-body text-[14px] text-ink/70 max-w-lg"
-                  dangerouslySetInnerHTML={{ __html: t("project.static_output_dir_help") }}
-                />
-              </label>
-
-              {/* SPA-valget hører bare hjemme når det finnes en utdatamappe.
-                  Det stod tidligere i en `&&`, så boksen dukket opp og forsvant
-                  i ett hopp midt i skjemaet. Nå folder den seg ut: raden ligger
-                  der hele tiden og går fra 0fr til 1fr. `inert` gjør at
-                  avkryssingen ikke kan nås med tabulator mens den er lukket. */}
-              <div
-                className="collapse-grid max-w-lg"
-                data-open={staticOutputDir.trim() !== "" ? "true" : "false"}
-                inert={staticOutputDir.trim() === ""}
-              >
-                <div>
-                  <label className="flex max-w-lg items-start gap-3 pt-1">
-                    <input
-                      type="checkbox"
-                      checked={spaFallback}
-                      onChange={(e) => setSpaFallback(e.target.checked)}
-                      className="mt-1 h-5 w-5 rounded-none accent-primary"
-                    />
-                    <span className="flex flex-col gap-1">
-                      <span className="font-body text-[15px] text-ink">
-                        {t("project.spa_fallback")}
-                      </span>
-                      <span
-                        className="font-body text-[14px] text-ink/70"
-                        dangerouslySetInnerHTML={{ __html: t("project.spa_fallback_help") }}
-                      />
-                    </span>
-                  </label>
-                </div>
-              </div>
             </AccordionContent>
           </AccordionItem>
         </Accordion>

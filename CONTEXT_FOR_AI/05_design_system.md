@@ -150,9 +150,38 @@ er for markedsflater; et prosjektpanel med 32 px brødtekst er ikke lesbart.
 | `.btn-sun` | Gul fylt med svart ramme |
 | `.btn-quiet` | Uten flate; hover legger på gult |
 | `.field-ink` | Skjemafelt: radius 0, 2 px ramme, gul-svak ved fokus |
+| `.ink-switch` + `.ink-switch-thumb` | Av/på-bryter: firkantet spor 52 × 28, fylt svart tommel |
 | `.hairline` | Den eneste skillelinja: svart 10 % |
 | `.numeral` | Konturtall (`#1`…`#6`): 86 px, transparent fyll, 2,3 px svart kontur |
 | `.swoosh` | Den håndtegnede gule understrekingen, 74 × 10 px |
+
+### Av/på-bryteren
+
+Firkantet, som alle handlinger (regel 2): en bryter er noe man gjør, ikke noe man
+leser. Sporet har samme 2 px-strek som knapper og felt, og tommelen er et fylt
+`--color-ink`-kvadrat. Ingen sirkler, ingen skygge.
+
+Fargene er hentet fra rollene de allerede har: `--color-sun` er «aktiv/pågår» i
+hele designet, `--color-ash` er «hvilende tilstand, inaktiv indikator». Bryteren
+trenger derfor ingen egne farger.
+
+⚠️ **Gult mot grått er ikke nok alene.** Rundt 8 % av menn ser den forskjellen
+dårlig, så tommelens *posisjon* er den egentlige indikatoren – og `SiteToggle`
+setter i tillegg en tekstetikett («På»/«Av») ved siden av. Kopierer du bryteren
+til et nytt sted, ta med etiketten.
+
+Markup-en er en `button` med `role="switch"` og `aria-checked`, ikke en checkbox:
+en checkbox betyr «dette blir sant når jeg lagrer», og her skjer det med én gang.
+CSS-en henger på `aria-checked`, så tilstanden i DOM-en *er* tilstanden man ser –
+det finnes ingen egen `data-state` å holde i takt.
+
+`data-busy="true"` pulserer tommelen mens operasjonen pågår. Uten den ser
+bryteren ut som den ikke tok imot klikket, for tilstanden i databasen endrer seg
+først når stoppet eller bygget er ferdig.
+
+**Radix-`Switch`-en i `components/ui/switch.tsx` brukes ikke.** Den er fra det
+gamle designsystemet – runde spor, `--primary` – og ligger igjen sammen med resten
+av det ubrukte shadcn-inventaret.
 
 ### Terminalen
 

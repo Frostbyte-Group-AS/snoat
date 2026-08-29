@@ -268,20 +268,42 @@ async function failWithAppLogs(
  * `RestartPolicy: unless-stopped` starter en krasjende app på nytt igjen og
  * igjen, og `State.Running` er sann i glimtene mellom omstartene. Ett enkelt
  * øyeblikksbilde slipper altså en app i krasj-loop rett gjennom.
+ *
+ * ── HVORFOR VI VENTER PÅ OPPETID, IKKE PÅ ET FAST VINDU ─────────────────────
+ * Sjekken hadde et fast vindu på tre sekunder, og slapp gjennom en app som
+ * beviselig ikke virket: `eierfullstack` med `output: "export"` deployert som
+ * container. `next start` avviser en export-build, men containeren har 256 MB og
+ * 0,5 CPU, og `npm run start` → npm → `next start` rakk ikke å komme gjennom
+ * oppstarten før vinduet lukket. Sjekken så `Running=true, RestartCount=0` —
+ * altså en oppstart UNDERVEIS — og kalte det stabilt. Krasjet og omstartene kom
+ * etterpå, og siden svarte 502 på hver rute mens loggen sa «Live på …».
+ *
+ * Derfor er kriteriet nå oppetid: containeren må ha kjørt sammenhengende siden
+ * `State.StartedAt` i `stableForMs`. Starter den på nytt, nullstilles klokka av
+ * seg selv, fordi `StartedAt` flyttes fram — og da rekker taket å løpe ut i
+ * stedet for at vi feilaktig godkjenner.
+ *
+ * ── HVA DENNE SJEKKEN FORTSATT IKKE VET ─────────────────────────────────────
+ * Om noe LYTTER på porten. En app som starter fint og binder feil port passerer
+ * her og svarer 502 etterpå. Det riktige signalet er én HTTP-forespørsel mot
+ * containeren før byttet, men backend ligger med vilje utenfor `snoat_apps`
+ * (se docker-compose: appene skal bare være nåbare gjennom Caddy), så det
+ * krever en egen vei inn – en HEALTHCHECK på imaget, eller en kortlevd container
+ * på appnettverket. Til det er på plass er oppetid det sterkeste vi har, og det
+ * dekker klassen «krasjer under eller rett etter oppstart».
  */
 export async function assertStillRunning(
   containerName: string,
   logs: LogStream,
-  windowMs = 3000,
+  stableForMs = config.SNOAT_STABLE_FOR_MS,
   intervalMs = 500,
+  timeoutMs = config.SNOAT_STABLE_TIMEOUT_MS,
 ): Promise<void> {
   const container = docker.getContainer(containerName);
-  const deadline = Date.now() + windowMs;
+  const deadline = Date.now() + timeoutMs;
+  let harMeldt = false;
 
   for (;;) {
-    const remaining = Math.max(0, deadline - Date.now());
-    await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
-
     let info: Dockerode.ContainerInspectInfo;
     try {
       info = await container.inspect();
@@ -306,10 +328,36 @@ export async function assertStillRunning(
       );
     }
 
-    if (Date.now() >= deadline) {
-      logs.write(`Containeren står stabilt – ${containerName} kjører.`);
+    // `StartedAt` er ISO-8601 fra Docker. Et ugyldig tidsstempel skal ikke gi en
+    // NaN-sammenligning som stilltiende alltid er falsk og henger til taket –
+    // da faller vi tilbake på at containeren i det minste kjører.
+    const startet = Date.parse(info.State.StartedAt);
+    const oppetid = Number.isNaN(startet) ? stableForMs : Date.now() - startet;
+
+    if (oppetid >= stableForMs) {
+      logs.write(
+        `Containeren står stabilt – ${containerName} har kjørt i ${Math.round(oppetid / 1000)} s uten omstart.`,
+      );
       return;
     }
+
+    if (Date.now() >= deadline) {
+      await failWithAppLogs(
+        container,
+        logs,
+        `Containeren ble aldri stabil innen ${Math.round(timeoutMs / 1000)} s. ` +
+          `Den kjører, men har startet på nytt underveis – appen kommer ikke ordentlig opp.`,
+      );
+    }
+
+    // Én linje, ikke én per runde: brukeren skal skjønne at vi venter med vilje,
+    // uten at loggen fylles med tretti identiske linjer.
+    if (!harMeldt) {
+      harMeldt = true;
+      logs.write(`Venter ${Math.round(stableForMs / 1000)} s på at containeren skal stå stabilt …`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 }
 

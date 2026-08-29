@@ -361,6 +361,51 @@
     border-color var(--dur-fast) ease;
 }
 
+/* ---------------------------------------------------------------------------
+   Av/på-bryter
+   ---------------------------------------------------------------------------
+   Firkantet, som alle handlinger i systemet (regel 2): en bryter er noe man
+   gjør, ikke noe man leser. Sporet er 52 × 28 px med den samme 2 px-streken som
+   knapper og felt, og tommelen er et fylt `--color-ink`-kvadrat – ingen sirkler,
+   ingen skygge.
+
+   Fargene bærer tilstanden alene, uten ikon: `--color-sun` er «pågår / aktiv» i
+   hele designet, `--color-ash` er «hvilende tilstand, inaktiv indikator». Det er
+   nøyaktig de to rollene en av/på-bryter har, så den trenger ingen egne farger.
+
+   ⚠️ Gult mot grått er ikke nok alene – rundt 8 % av menn ser den forskjellen
+   dårlig. Tommelens *posisjon* er derfor den egentlige indikatoren, og
+   komponenten setter i tillegg en tekstetikett ved siden av.
+   --------------------------------------------------------------------------- */
+@utility ink-switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  width: 52px;
+  height: 28px;
+  padding: 0;
+  border-radius: 0;
+  border: 2px solid var(--color-line);
+  background: var(--color-ash);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
+}
+
+@utility ink-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: var(--color-ink);
+  /* Tommelen flyttes med `transform` og ikke med `left`: da animerer den på
+     GPU-en og legger ikke ett layout-pass på hver klikk. */
+  transition: transform var(--dur-fast) var(--ease-snoat);
+}
+
 /* Hårstrek — Figma bruker svart på 10 % som eneste skillelinje. */
 @utility hairline {
   border: 0;
@@ -411,6 +456,43 @@
   .field-ink:focus-within,
   .field-ink:focus {
     background: var(--color-sun-soft);
+  }
+
+  .ink-switch[aria-checked="true"] {
+    background: var(--color-sun);
+  }
+
+  .ink-switch[aria-checked="true"] .ink-switch-thumb {
+    transform: translateX(24px);
+  }
+
+  .ink-switch:hover:not(:disabled) {
+    background: var(--color-sun-soft);
+  }
+
+  .ink-switch[aria-checked="true"]:hover:not(:disabled) {
+    background: var(--color-sun);
+  }
+
+  /* Mens et bygg eller et stopp går, står bryteren stille og pulserer heller.
+     Uten dette ser den ut som den ikke tok imot klikket – tilstanden i databasen
+     endrer seg først når operasjonen er ferdig. */
+  .ink-switch:disabled {
+    cursor: progress;
+  }
+
+  .ink-switch[data-busy="true"] .ink-switch-thumb {
+    animation: switch-busy 900ms ease-in-out infinite;
+  }
+
+  @keyframes switch-busy {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
   }
 
   .btn-ink:disabled,
@@ -578,6 +660,23 @@
   }
 }
 
+/* Streken som løper rundt statusmerket mens et bygg pågår.
+
+   Pusten over var det eneste «det skjer noe»-signalet, og en flate som toner ut
+   og inn leses like gjerne som at noe er deaktivert. Denne løper i stedet én
+   runde rundt ramma: bevegelse med retning, som et bygg som skrider fram.
+
+   Vi roterer et element, ikke en `conic-gradient`-vinkel. Å animere vinkelen
+   krever `@property`, og der den ikke støttes fryser gradienten i
+   utgangsstillingen — altså et statisk hakk i ramma som ser ut som en feil. En
+   rotasjon er dessuten `transform`, som er det designsystemet ber om (regel 5).
+   Harde fargestopp, ingen mykning: systemet har ingen glød å låne av. */
+@keyframes snoat-trace {
+  to {
+    rotate: 1turn;
+  }
+}
+
 /* Søyler og stolper som vokser fram i stedet for å stå ferdig tegnet. Vi
    animerer `transform`, ikke `height`/`width`, slik at grafen ikke tvinger fram
    en ny layout for hver ramme. */
@@ -653,6 +752,52 @@
 
 @utility anim-breathe {
   animation: snoat-breathe 1.9s ease-in-out infinite;
+}
+
+/* Legges på et tomt, dekorativt barn inne i en boks med 2 px ramme.
+
+   Elementet dekker nøyaktig ramma (`inset: -2px`), og masken skjærer bort alt
+   innenfor rammebredden slik at bare selve ringen står igjen. Inni ringen
+   roterer en kileformet gradient — den blir synlig kun der den krysser ringen,
+   og leses som en strek som løper rundt kanten.
+
+   Kilen har lys front og gul hale: en ren hvit strek leses som et hakk i ramma,
+   mens halen gjør den til noe som beveger seg i en retning. Svart var prøvd og
+   forkastet — det forsvinner i `--color-line`. */
+@utility anim-trace {
+  position: absolute;
+  /* `inset: 0` og `padding: 2px` gjør at ringen dekker nøyaktig boksens egen
+     2 px ramme. Med `inset: -2px` havner den i stedet i et bånd *utenfor*
+     ramma, der den ikke syns mot papiret — verifisert, ikke antatt. */
+  inset: 0;
+  overflow: hidden;
+  padding: 2px;
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* Kvadratet må dekke merkets diagonal i alle retninger mens det roterer. */
+    width: 300%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    background: conic-gradient(
+      var(--color-paper) 0deg 16deg,
+      var(--color-sun) 16deg 38deg,
+      transparent 38deg 360deg
+    );
+    animation: snoat-trace 1.5s linear infinite;
+  }
 }
 
 @utility anim-draw {
@@ -886,5 +1031,13 @@
   [data-reveal] {
     opacity: 1;
     transform: none;
+  }
+
+  /* Unntaket fra «nuller varigheten, beholder sluttilstanden»: en løpende strek
+     har ingen meningsfull sluttilstand. Fryser den, blir den stående som et
+     lyst hakk i ramma som ser ut som en tegnefeil. Statusen bæres uansett av
+     det gule fyllet og av ordet «Bygger». */
+  .anim-trace {
+    display: none;
   }
 }

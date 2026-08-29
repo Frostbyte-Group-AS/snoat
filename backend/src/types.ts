@@ -46,6 +46,27 @@ export interface Project {
   /** Planen prosjektet kjører på ('free', 'pro', 'business', 'agency'). */
   plan?: SubscriptionTier;
   /**
+   * Prosjektet denne raden er et miljø for (migrasjon 0013).
+   *
+   * NULL = et ordinært prosjekt, som alle rader var før dev-sidene fantes. Satt
+   * = en dev-side: en egen prosjektrad på samme repo, med en annen `branch` og
+   * sitt eget vertsnavn, mens forelderen eier domenet.
+   *
+   * Grunnen til at et miljø er en prosjektrad og ikke en egen tabell står i
+   * migrasjonen: `tls-ask`, Caddy-rutene, analytics-hostmapet og plangrensene
+   * slår alle opp på `projects.name`, og de virker uendret for en rad som ser
+   * ut som alle andre.
+   */
+  parent_project_id: string | null;
+  /**
+   * Sant når appen krever passord (migrasjon 0013).
+   *
+   * Selve bcrypt-hashen ligger i `project_access`, en tabell uten RLS-policy –
+   * kun service-role ser den. Dette feltet er det dashboardet leser, og det er
+   * alt et UI trenger for å tegne en hengelås.
+   */
+  access_protected: boolean;
+  /**
    * Kallerens egen ID for prosjektet, satt ved opprettelse over maskin-APIet.
    * Unik per bruker, og det som gjør `POST /api/projects` idempotent.
    * NULL for prosjekter opprettet fra dashboardet.

@@ -14,8 +14,11 @@ import {
   resourcesFor,
   type Entitlement,
 } from "./plans.js";
+import { finnStatiskErklaering } from "./static-declaration.js";
 import { pruneOldSites, publishStaticSite, removeProjectSites, siteDirFor } from "./static-site.js";
 import { invalidateHostMap } from "./analytics-ingest.js";
+import { notifyFirstDeploymentLive } from "./notify.js";
+import { passwordHashFor } from "./dev-sites.js";
 import { rm, stat } from "node:fs/promises";
 
 /**
@@ -336,6 +339,18 @@ async function warnOnRepeatedFailedCommit(
  * brukeren nedetid. Den forrige containeren er urørt, så det er nok å fjerne vår
  * egen. Ingenting her får kaste – den opprinnelige feilen er det brukeren skal se.
  */
+/**
+ * Passord-hashen ruten skal skrives med, eller null når appen er åpen.
+ *
+ * Oppslaget gjøres per ruteskriving og ikke én gang per pipeline, fordi det er
+ * få skrivinger og kunden kan ha endret passordet mens bygget kjørte. Det koster
+ * én spørring, og bare for prosjekter som faktisk er beskyttet – `access_protected`
+ * står på `projects` nettopp for at det vanlige tilfellet ikke skal koste noe.
+ */
+async function accessHashFor(project: Project): Promise<string | null> {
+  return project.access_protected ? await passwordHashFor(project.id) : null;
+}
+
 async function rollback(
   project: Project,
   containerName: string,
@@ -349,7 +364,12 @@ async function rollback(
 
     if (current !== previousUpstream) {
       try {
-        await caddy.upsertAppRoute(project.name, project.custom_domain, previousUpstream);
+        await caddy.upsertAppRoute(
+          project.name,
+          project.custom_domain,
+          previousUpstream,
+          await accessHashFor(project),
+        );
         logs.write(`Ruten peker igjen på ${previousUpstream}.`);
       } catch (error) {
         logs.write(`Advarsel: kunne ikke peke ruten tilbake til ${previousUpstream}.`);
@@ -363,6 +383,72 @@ async function rollback(
   await containers.removeContainerByName(containerName).catch((error) => {
     logger.warn({ container: containerName, err: error }, "Kunne ikke rydde feilet container");
   });
+}
+
+/**
+ * Stopper deployments der kjøremodus og kode ikke kan fungere sammen.
+ *
+ * Bakgrunnen er et konkret tilfelle: `eierfullstack` har `output: "export"` i
+ * `next.config.js` og ingen `static_output_dir`. Bygget gikk grønt hele veien —
+ * TypeScript, 127 prerendrede sider, image bygget — og så nektet `next start` å
+ * servere en export, avsluttet med kode 1, og hver rute svarte 502. Loggen sa
+ * «Containeren står stabilt» og «Live på …».
+ *
+ * ── HVORFOR FØR BYGGET, OG IKKE VED OPPSTART ────────────────────────────────
+ * Fordi utfallet er kjent allerede her. Bygget som feilet tok 549 sekunder, og
+ * ni minutter er lang tid å vente på en beskjed vi kunne gitt etter tolv. Vi
+ * leser konfigurasjonen rett etter klonen, mens arbeidskatalogen alt ligger på
+ * disk og ingenting er brukt på å bygge.
+ *
+ * ── HVORFOR EN HARD FEIL, OG IKKE EN ADVARSEL ───────────────────────────────
+ * Fordi kombinasjonen ikke har et utfall der den virker. Next avviser den
+ * eksplisitt. En advarsel ville gitt brukeren en «vellykket» deployment som
+ * svarer 502, altså nøyaktig den falske grønne vi prøver å fjerne.
+ *
+ * Vi endrer bevisst ikke modusen selv. Se `services/static-declaration.ts` for
+ * hvorfor det å lese en erklæring ikke er det samme som å gjette.
+ */
+async function assertKjoremodusStemmer(
+  project: Project,
+  directory: string,
+  logs: LogStream,
+): Promise<void> {
+  // Er prosjektet alt satt opp statisk, er det ingenting å advare om — da er
+  // erklæringen og innstillingen enige.
+  if (project.static_output_dir) return;
+
+  const erklaering = await finnStatiskErklaering(directory).catch((error: unknown) => {
+    // En uleselig konfigurasjon skal ikke velte en deployment som ellers ville
+    // gått fint. Vi mister sjekken, ikke bygget.
+    logger.warn({ project: project.name, err: error }, "Kunne ikke lese rammeverkskonfigurasjon");
+    return null;
+  });
+
+  if (!erklaering) return;
+
+  logs.write(
+    `${erklaering.fil} erklærer statisk utdata:\n  ${erklaering.linje}\n\n` +
+      `${erklaering.rammeverk} med denne innstillingen produserer bare filer. ` +
+      `Prosjektet er satt opp til å kjøre som server, og «npm run start» kommer ` +
+      `til å avvise byggeresultatet i stedet for å servere det.\n\n` +
+      `Rett det ved å velge «Statiske filer» under Kjøremodus i prosjektinnstillingene ` +
+      `og sette katalogen til «${erklaering.foreslattKatalog}» — eller fjern ` +
+      `erklæringen fra ${erklaering.fil} hvis appen skal ha en server.`,
+  );
+
+  throw new DeployError(
+    "static_mode",
+    `${erklaering.fil} har ${erklaering.linje} men prosjektet kjører som container. ` +
+      `Sett static_output_dir til «${erklaering.foreslattKatalog}».`,
+    {
+      code: "deploy.static_declaration_mismatch",
+      params: {
+        file: erklaering.fil,
+        framework: erklaering.rammeverk,
+        dir: erklaering.foreslattKatalog,
+      },
+    },
+  );
 }
 
 /**
@@ -384,7 +470,13 @@ async function deployStatic(
 
   try {
     logs.step("Flytter trafikken over");
-    await caddy.upsertStaticRoute(project.name, project.custom_domain, root, project.static_spa_fallback);
+    await caddy.upsertStaticRoute(
+      project.name,
+      project.custom_domain,
+      root,
+      project.static_spa_fallback,
+      await accessHashFor(project),
+    );
 
     const active = await caddy.appRouteRoot(project.name);
     if (active !== root) {
@@ -460,6 +552,8 @@ async function runPipeline(
       logger.warn({ project: project.name, err: error }, "Kunne ikke sjekke forrige commit");
     });
 
+    await assertKjoremodusStemmer(project, directory, logs);
+
     const image = await buildImage(project, directory, logs);
 
     // Hva serverer trafikk nå? Leses før vi rører noe, slik at vi kan peke
@@ -494,6 +588,11 @@ async function runPipeline(
       // mot et helt nytt vertsnavn fram til den periodiske oppfriskningen kom.
       invalidateHostMap();
 
+      // Varsler drift om at en ny app er live – kun ved første vellykkede
+      // deployment. `void` og ikke `await`: pipelinen er ferdig, og et varsel
+      // som henger skal ikke holde byggeplassen okkupert.
+      void notifyFirstDeploymentLive(project, deployment);
+
       logger.info({ project: project.name, deployment: deployment.id, seconds }, "Statisk deployment fullført");
       return;
     }
@@ -510,7 +609,12 @@ async function runPipeline(
       await containers.assertStillRunning(containerName, logs);
 
       logs.step("Flytter trafikken over");
-      await caddy.upsertAppRoute(project.name, project.custom_domain, upstream);
+      await caddy.upsertAppRoute(
+        project.name,
+        project.custom_domain,
+        upstream,
+        await accessHashFor(project),
+      );
 
       // Caddy bytter ruten i minnet – vi leser den tilbake før vi river ned den
       // forrige containeren, slik at vi aldri fjerner det som faktisk svarer.
@@ -550,6 +654,9 @@ async function runPipeline(
     // Se kommentaren i den statiske grenen: gjør vertsnavnet kjent for ingesten
     // med én gang, i stedet for å miste de første treffene.
     invalidateHostMap();
+
+    // Se den statiske grenen: samme varsel, samme grunn til at det ikke ventes på.
+    void notifyFirstDeploymentLive(project, deployment);
 
     logger.info({ project: project.name, deployment: deployment.id, seconds }, "Deployment fullført");
   } catch (error) {
@@ -641,7 +748,13 @@ export async function ensureProjectRoute(project: Project): Promise<RouteStatus>
       return { routed: false, reason: "missing_files" };
     }
 
-    await caddy.upsertStaticRoute(project.name, project.custom_domain, root, project.static_spa_fallback);
+    await caddy.upsertStaticRoute(
+      project.name,
+      project.custom_domain,
+      root,
+      project.static_spa_fallback,
+      await accessHashFor(project),
+    );
     return { routed: true };
   }
 
@@ -655,7 +768,12 @@ export async function ensureProjectRoute(project: Project): Promise<RouteStatus>
 
   if (!name) return { routed: false, reason: "no_container" };
 
-  await caddy.upsertAppRoute(project.name, project.custom_domain, containers.upstreamFor(name));
+  await caddy.upsertAppRoute(
+    project.name,
+    project.custom_domain,
+    containers.upstreamFor(name),
+    await accessHashFor(project),
+  );
 
   // Rullerende utrulling som ble avbrutt midtveis (backend drept mellom
   // helsesjekk og opprydding) etterlater to kjørende containere. Ruten peker på

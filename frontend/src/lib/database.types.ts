@@ -53,6 +53,22 @@ export interface Project {
   /** Planen prosjektet kjører på ('free', 'pro', 'business', 'agency'). */
   plan?: SubscriptionTier;
   /**
+   * Prosjektet denne raden er et miljø for (migrasjon 0013).
+   *
+   * NULL = et ordinært prosjekt. Satt = en dev-side: samme repo, en annen gren,
+   * eget vertsnavn og passord foran. Dashboardet grupperer på dette feltet, slik
+   * at dev-sidene står under prosjektet sitt og ikke som egne kort.
+   */
+  parent_project_id?: string | null;
+  /**
+   * Sant når appen krever passord for å åpnes.
+   *
+   * Selve hashen ligger i `project_access`, som ingen klient kan lese – dette
+   * feltet finnes nettopp for at UI-et skal kunne vise en hengelås uten å ha
+   * sett den.
+   */
+  access_protected?: boolean;
+  /**
    * Integrasjonens egen ID for prosjektet, satt av `POST /api/projects`.
    * NULL for prosjekter opprettet herfra – dashboardet skriver aldri feltet.
    */

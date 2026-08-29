@@ -7,10 +7,11 @@ import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware
 import * as analytics from "../services/analytics.js";
 import { invalidateHostMap } from "../services/analytics-ingest.js";
 import * as deploy from "../services/deploy.js";
+import * as devSites from "../services/dev-sites.js";
 import { ensureProjectRoute, type RouteStatus } from "../services/deploy.js";
 import { checkDomain } from "../services/domain-status.js";
 import { assertSafeBranch, assertSafeRepoUrl } from "../services/git.js";
-import { entitlementFor } from "../services/plans.js";
+import { entitlementFor, limitsFor } from "../services/plans.js";
 import { logger } from "../lib/logger.js";
 import { DeployError, type Deployment, type ErrorDetail } from "../types.js";
 import { billing } from "./billing.js";
@@ -252,6 +253,97 @@ api.post("/projects", async (c) => {
  * beholder vi raden – et prosjekt vi fortsatt kan finne igjen er langt bedre enn
  * en foreldreløs container.
  */
+/**
+ * Oppretter en dev-side for prosjektet.
+ *
+ * En dev-side er en egen prosjektrad på samme repo, med en annen gren og et eget
+ * vertsnavn – `<prosjekt>-<gren>.snoat.com` – bak et passord. Se
+ * `services/dev-sites.ts` og migrasjon 0013 for hvorfor det er en prosjektrad og
+ * ikke et miljø i en egen tabell.
+ *
+ * Bygget startes **ikke** her. Å opprette et miljø og å rulle ut kode er to
+ * beslutninger, og det er samme skille som `POST /api/projects` har: raden først,
+ * deploy når kunden ber om det. Dev-siden dukker dermed opp i dashboardet med én
+ * gang, og kunden velger selv når den skal bygges.
+ *
+ * Plangrensen håndheves ikke her, men i `startDeployment` – som for alle andre
+ * prosjekter. En dev-side som kjører *er* en kjørende app og teller som en, så en
+ * Free-konto med én app i drift får nei ved bygget, ikke ved opprettelsen.
+ */
+api.post("/projects/:projectId/dev-sites", async (c) => {
+  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const body = await c.req.json<{ branch?: unknown; password?: unknown }>().catch(() => null);
+
+  if (!body) throw new HTTPException(400, { message: "Kroppen må være gyldig JSON" });
+
+  if (typeof body.branch !== "string" || body.branch.trim() === "") {
+    throw new HTTPException(400, {
+      message: "«branch» må være grenen dev-siden skal bygge fra.",
+      cause: { code: "dev_site.branch_required" } satisfies ErrorDetail,
+    });
+  }
+
+  if (typeof body.password !== "string") {
+    throw new HTTPException(400, {
+      message: "«password» må være passordet som skal beskytte dev-siden.",
+      cause: { code: "dev_site.password_required" } satisfies ErrorDetail,
+    });
+  }
+
+  try {
+    const devSite = await devSites.createDevSite(project, body.branch, body.password);
+    return c.json({ project: devSite }, 201);
+  } catch (error) {
+    if (error instanceof DeployError) {
+      // 409 og ikke 400: forespørselen er velformet, det er tilstanden som ikke
+      // tillater den – grenen har allerede en dev-side, eller raden er selv en.
+      throw new HTTPException(409, {
+        message: error.message,
+        cause: error.detail ?? undefined,
+      });
+    }
+    throw error;
+  }
+});
+
+/** Dev-sidene som hører til prosjektet. */
+api.get("/projects/:projectId/dev-sites", async (c) => {
+  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  return c.json({ devSites: await devSites.listDevSites(project.id) });
+});
+
+/**
+ * Setter eller fjerner passordet foran appen.
+ *
+ * `password: null` fjerner beskyttelsen. Caddy-ruten skrives om umiddelbart, så
+ * endringen gjelder uten en ny deployment.
+ *
+ * Gjelder alle prosjekter, ikke bare dev-sider: «legg et passord foran denne
+ * appen» er like nyttig for en kundedemo eller en app som ikke er klar.
+ */
+api.patch("/projects/:projectId/access", async (c) => {
+  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const body = await c.req.json<{ password?: unknown }>().catch(() => null);
+
+  if (!body || (typeof body.password !== "string" && body.password !== null)) {
+    throw new HTTPException(400, {
+      message: "«password» må være en streng, eller null for å fjerne passordet.",
+      cause: { code: "dev_site.password_required" } satisfies ErrorDetail,
+    });
+  }
+
+  try {
+    await devSites.setAccessPassword(project, body.password);
+  } catch (error) {
+    if (error instanceof DeployError) {
+      throw new HTTPException(409, { message: error.message, cause: error.detail ?? undefined });
+    }
+    throw error;
+  }
+
+  return c.json({ success: true, access_protected: body.password !== null });
+});
+
 api.delete("/projects/:projectId", async (c) => {
   const project = await loadOwnedProject(c, c.req.param("projectId"));
 
@@ -260,6 +352,13 @@ api.delete("/projects/:projectId", async (c) => {
       message: "Prosjektet bygges akkurat nå. Vent til bygget er ferdig før du sletter det.",
       cause: { code: "deploy.building_now" } satisfies ErrorDetail,
     });
+  }
+
+  // Dev-sidene først. `on delete cascade` fjerner *radene* deres, men ingen
+  // container og ingen Caddy-rute – uten dette ville en slettet dev-side blitt
+  // stående og servert kode fra et prosjekt som ikke finnes lenger.
+  for (const devSite of await devSites.listDevSites(project.id)) {
+    await deploy.teardownProject(devSite, false);
   }
 
   // `markStopped: false` – vi skal ikke skrive `stopped_at` på en rad som er i
@@ -444,6 +543,16 @@ api.get("/deployments/:deploymentId", async (c) => {
  */
 api.get("/projects/:projectId/analytics", async (c) => {
   const project = await loadOwnedProject(c, c.req.param("projectId"));
+
+  // Statistikk er en betalt funksjon. Sperren står *her* og ikke bare i
+  // dashboardet, fordi fanen ikke er den eneste veien inn: `snoat_get_analytics`
+  // over MCP kaller dette endepunktet, og en skjult fane er ingen grense.
+  if (!limitsFor(await entitlementFor(c.get("userId")), project).analytics) {
+    throw new HTTPException(402, {
+      message: "Trafikkstatistikk krever Pro- eller Business-planen",
+      cause: { code: "plan.analytics_requires_paid" } satisfies ErrorDetail,
+    });
+  }
 
   // Tolkes og klamres i servicelaget: vinduet kommer fra nettleseren, og et
   // tiårsvindu i timesoppløsning er en tung aggregering i en delt database.

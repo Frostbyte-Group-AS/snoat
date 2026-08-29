@@ -207,6 +207,12 @@ SMTP_ADMIN_EMAIL=${preserved("SMTP_ADMIN_EMAIL", "")}
 SMTP_SENDER_NAME=${preserved("SMTP_SENDER_NAME", "Snoat")}
 SMTP_MAX_FREQUENCY=${preserved("SMTP_MAX_FREQUENCY", "60s")}
 
+# Interne varsler til drift (ny app live på plattformen). Bruker samme
+# RESEND_API_KEY som SMTP over, men Resend sitt HTTP-API i stedet for SMTP.
+# Står SNOAT_NOTIFY_TO tom, sendes ingenting – varselet blir en linje i loggen.
+SNOAT_NOTIFY_FROM=${preserved("SNOAT_NOTIFY_FROM", `Snoat <varsel@${domain}>`)}
+SNOAT_NOTIFY_TO=${preserved("SNOAT_NOTIFY_TO", "")}
+
 # GitHub OAuth – fyll inn fra https://github.com/settings/developers
 # Homepage URL:               ${siteUrl}
 # Authorization callback URL: ${apiUrl}/auth/v1/callback
@@ -258,6 +264,10 @@ SNOAT_APP_PORT=${preserved("SNOAT_APP_PORT", "3000")}
 SNOAT_APP_MEMORY_MB=${preserved("SNOAT_APP_MEMORY_MB", "512")}
 SNOAT_APP_CPUS=${preserved("SNOAT_APP_CPUS", "1")}
 SNOAT_BUILD_TIMEOUT_MS=${preserved("SNOAT_BUILD_TIMEOUT_MS", "1800000")}
+# Hvor lenge en ny container må ha kjørt sammenhengende før trafikken flyttes
+# til den, og taket på ventingen. Se assertStillRunning() i containers.ts.
+SNOAT_STABLE_FOR_MS=${preserved("SNOAT_STABLE_FOR_MS", "15000")}
+SNOAT_STABLE_TIMEOUT_MS=${preserved("SNOAT_STABLE_TIMEOUT_MS", "90000")}
 # Node-versjonen brukerprosjekter bygges med når repoet ikke oppgir en selv.
 SNOAT_DEFAULT_NODE_VERSION=${preserved("SNOAT_DEFAULT_NODE_VERSION", "22")}
 # Samtidige builds på hele verten, og heap-tak per build (MB).

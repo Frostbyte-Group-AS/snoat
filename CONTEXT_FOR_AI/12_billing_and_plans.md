@@ -20,6 +20,7 @@ Free-grensene, og dashboardet skjuler kjøpsknappene.
 | Byggeminutter per måned | 100 | 500 | 2 000 |
 | Byggekø | Standard | Prioritert | Prioritert |
 | Statiske sider | Ubegrenset | Ubegrenset | Ubegrenset |
+| Trafikkstatistikk | – | ✓ | ✓ |
 
 Grensene står **kun ett sted i koden**: `PLAN_LIMITS` i
 `backend/src/services/plans.ts`. Både håndhevingen, ressurstaket på containeren
@@ -58,6 +59,22 @@ måtte hvert enkelt sperrepunkt husket på det. Som en ordinær tier går
 **Statiske sider er ubegrenset med vilje.** Et prosjekt med `static_output_dir`
 kjører ingen container (`03_deployment_flow.md`) og koster noen megabyte på disk.
 Kostnaden ligger i kjørende prosesser, ikke i filer.
+
+**Trafikkstatistikk er en betalt funksjon (fra 26. august 2026).** `analytics`
+i `PlanLimits` er `false` på Free. Merk at det er en **visningsgrense, ikke en
+innsamlingsgrense**: `analytics-ingest.ts` leser Caddys access-logg for alle
+prosjekter uansett, fordi loggen er én felles strøm og et prosjekt ikke kan
+utelates fra den uten å filtrere hver linje. Det som koster er oppslaget – en
+aggregering over kontoens rader, hvert halvminutt så lenge fanen står åpen.
+
+Sperren står i `GET /projects/:projectId/analytics` (402 med koden
+`plan.analytics_requires_paid`), ikke bare i `AnalyticsTab`. Grunnen er at fanen
+ikke er den eneste veien inn: `snoat_get_analytics` over MCP kaller det samme
+endepunktet, og en skjult fane er ingen grense. Frontend slår av pollingen
+(`enabled: !isFreePlan`) og viser oppgraderingskortet i stedet.
+
+At tallene finnes for et Free-prosjekt hele tiden er med vilje: oppgraderer
+kunden, er historikken der fra dag én i stedet for å begynne på null.
 
 **Båndbredde er ikke en grense.** Vi samler nå inn Caddy sine access-logger for å vise båndbredde og statistikk i panelet (gjennom den nye `AnalyticsTab`-komponenten), men vi håndhever ingen hard GB-grense. En grense vi måler men ikke håndhever betyr at prissiden fortsatt sier «rimelig bruk». Skal vi blokkere trafikk ved overforbruk, må det bygges en enforcement-mekanisme oppå analytics-dataene.
 

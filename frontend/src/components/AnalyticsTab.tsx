@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useFormatters } from "@/lib/format";
 import type { Project } from "@/lib/database.types";
 import {
@@ -116,6 +117,7 @@ export function AnalyticsTab({ project }: { project: Project }) {
   // som leser. «1 234» og «1,234» er samme tall, men bare det ene er lesbart
   // for den som har valgt engelsk.
   const format = useFormatters();
+  const { t } = useTranslation();
   const [selectedRange, setSelectedRange] = useState<TimeRangeKey>("30d");
   const [dimension, setDimension] = useState<AnalyticsDimension>("path");
 
@@ -128,12 +130,31 @@ export function AnalyticsTab({ project }: { project: Project }) {
 
   // Ett kall dekker nøkkeltall, graf og alle dimensjonene. Fanebytte nedenfor
   // koster derfor ingen nettverkstrafikk i det hele tatt.
+  // Statistikk er en betalt funksjon. Sperren håndheves i backend
+  // (`GET /projects/:id/analytics` svarer 402 på gratisplanen); dette hindrer
+  // bare at fanen poller et endepunkt vi vet svarer nei, hvert minutt.
+  const isFreePlan = (project.plan ?? "free") === "free";
+
   const query = useQuery({
     queryKey: ["analytics", project.id, selectedRange],
     queryFn: () => getProjectAnalytics(project.id, range.from, range.to, range.unit),
     refetchInterval: 60_000,
     staleTime: 30_000,
+    enabled: !isFreePlan,
   });
+
+  if (isFreePlan) {
+    return (
+      <div className="border-2 border-line bg-sun px-[23px] py-[20px]">
+        <h2 className="font-display text-[20px] font-bold text-ink">
+          {t("project_plan.gated_analytics_title")}
+        </h2>
+        <p className="mt-[6px] font-body text-[16px] font-normal text-ink">
+          {t("project_plan.gated_analytics_desc")}
+        </p>
+      </div>
+    );
+  }
 
   const totals = query.data?.totals;
   const series = query.data?.series ?? [];

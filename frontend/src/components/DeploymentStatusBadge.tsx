@@ -15,6 +15,10 @@ import type { DeploymentStatus } from "@/lib/database.types";
  * Prikkene fra forrige generasjon er borte med vilje: en 6 px sirkel i farge
  * var det eneste som skilte «Bygger» fra «Feilet» for en fargeblind bruker.
  * Nå skiller fyllet dem, og teksten sier det uansett.
+ *
+ * «Bygger» og «Stenger …» får i tillegg en lys strek som løper rundt ramma, så
+ * en pågående tilstand skiller seg fra en ferdig én på bevegelse og ikke bare
+ * på farge. Streken er dekorativ (`aria-hidden`) – etiketten bærer meningen.
  */
 
 type Tone = "live" | "work" | "wait" | "fail" | "rest";
@@ -68,14 +72,23 @@ export function DeploymentStatusBadge({
 
   // `key` på etiketten gjør at merket toner inn på nytt når tilstanden faktisk
   // endrer seg – «I kø» → «Bygger» → «Live» leses da som tre hendelser, ikke som
-  // en tekst som stille ble byttet ut. Gult fyll puster mens noe pågår.
+  // en tekst som stille ble byttet ut.
+  //
+  // Mens noe pågår løper en lys strek rundt ramma (`anim-trace`). Den erstatter
+  // pusten som lå her før: en flate som toner ut og inn leses like gjerne som at
+  // noe er deaktivert, og sa ingenting om at det gikk framover. To samtidige
+  // virkemidler ble bare uroligere, så pusten er tatt bort her – `anim-breathe`
+  // står urørt for de andre stedene som bruker den.
+  const isWorking = info.tone === "work";
+
   return (
     <span
       key={info.label}
-      className={`anim-pop inline-flex shrink-0 items-center border-2 px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] transition-colors duration-300 ${
+      className={`anim-pop relative isolate inline-flex shrink-0 items-center border-2 px-[10px] py-[3px] font-body text-[12px] font-bold uppercase leading-none tracking-[0.1em] transition-colors duration-300 ${
         TONES[info.tone]
-      } ${info.tone === "work" ? "anim-breathe" : ""}`}
+      }`}
     >
+      {isWorking ? <span aria-hidden className="anim-trace" /> : null}
       {info.label}
     </span>
   );

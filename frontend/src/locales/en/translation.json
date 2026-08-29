@@ -289,13 +289,18 @@
     "delete_project_error": "Could not delete project",
     "project_settings": "Project Settings",
     "advanced_build_settings": "Advanced Build Settings",
-    "static_output_dir": "Static Output Directory",
-    "static_output_dir_placeholder": "e.g. dist — leave blank to run as server",
-    "static_output_dir_help": "If the project only produces static files, Caddy serves them directly from disk — no container runs, and the site costs nothing when nobody visits. Vite and Astro build to <code class=\"font-mono\">dist</code>, Next.js with <code class=\"font-mono\">output: 'export'</code> to <code class=\"font-mono\">out</code>. Leave empty for apps requiring a server (Next.js, Express, APIs).",
+    "static_output_dir": "Directory with the built files",
+    "static_output_dir_help": "Relative to the repo root. Vite and Astro build to <code class=\"font-mono\">dist</code>, Next.js with <code class=\"font-mono\">output: 'export'</code> to <code class=\"font-mono\">out</code>, Create React App to <code class=\"font-mono\">build</code>.",
     "spa_fallback": "Client Routing (SPA)",
     "spa_fallback_help": "Serves <code class=\"font-mono\">index.html</code> for paths that don't exist as files, allowing deep links to work on direct page load. Enable for React Router or TanStack Router. Leave disabled for Astro, Hugo and Eleventy — they have their own 404 pages.",
     "delete_project_warning": "Deleting the project will permanently remove all deployments and settings.",
-    "start_project": "Start again"
+    "start_project": "Start again",
+    "runtime_mode": "Runtime mode",
+    "runtime_server": "Server",
+    "runtime_server_help": "The app runs in a container and answers requests. Correct for regular Next.js, Express, Nuxt with SSR and APIs.",
+    "runtime_static": "Static files",
+    "runtime_static_help": "The build only produces files, and Caddy serves them straight from disk. No container runs, and the site costs nothing when nobody visits.",
+    "runtime_static_dir_required": "Choose which directory the build writes files to. Vite and Astro use <code class=\"font-mono\">dist</code>, Next.js with <code class=\"font-mono\">output: 'export'</code> uses <code class=\"font-mono\">out</code>."
   },
   "branch": {
     "label": "Branch",
@@ -392,7 +397,7 @@
     "free_desc": "For hobby projects and personal websites (non-commercial use).",
     "free_f1": "Standard build queue",
     "free_f2": "Snoat subdomain (*.snoat.com)",
-    "free_f3": "Included visitor analytics",
+    "free_f3": "Unlimited static sites",
     "free_f4": "Non-commercial use only",
     "pro_desc": "For commercial projects, companies and professional websites.",
     "pro_f1": "Custom domain (yourdomain.com)",
@@ -407,8 +412,11 @@
     "contact_price": "Custom",
     "contact_us": "Contact us",
     "gated_dns_title": "Custom domain requires Pro or Business plan",
-    "gated_dns_desc": "Upgrade this project to connect your own custom domain (e.g. yourdomain.com) and get full analytics.",
-    "free_price": "Free"
+    "gated_dns_desc": "Upgrade this project to connect your own domain (e.g. yourdomain.com).",
+    "free_price": "Free",
+    "free_f5": "Visitor analytics",
+    "gated_analytics_title": "Analytics requires the Pro or Business plan",
+    "gated_analytics_desc": "Upgrade this project to see visitor numbers, response times and where your traffic comes from. We are already measuring — there is nothing to set up."
   },
   "errors": {
     "unknown": "Something went wrong. Please try again.",
@@ -418,11 +426,20 @@
     "plan": {
       "build_minutes_exhausted": "You have used {{used}} of {{limit}} build minutes this month. The quota resets on the 1st — upgrade your plan to build more now.",
       "apps_limit_reached": "Your plan allows {{limit}} apps at a time, and you have {{running}} running. Upgrade your plan, or stop an app you're not using.",
-      "apps_limit_reached_downgraded": "Your payment failed, so the account is running on the Free limits: {{limit}} apps at a time, and you have {{running}} running. Update your payment method and everything comes back."
+      "apps_limit_reached_downgraded": "Your payment failed, so the account is running on the Free limits: {{limit}} apps at a time, and you have {{running}} running. Update your payment method and everything comes back.",
+      "analytics_requires_paid": "Analytics is part of the Pro and Business plans. Upgrade this project to see visitor numbers."
     },
     "deploy": {
       "already_building": "This project is already building. Wait for the running build to finish.",
-      "building_now": "This project is building right now. Wait for the build to finish."
+      "building_now": "This project is building right now. Wait for the build to finish.",
+      "static_declaration_mismatch": "{{file}} in the repo declares “output: \"export\"”, which means {{framework}} only produces files. The project is in server mode, and the build output cannot be served that way. Choose “Static files” under Runtime mode and set the directory to “{{dir}}” — or remove the declaration if the app needs a server."
+    },
+    "dev_site": {
+      "already_exists": "A dev site called “{{name}}” already exists. Pick another branch, or delete the old one first.",
+      "parent_is_dev_site": "A dev site cannot have dev sites of its own.",
+      "password_too_short": "The password must be at least {{min}} characters.",
+      "password_required": "The dev site needs a password.",
+      "branch_required": "Choose which branch the dev site should build from."
     }
   },
   "mcp": {
@@ -500,13 +517,13 @@
   },
   "why": {
     "title": "Why choose Snoat?",
-    "body": "Everything you love about Vercel — instant builds, automated deploys, and custom domains — on European infrastructure with complete data privacy.",
+    "body": "You hit publish — we take care of the rest. Your site lives on machines we own and run ourselves in Europe, so you can spend your time building instead of maintaining.",
     "fact1_value": "100%",
-    "fact1_label": "European storage & hosting",
-    "fact2_value": "1 Click",
-    "fact2_label": "From GitHub to production",
-    "fact3_value": "Auto-SSL",
-    "fact3_label": "Free HTTPS on every domain",
+    "fact1_label": "Stored and hosted in Europe",
+    "fact2_value": "1 click",
+    "fact2_label": "From your code to a live site",
+    "fact3_value": "Always safe",
+    "fact3_label": "Encryption and attack protection included",
     "footnote": "Operated by Frostbyte Group AS"
   },
   "cta": {
@@ -519,5 +536,37 @@
     "menu_label": "Account menu",
     "settings_title": "Settings",
     "connector": "AI connection"
+  },
+  "dev_sites": {
+    "title": "Dev site",
+    "desc": "A password-protected copy of your app from another branch. Your main site and domain are untouched — the dev site gets its own address, and rebuilds automatically when you push to the branch it follows.",
+    "from_branch": "Builds from {{branch}}",
+    "locked": "Password protected",
+    "open": "Open",
+    "password": "Password for the dev site",
+    "password_hint": "At least 8 characters. The browser asks for it the first time the site is opened — the username is “snoat”.",
+    "create": "Create dev site",
+    "creating": "Creating …"
+  },
+  "access": {
+    "title": "Password in front of the app",
+    "state_locked": "This app is password protected. Nobody gets in without the password, search engines included.",
+    "state_open": "This app is open to anyone with the address.",
+    "password": "Password",
+    "new_password": "New password",
+    "username_note": "At least 8 characters. The username is always “snoat” — it is the app that is protected, not an account.",
+    "save": "Save password",
+    "saving": "Saving …",
+    "remove": "Remove the password"
+  },
+  "site_toggle": {
+    "on": "On",
+    "off": "Off",
+    "turn_on": "Turn the site on",
+    "turn_off": "Turn the site off",
+    "turning_on": "Building and starting …",
+    "turning_off": "Turning off …",
+    "hint_on": "The site is responding. Turn it off and the address stops answering, and the app stops using memory.",
+    "hint_off": "The site is off. Turn it on and it rebuilds from the branch — that takes a few minutes."
   }
 }
