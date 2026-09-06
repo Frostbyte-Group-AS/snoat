@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase.js";
 import type { Project, Subscription } from "../types.js";
 import * as containers from "./containers.js";
 import { teardownProject } from "./deploy.js";
-import { entitlementFrom, PLAN_LIMITS, runningOverLimit } from "./plans.js";
+import { entitlementFrom, erEierkonto, PLAN_LIMITS, runningOverLimit } from "./plans.js";
 
 /**
  * Stopper apper som ligger over gratisgrensen etter at nådefristen for en
@@ -30,7 +30,15 @@ import { entitlementFrom, PLAN_LIMITS, runningOverLimit } from "./plans.js";
  *      ikke tillater. Merk konsekvensen: gratisplanen har null dev-sider, så en
  *      konto som er falt ut av nådeperioden mister *alle* dev-sidene sine, også
  *      den eldste. Det er tilsiktet – det er selve funksjonen som er betalt.
- *   3. **Av som standard.** `SNOAT_BILLING_SUSPEND_ENABLED` styrer om sveipet
+ *   3. **Eierkontoer røres aldri.** `erEierkonto()` sjekkes før alt annet i
+ *      `candidates()`, og kontoen legges ikke i lista i det hele tatt. Det er
+ *      det andre av to uavhengige gjerder: et eierentitlement har uansett
+ *      `downgraded: false` og `EIER_LIMITS`, så både kandidatvalget og
+ *      `runningOverLimit()` ville svart tomt hver for seg. To gjerder og ikke
+ *      ett, fordi dette er den ene mekanismen som tar ned kjørende apper uten
+ *      at noen ser på – og den skal ikke kunne ta ned plattformeierens egne
+ *      apper på grunn av én regresjon et annet sted i `plans.ts`.
+ *   4. **Av som standard.** `SNOAT_BILLING_SUSPEND_ENABLED` styrer om sveipet
  *      handler eller bare logger hva det ville gjort. Slå den på først når
  *      dunning-flyten er observert i produksjon.
  *
@@ -67,6 +75,13 @@ async function candidates(): Promise<SuspensionCandidate[]> {
   const found: SuspensionCandidate[] = [];
 
   for (const subscription of delinquent) {
+    // ⚠️ Første sjekk, før noe annet vurderes. En eierkonto har ingen grenser å
+    // ligge over, og skal aldri kunne bli en kandidat her.
+    if (await erEierkonto(subscription.user_id)) {
+      logger.debug({ userId: subscription.user_id }, "Hopper over eierkonto i suspensjonssveipet");
+      continue;
+    }
+
     const entitlement = entitlementFrom(subscription);
 
     // Fortsatt innenfor fristen, eller allerede på Free uten noe å miste.

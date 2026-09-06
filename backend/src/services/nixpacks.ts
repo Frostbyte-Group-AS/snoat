@@ -42,8 +42,13 @@ export async function buildImage(
    * PLAN. Leste vi det her, ville alle planer fått samme byggetak, og det var
    * nettopp feilen: en betalende kunde fikk ikke mer å bygge med enn en
    * gratisbruker.
+   *
+   * `null` betyr «ingen grense» og forekommer bare på en eierkonto. Da settes
+   * flagget ikke i det hele tatt, og V8 dimensjonerer heapen etter verten. Det
+   * er den eneste gyldige oversettelsen av uendelig: `--max-old-space-size` tar
+   * et tall, og det finnes ikke noe tall som betyr «uten tak».
    */
-  buildMemoryMb: number,
+  buildMemoryMb: number | null,
 ): Promise<string> {
   const image = imageNameFor(project);
 
@@ -85,8 +90,12 @@ export async function buildImage(
   // allerede begynt å swappe. Med taket feiler bygget med en forklarlig
   // heap-feil i stedet for å ta ned plattformen for alle andre.
   if (!Object.hasOwn(userEnv, "NODE_OPTIONS")) {
-    args.push("--env", `NODE_OPTIONS=--max-old-space-size=${buildMemoryMb}`);
-    logs.write(`Minnetak under bygging: ${buildMemoryMb} MB heap (fra planen).`);
+    if (buildMemoryMb === null) {
+      logs.write("Ingen minnetak under bygging – kontoen har ingen grenser.");
+    } else {
+      args.push("--env", `NODE_OPTIONS=--max-old-space-size=${buildMemoryMb}`);
+      logs.write(`Minnetak under bygging: ${buildMemoryMb} MB heap (fra planen).`);
+    }
   }
 
   logs.write(`nixpacks build ${directory} --name ${image}`);

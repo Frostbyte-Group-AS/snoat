@@ -237,6 +237,29 @@ export interface PlanLimits {
   queuePriority: number;
 }
 
+/**
+ * Grensene som gjelder for **kontoen**, som ikke er det samme som grensene til
+ * en plan man kan kjøpe.
+ *
+ * ⚠️ **`null` betyr «ingen grense», ikke «null».** En eierkonto
+ * (`SNOAT_OWNER_ACCOUNTS` i backend) har ingen tak i det hele tatt, og
+ * uendelig kan ikke reise over JSON – `JSON.stringify(Infinity)` er `null`.
+ * Backend gjør oversettelsen eksplisitt i `serialiserGrenser()`.
+ *
+ * `BillingState.unlimited` sier om det er tilfellet. Ikke utled det av at et
+ * felt er `null`: den dagen et felt blir valgfullt av en helt annen grunn, ville
+ * siden gjettet feil.
+ */
+export interface AccountLimits {
+  maxRunningProjects: number | null;
+  maxRunningDevSites: number | null;
+  memoryMb: number | null;
+  cpus: number | null;
+  buildMinutesPerMonth: number | null;
+  queuePriority: number | null;
+  analytics: boolean;
+}
+
 /** Speiler `Market` i `backend/src/services/markets.ts`. */
 export interface Market {
   id: MarketId;
@@ -298,7 +321,16 @@ export interface BillingState {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   source: "stripe" | "invoice";
-  limits: PlanLimits;
+  /** Kontoens grenser. `null` i et felt = ingen grense – se `AccountLimits`. */
+  limits: AccountLimits;
+  /**
+   * Kontoen kjører helt uten plangrenser.
+   *
+   * Gjelder eierkontoen, som ikke er en plan noen kan kjøpe. En slik konto som
+   * ser ut som en Free-konto på denne siden er det motsatte av informasjon, så
+   * siden viser fritaket i stedet for å tegne målere mot tak som ikke finnes.
+   */
+  unlimited: boolean;
   usage: BillingUsage;
   plans: PlanOption[];
   /** Markedet katalogen over er priset i. Kan avvike fra det vi ba om. */

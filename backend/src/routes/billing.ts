@@ -6,7 +6,7 @@ import { isStripeConfigured, priceIdForPlan, stripe, type PaidTier } from "../li
 import type { AuthVariables } from "../middleware/auth.js";
 import { ensureCustomer } from "../services/billing.js";
 import { planCatalogue, resolveMarket } from "../services/markets.js";
-import { entitlementFor, usageFor } from "../services/plans.js";
+import { entitlementFor, usageFor, type PlanLimits } from "../services/plans.js";
 
 /**
  * Abonnement sett fra dashboardet.
@@ -20,6 +20,27 @@ export const billing = new Hono<{ Variables: AuthVariables }>();
 /** Første origin i lista er den kanoniske – resten er alternative CORS-opphav. */
 function frontendOrigin(): string {
   return config.SNOAT_FRONTEND_ORIGIN.split(",")[0]!.trim();
+}
+
+/**
+ * Grensene slik de kan reise over JSON.
+ *
+ * ⚠️ **JSON kan ikke bære `Infinity`.** `JSON.stringify` gjør det stilltiende om
+ * til `null`, og en eierkonto ville derfor sendt `maxRunningProjects: null` ut
+ * uansett hva vi gjorde her. Vi gjør det eksplisitt i stedet, av to grunner:
+ * dashboardet skal kunne stole på at `null` betyr «ingen grense» og ikke «noe
+ * gikk galt», og en leser av denne filen skal slippe å kjenne den regelen i
+ * `JSON.stringify` for å skjønne hvorfor typen på andre siden er `number | null`.
+ *
+ * `analytics` er en boolsk og går urørt gjennom.
+ */
+function serialiserGrenser(limits: PlanLimits): Record<string, number | boolean | null> {
+  return Object.fromEntries(
+    Object.entries(limits).map(([felt, verdi]) => [
+      felt,
+      typeof verdi === "number" && !Number.isFinite(verdi) ? null : verdi,
+    ]),
+  );
 }
 
 function requireStripe(): void {
@@ -77,7 +98,17 @@ billing.get("/", async (c) => {
     currentPeriodEnd: subscription?.current_period_end ?? null,
     cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
     source: subscription?.source ?? "stripe",
-    limits: entitlement.limits,
+    limits: serialiserGrenser(entitlement.limits),
+    /**
+     * Kontoen kjører uten plangrenser i det hele tatt (`SNOAT_OWNER_ACCOUNTS`).
+     *
+     * Sendes som et eget flagg og ikke utledet av `limits` på klienten, fordi
+     * en side som må gjette betydningen av `null` gjetter feil den dagen et
+     * felt blir valgfritt av en helt annen grunn. En konto uten grenser som ser
+     * ut som en Free-konto på denne siden er dessuten det motsatte av
+     * informasjon.
+     */
+    unlimited: entitlement.eier,
     usage,
     plans: planCatalogue(market.id),
     market,

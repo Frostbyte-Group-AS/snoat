@@ -200,6 +200,179 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
 };
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * EIERKONTOEN — en konto uten grenser, og hvorfor den IKKE er en femte plan
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Daniel eier Snoat og skal kunne bruke plattformen uten å treffe et eneste
+ * tak. Det er ikke et produkt noen kan kjøpe, og derfor står det ikke i
+ * `PLAN_LIMITS` over: den tabellen beskriver hva en kunde får for pengene, og
+ * en rad der som ingen kan betale for gjør tabellen usann.
+ *
+ * ── HVORFOR IKKE EN FEMTE `SubscriptionTier` ────────────────────────────────
+ *
+ * Det var den nærliggende løsningen – `agency` finnes jo allerede som en tier
+ * ingen kan kjøpe. Tre ting gjorde den feil her:
+ *
+ *   1. **`subscription_tier` er en enum i Postgres** (0004, utvidet i 0010).
+ *      En femte verdi krever en migrasjon. Og verre: `POST /projects` skriver
+ *      `entitlementFor(userId).plan` rett inn i `projects.plan`
+ *      (`routes/api.ts`), så eierens neste prosjekt ville feilet på en
+ *      enum-verdi basen ikke kjenner.
+ *   2. **`limitsFor()` foretrekker prosjektets egen plan framfor kontoens.**
+ *      Eierens eksisterende prosjektrader sier `free`/`pro`, og de ville
+ *      overstyrt en femte tier på kontoen. Fritaket ville altså virket for
+ *      `assertCanDeploy()` og ikke for `resourcesFor()` – ni av ti steder, som
+ *      er verre enn ingenting fordi det ser ut til å virke.
+ *   3. `planCatalogue()` i `markets.ts` itererer nøklene i `PLAN_LIMITS`, og
+ *      frontendens `SubscriptionTier` har bare tre verdier. En femte tier ville
+ *      måttet filtreres bort tre nye steder for å ikke dukke opp som en gratis
+ *      Business-plan på prissiden.
+ *
+ * ── LØSNINGEN: et flagg på kontoen, sjekket på ETT sted ─────────────────────
+ *
+ * `erEierkonto(userId)` avgjør, og svaret bæres videre som `Entitlement.eier`.
+ * Alt som håndhever noe leser allerede enten `entitlement.limits` eller
+ * `limitsFor()`, og begge svarer `EIER_LIMITS` for en eierkonto. Fritaket kan
+ * derfor ikke glemmes på et sperrepunkt – det er ikke noe å huske.
+ */
+
+/**
+ * Grensene til en eierkonto: ingen.
+ *
+ * ⚠️ **`Infinity` og ikke et stort tall.** Et stort tall er et tak, og et tak
+ * blir truffet en dag – typisk den dagen man minst har lyst til å lete etter
+ * hvorfor. `Infinity` oppfører seg riktig gjennom hver eneste sammenligning
+ * håndhevingen gjør (`used >= limit`, `active < limit`, `slice(limit)`), og er
+ * dessuten **synlig feil** hvis den slipper ut et sted den ikke hører hjemme:
+ * `Infinity MB` i en logg er en bug man ser, mens `999999 MB` ser ut som noe
+ * noen mente.
+ *
+ * ⚠️ **De to stedene `Infinity` ikke kan slippe ut, er Docker og V8.**
+ * `HostConfig.Memory: Infinity` og `--max-old-space-size=Infinity` er ugyldige.
+ * `resourcesFor()` og `buildMemoryFor()` oversetter derfor uendelig til `null`
+ * = «ingen grense», og `containers.ts` gjør `null` om til Dockers egen måte å
+ * si det samme på: `0`. Se `dockerMemoryBytes()` der.
+ *
+ * Merk at dette er motsatt av begrunnelsen for `agency`, der tallene med vilje
+ * er høye og endelige. Forskjellen er hvem som sitter i den andre enden: en
+ * integrasjon i en løkke har ingen menneskelig hånd som stopper den, mens en
+ * eierkonto er ett menneske som eier verten det går ut over.
+ */
+export const EIER_LIMITS: PlanLimits = Object.freeze({
+  maxRunningProjects: Infinity,
+  maxRunningDevSites: Infinity,
+  memoryMb: Infinity,
+  buildMemoryMb: Infinity,
+  cpus: Infinity,
+  buildMinutesPerMonth: Infinity,
+  // Høyere enn enhver plan, så et eierbygg settes inn foran alt annet i
+  // `enqueue()`. To eierbygg beholder ankomstrekkefølgen seg imellom, fordi
+  // sammenligningen der er streng: `Infinity < Infinity` er usant.
+  queuePriority: Infinity,
+  analytics: true,
+});
+
+/** Lista over hvem som er eier, delt i de to formene en oppføring kan ha. */
+export interface Eierliste {
+  ider: ReadonlySet<string>;
+  eposter: ReadonlySet<string>;
+}
+
+/**
+ * Leser `SNOAT_OWNER_ACCOUNTS`.
+ *
+ * ⚠️ **En tom liste gir to tomme sett, og et tomt sett fritar ingen.** Dette er
+ * det farligste stedet i hele filen: en fritaksliste som tolker «ingenting
+ * oppgitt» som «alle» ville slått av betalingsmuren i det øyeblikket variabelen
+ * falt ut av miljøet. Derfor er regelen at fritak krever et *treff*, aldri et
+ * fravær – og derfor er funksjonen ren og eksportert, slik at
+ * `plans.test.ts` kan bevise nettopp den egenskapen.
+ *
+ * En oppføring med `@` i seg leses som e-post, alt annet som en bruker-ID.
+ * Tomme ledd (`"a,,b"`, etterfølgende komma) forsvinner – de ville ellers blitt
+ * en tom streng i settet, og en bruker uten e-post ville truffet den.
+ */
+export function parseEierliste(raw: string | null | undefined): Eierliste {
+  const ider = new Set<string>();
+  const eposter = new Set<string>();
+
+  for (const del of (raw ?? "").split(",")) {
+    const oppforing = del.trim().toLowerCase();
+    if (!oppforing) continue;
+    (oppforing.includes("@") ? eposter : ider).add(oppforing);
+  }
+
+  return { ider, eposter };
+}
+
+/** Står bruker-ID-en i lista? Tom ID eller tom liste gir alltid usant. */
+export function erEierId(userId: string | null | undefined, liste: Eierliste): boolean {
+  if (!userId) return false;
+  return liste.ider.has(userId.toLowerCase());
+}
+
+/** Står e-posten i lista? En bruker uten e-post treffer aldri. */
+export function erEierEpost(epost: string | null | undefined, liste: Eierliste): boolean {
+  if (!epost) return false;
+  return liste.eposter.has(epost.toLowerCase());
+}
+
+/** Lista slik den sto i miljøet da prosessen startet. */
+const EIERLISTE = parseEierliste(config.SNOAT_OWNER_ACCOUNTS);
+
+/**
+ * Hvor mange oppføringer lista har, for oppstartsloggen.
+ *
+ * En fritaksliste som stilltiende er tom fordi variabelen ikke nådde
+ * containeren, ser nøyaktig ut som en fritaksliste som virker – helt til eieren
+ * treffer en grense. Tallene skal derfor stå i loggen ved oppstart.
+ */
+export function eierlisteAntall(): { ider: number; eposter: number } {
+  return { ider: EIERLISTE.ider.size, eposter: EIERLISTE.eposter.size };
+}
+
+/**
+ * E-postoppslag koster et kall til Supabase Auth, og `erEierkonto()` kalles i
+ * deploy-stien. Svaret bufres per prosess.
+ *
+ * Et feilet oppslag bufres **ikke**: da ville et forbigående nettverksavbrudd
+ * gjort eieren om til en vanlig konto helt til backend ble restartet.
+ */
+const eierBuffer = new Map<string, boolean>();
+
+/**
+ * Er dette eierens konto?
+ *
+ * Rekkefølgen er valgt for å holde det vanlige tilfellet gratis: tom liste
+ * svarer med én gang, en ID-oppføring svarer uten nettverk, og bare en liste som
+ * faktisk inneholder e-postadresser slår opp brukeren.
+ *
+ * Feiler oppslaget, svarer vi **usant**. Det er den trygge retningen: eieren
+ * treffer i verste fall en grense og kan sette ID-en sin i lista i stedet,
+ * mens motsatt svar ville gitt bort ubegrenset drift på en databasefeil.
+ */
+export async function erEierkonto(userId: string): Promise<boolean> {
+  if (EIERLISTE.ider.size === 0 && EIERLISTE.eposter.size === 0) return false;
+  if (erEierId(userId, EIERLISTE)) return true;
+  if (EIERLISTE.eposter.size === 0) return false;
+
+  const bufret = eierBuffer.get(userId);
+  if (bufret !== undefined) return bufret;
+
+  const { data, error } = await supabase.auth.admin.getUserById(userId);
+
+  if (error || !data.user) {
+    logger.warn({ userId, err: error }, "Kunne ikke slå opp e-posten mot eierlista");
+    return false;
+  }
+
+  const treff = erEierEpost(data.user.email, EIERLISTE);
+  eierBuffer.set(userId, treff);
+  return treff;
+}
+
+/**
  * Priser og mva bor **ikke** her lenger – de ligger i `services/markets.ts`.
  *
  * Grensene over er like i alle markeder; prisene er det ikke. Da `PLAN_PRICES_ORE`
@@ -231,6 +404,14 @@ export interface Entitlement {
   downgraded: boolean;
   /** Når nådeperioden løper ut. Null når betalingen er i orden. */
   graceEndsAt: string | null;
+  /**
+   * Sant for en eierkonto: `limits` er `EIER_LIMITS`, og ingen grense gjelder.
+   *
+   * Flagget bæres på entitlementet og ikke slås opp på nytt i hvert sperrepunkt,
+   * fordi et fritak som må huskes ti steder blir glemt på det ellevte. Se
+   * `erEierkonto()` og kommentaren over `EIER_LIMITS`.
+   */
+  eier: boolean;
   subscription: Subscription | null;
 }
 
@@ -243,6 +424,29 @@ function freeEntitlement(subscription: Subscription | null): Entitlement {
     limits: PLAN_LIMITS.free,
     downgraded: Boolean(subscription && subscription.plan !== "free"),
     graceEndsAt: null,
+    eier: false,
+    subscription,
+  };
+}
+
+/**
+ * Entitlementet til en eierkonto.
+ *
+ * `plan` og `billedPlan` beholder den faktiske abonnementsraden – kontoen har
+ * fortsatt et abonnement, det er bare ingen grenser som regnes ut fra det.
+ * `downgraded` er alltid usant, og det er ikke kosmetikk: det er det flagget
+ * suspensjonssveipet plukker kandidater på, og en eierkonto skal aldri kunne bli
+ * en kandidat der uansett hvilken tilstand kortet står i.
+ */
+function eierEntitlement(subscription: Subscription | null): Entitlement {
+  return {
+    plan: subscription?.plan ?? "free",
+    billedPlan: subscription?.plan ?? "free",
+    status: subscription?.status ?? "active",
+    limits: EIER_LIMITS,
+    downgraded: false,
+    graceEndsAt: null,
+    eier: true,
     subscription,
   };
 }
@@ -276,7 +480,17 @@ function graceEnd(subscription: Subscription): Date {
   return new Date(start.getTime() + config.SNOAT_BILLING_GRACE_DAYS * 24 * 60 * 60 * 1000);
 }
 
-export function entitlementFrom(subscription: Subscription | null): Entitlement {
+/**
+ * ⚠️ `eier` må avgjøres av kalleren, fordi denne funksjonen er synkron og
+ * `erEierkonto()` kan trenge et oppslag mot Supabase Auth. `entitlementFor()`
+ * gjør det riktige; den ene andre kalleren – suspensjonssveipet – hopper over
+ * eierkontoer før den kommer hit i det hele tatt.
+ */
+export function entitlementFrom(subscription: Subscription | null, eier = false): Entitlement {
+  // Først av alt, og med vilje: en eierkonto skal ikke innom hverken
+  // nådefristen eller nedgraderingen under. Ingen av dem gjelder for den.
+  if (eier) return eierEntitlement(subscription);
+
   if (!subscription) return freeEntitlement(null);
 
   if (HEALTHY.has(subscription.status)) {
@@ -287,6 +501,7 @@ export function entitlementFrom(subscription: Subscription | null): Entitlement 
       limits: PLAN_LIMITS[subscription.plan],
       downgraded: false,
       graceEndsAt: null,
+      eier: false,
       subscription,
     };
   }
@@ -304,6 +519,7 @@ export function entitlementFrom(subscription: Subscription | null): Entitlement 
         limits: PLAN_LIMITS[subscription.plan],
         downgraded: false,
         graceEndsAt: ends.toISOString(),
+        eier: false,
         subscription,
       };
     }
@@ -316,7 +532,11 @@ export function entitlementFrom(subscription: Subscription | null): Entitlement 
 }
 
 export async function entitlementFor(userId: string): Promise<Entitlement> {
-  return entitlementFrom(await loadSubscription(userId));
+  // Parallelt: eierlista er som regel et rent oppslag i et sett, men i
+  // e-postformen er den et kall til Supabase Auth, og det skal ikke legge seg
+  // etter abonnementsspørringen i deploy-stien.
+  const [subscription, eier] = await Promise.all([loadSubscription(userId), erEierkonto(userId)]);
+  return entitlementFrom(subscription, eier);
 }
 
 /**
@@ -328,6 +548,14 @@ export async function entitlementFor(userId: string): Promise<Entitlement> {
  * de løseste.
  */
 export function limitsFor(entitlement: Entitlement, project?: Project): PlanLimits {
+  // ⚠️ Eierkontoen sjekkes FØR prosjektets egen plan, og det er hele grunnen
+  // til at fritaket er et flagg på kontoen og ikke en femte tier: eierens
+  // prosjektrader sier `free` eller `pro`, og linjen under ville lest den og
+  // gitt Pro-grenser til `resourcesFor()` og `buildMemoryFor()` mens
+  // `assertCanDeploy()` slapp alt gjennom. Et fritak som gjelder ni av ti
+  // steder er verre enn ingen, fordi det ser ut til å virke.
+  if (entitlement.eier) return EIER_LIMITS;
+
   const tier: SubscriptionTier = project?.plan ?? entitlement.plan;
   return PLAN_LIMITS[tier] ?? entitlement.limits;
 }
@@ -396,8 +624,21 @@ const DEV_SITE_MIN_CPUS = 0.5;
  *      ikke mot planen vår. Litt ekstra minne i noen minutter er billigere enn
  *      den supportrunden.
  */
-export function buildMemoryFor(entitlement: Entitlement, project?: Project): number {
-  return Math.min(limitsFor(entitlement, project).buildMemoryMb, config.SNOAT_BUILD_NODE_MEMORY_MB);
+export function buildMemoryFor(entitlement: Entitlement, project?: Project): number | null {
+  const { buildMemoryMb } = limitsFor(entitlement, project);
+
+  // ⚠️ Eierkontoen må ut FØR `Math.min()`. `Math.min(Infinity, 8192)` er 8192 –
+  // altså vertens tak, ikke uendelig – og et fritak som stille blir til
+  // konfigurasjonsverdien er nøyaktig den typen bug som aldri melder fra.
+  //
+  // `null` betyr «vi setter ikke noe tak». `nixpacks.ts` lar da være å sende
+  // `--max-old-space-size` i det hele tatt, og V8 dimensjonerer heapen etter
+  // maskinen den kjører på. Det er den eneste ærlige oversettelsen av
+  // «ubegrenset byggeminne»: det finnes ingen gyldig tallverdi for uendelig
+  // heap, og det høyeste taket vi kan la være å sette, er ingen.
+  if (!Number.isFinite(buildMemoryMb)) return null;
+
+  return Math.min(buildMemoryMb, config.SNOAT_BUILD_NODE_MEMORY_MB);
 }
 
 /**
@@ -410,18 +651,32 @@ export function buildMemoryFor(entitlement: Entitlement, project?: Project): num
 export function resourcesFor(entitlement: Entitlement, project?: Project): containers.ContainerResources {
   const limits = limitsFor(entitlement, project);
 
+  // ⚠️ `null` = ingen grense, og det er ikke det samme som 0 MB. Docker og V8
+  // tar ikke imot `Infinity`, så uendelig oversettes her, én gang, i stedet for
+  // å reise videre og bli `Memory: Infinity` eller
+  // `--max-old-space-size=Infinity` nede i `containers.ts`.
+  const memoryMb = Number.isFinite(limits.memoryMb) ? limits.memoryMb : null;
+  const cpus = Number.isFinite(limits.cpus) ? limits.cpus : null;
+
   if (!isDevSite(project)) {
-    return { memoryMb: limits.memoryMb, cpus: limits.cpus };
+    return { memoryMb, cpus };
+  }
+
+  // En eierkonto sin dev-side er også ubegrenset: halvparten av ingen grense er
+  // fortsatt ingen grense, og `Math.floor(Infinity * 0.5)` er `Infinity` – som
+  // er nettopp verdien vi nettopp ble kvitt.
+  if (memoryMb === null || cpus === null) {
+    return { memoryMb, cpus };
   }
 
   return {
     // Hele megabyte: Docker tar bytes, og et halvt megabyte er ingen presisjon
     // noen har bruk for.
-    memoryMb: Math.max(Math.floor(limits.memoryMb * DEV_SITE_SHARE), DEV_SITE_MIN_MEMORY_MB),
+    memoryMb: Math.max(Math.floor(memoryMb * DEV_SITE_SHARE), DEV_SITE_MIN_MEMORY_MB),
     // CPU er en *andel*, ikke en reservasjon: står produksjonsappen stille, får
     // dev-siden alt den ber om uansett. Kuttet biter bare når de to kjemper om
     // verten samtidig – og da skal produksjonen vinne.
-    cpus: Math.max(limits.cpus * DEV_SITE_SHARE, DEV_SITE_MIN_CPUS),
+    cpus: Math.max(cpus * DEV_SITE_SHARE, DEV_SITE_MIN_CPUS),
   };
 }
 
@@ -712,6 +967,13 @@ export function devSiteLimitError(entitlement: Entitlement, active: number): Dep
  * uansett hvor mange oversettelser frontend har.
  */
 export async function assertCanDeploy(project: Project, entitlement: Entitlement): Promise<void> {
+  // Eierkontoen har ingen grenser å håndheve. Sammenligningene under ville
+  // sluppet den gjennom uansett – `Infinity` er større enn alt – men vi stopper
+  // her likevel, av to grunner: fritaket blir da lesbart i stedet for å være en
+  // egenskap ved et tall, og vi sparer tellingen av byggeminutter og
+  // prosjektrader, som er to spørringer i deploy-stien.
+  if (entitlement.eier) return;
+
   const { limits } = entitlement;
 
   const used = await buildMinutesUsed(project.user_id);

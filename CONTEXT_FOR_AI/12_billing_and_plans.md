@@ -145,6 +145,70 @@ Modelleringen er poenget: hadde dette vært et «hvis dette er LeadLab»-unntak,
 måtte hvert enkelt sperrepunkt husket på det. Som en ordinær tier går
 `entitlementFor()` og `assertCanDeploy()` sin vante vei.
 
+### Eierkontoen: fritak, ikke en femte plan
+
+**Fra 6. september 2026.** `SNOAT_OWNER_ACCOUNTS` er en komma-separert liste av
+bruker-ID-er (`auth.users.id`, samme verdi som `projects.user_id`) og/eller
+e-postadresser. En konto på lista kjører **uten grenser i det hele tatt**:
+ubegrenset antall apper, dev-sider, byggeminutter, byggeminne, kjøreminne og
+CPU, øverst i byggekøen, og fritatt suspensjonssveipet.
+
+> ⚠️ **Standard er tom, og tom betyr INGEN eierkontoer – aldri alle.** Det er
+> den farligste standardverdien i hele betalingsmuren: leses «ingenting oppgitt»
+> som «alle», er muren av i det øyeblikket variabelen faller ut av miljøet.
+> `erEierkonto()` svarer usant med én gang lista er tom, og `plans.test.ts`
+> beviser det med egne tester. Lista leses ved oppstart, så den endres med en
+> omstart av backend – ikke med en deploy.
+
+**Det er ikke en femte `SubscriptionTier`.** Det var den nærliggende løsningen –
+`agency` finnes jo allerede som en tier ingen kan kjøpe – men tre ting gjorde
+den feil:
+
+1. `subscription_tier` er en **enum i Postgres** (0004, utvidet i 0010), så en
+   femte verdi krever en migrasjon. Og `POST /projects` skriver
+   `entitlementFor(userId).plan` rett inn i `projects.plan`, så eierens neste
+   prosjekt ville feilet på en enum-verdi basen ikke kjenner.
+2. **`limitsFor()` foretrekker prosjektets egen plan framfor kontoens.** Eierens
+   prosjektrader sier `free`/`pro`, og de ville overstyrt en femte tier. Fritaket
+   ville altså virket i `assertCanDeploy()` og ikke i `resourcesFor()` – ni av ti
+   steder, som er verre enn ingen fordi det ser ut til å virke.
+3. `planCatalogue()` itererer nøklene i `PLAN_LIMITS`, og frontendens
+   `SubscriptionTier` har bare tre verdier. En femte tier måtte filtreres bort
+   tre nye steder for å ikke dukke opp som en gratis Business-plan på prissiden.
+
+Løsningen er et flagg på **kontoen**, avgjort ett sted og båret videre som
+`Entitlement.eier`. Alt som håndhever noe leser allerede enten
+`entitlement.limits` eller `limitsFor()`, og begge svarer `EIER_LIMITS`. Fritaket
+kan derfor ikke glemmes på et sperrepunkt – det er ikke noe å huske. `PLAN_LIMITS`
+forblir en sann beskrivelse av hva en kunde får kjøpt.
+
+**Grensene er `Infinity`, ikke et stort tall.** Et stort tall er et tak, og et
+tak treffes en dag. `Infinity` oppfører seg riktig gjennom hver sammenligning
+håndhevingen gjør (`used >= limit`, `active < limit`, `slice(limit)`), og er
+synlig feil hvis den slipper ut et sted den ikke hører hjemme.
+
+> ⚠️ **De to stedene uendelig ikke kan slippe ut, er Docker og V8.**
+> `HostConfig.Memory: Infinity` og `--max-old-space-size=Infinity` er ugyldige,
+> og `Math.min(Infinity, SNOAT_BUILD_NODE_MEMORY_MB)` er konfigurasjonsverdien –
+> altså et tak, ikke uendelig. `buildMemoryFor()` og `resourcesFor()` oversetter
+> derfor uendelig til **`null` = ingen grense** før verdien forlater `plans.ts`.
+> `nixpacks.ts` lar da være å sende `--max-old-space-size` i det hele tatt, og
+> `containers.ts` gjør `null` om til Dockers egen måte å si det samme på: **`0`**.
+> Se `dockerMemoryBytes()`, `dockerNanoCpus()` og `nodeHeapOption()` der.
+
+**Suspensjonssveipet har to uavhengige gjerder.** `candidates()` hopper over
+eierkontoer før noe annet vurderes, og et eierentitlement har uansett
+`downgraded: false` og `EIER_LIMITS`, så `runningOverLimit()` ville svart tomt av
+seg selv. To og ikke ett, fordi dette er den ene mekanismen som tar ned kjørende
+apper uten at noen ser på.
+
+**Fritaket vises i dashboardet.** `/api/billing` svarer `unlimited: true` og
+serialiserer uendelige grenser som `null` (JSON kan ikke bære `Infinity`;
+`JSON.stringify` ville gjort det stilltiende uansett – `serialiserGrenser()`
+gjør det eksplisitt). Faktureringssiden skriver «Eierkonto» der plannavnet står,
+måler forbruk mot `∞` i stedet for å tegne en stripe mot et tak som ikke finnes,
+og markerer ingen av planene som «nåværende».
+
 **Statiske sider er ubegrenset med vilje.** Et prosjekt med `static_output_dir`
 kjører ingen container (`03_deployment_flow.md`) og koster noen megabyte på disk.
 Kostnaden ligger i kjørende prosesser, ikke i filer.
@@ -296,6 +360,8 @@ framtidig endring lett kunne tolket som «ingen grenser».
 manuelle endepunktet og GitHub-webhooken går gjennom den. En sjekk i
 `routes/api.ts` ville sluppet auto-deploy ved push rett forbi, og det er nettopp
 den som kan starte bygg i det uendelige uten at noen ser på.
+
+⚠️ Sperrene gjelder ikke en eierkonto – se «Eierkontoen» over.
 
 Selve sperren er `assertCanDeploy()` i `services/plans.ts`:
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { Entitlement, PlanLimits, ProjectRow } from "./plans.js";
-import type { Project, SubscriptionTier } from "../types.js";
+import type { Project, Subscription, SubscriptionTier } from "../types.js";
 
 /**
  * Tester for de to takene en konto kan treffe – `maxRunningProjects` og
@@ -40,15 +40,28 @@ process.env.SNOAT_WORKSPACE_DIR ??= "/tmp/snoat-test";
 process.env.SNOAT_BUILD_NODE_MEMORY_MB = "8192";
 
 const {
+  EIER_LIMITS,
   PLAN_LIMITS,
   appLimitError,
   buildMemoryFor,
   countActiveApps,
   countActiveDevSites,
   devSiteLimitError,
+  entitlementFrom,
+  erEierEpost,
+  erEierId,
+  erEierkonto,
+  limitsFor,
+  parseEierliste,
   resourcesFor,
   runningOverLimit,
 } = await import("./plans.js");
+
+// Grensesnittet mot Docker. Importeres her fordi den siste oversettelsen fra
+// «ingen grense» til noe Docker godtar skjer der, ikke i `plans.ts`, og fordi
+// `plans.ts` uansett drar `containers.ts` med seg – dockerode kobler ikke til
+// noe før den kalles.
+const { dockerMemoryBytes, dockerNanoCpus, nodeHeapOption } = await import("./containers.js");
 
 /** En konto i god stand på den oppgitte planen. */
 function entitlement(plan: SubscriptionTier, overrides: Partial<Entitlement> = {}): Entitlement {
@@ -59,9 +72,15 @@ function entitlement(plan: SubscriptionTier, overrides: Partial<Entitlement> = {
     limits: PLAN_LIMITS[plan] as PlanLimits,
     downgraded: false,
     graceEndsAt: null,
+    eier: false,
     subscription: null,
     ...overrides,
   };
+}
+
+/** Eierkontoen: ingen grenser, uansett hvilken abonnementsrad som ligger under. */
+function eier(subscription: Subscription | null = null): Entitlement {
+  return entitlementFrom(subscription, true);
 }
 
 /**
@@ -387,5 +406,295 @@ describe("devSiteLimitError", () => {
   it("sperrer også når kontoen har kommet over taket", () => {
     // En nedgradering fra Business til Pro mens ti dev-sider kjører.
     assert.ok(devSiteLimitError(entitlement("pro"), 10));
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * EIERKONTOEN
+ *
+ * Fritaket er den eneste veien forbi betalingsmuren i hele plattformen, og det
+ * er derfor testene her er skrevet med to helt ulike bekymringer:
+ *
+ *   1. **Virker fritaket overalt?** Et fritak som gjelder ni av ti sperrepunkt
+ *      er verre enn ingen, fordi det ser ut til å virke helt til den tiende
+ *      stopper eieren midt i noe. Hvert håndhevingssted har derfor sin egen
+ *      påstand her.
+ *   2. **Kan fritaket treffe noen andre?** Den tomme lista er den farligste
+ *      verdien som finnes: leses «ingenting oppgitt» som «alle», er hele
+ *      betalingsmuren av i det øyeblikket variabelen faller ut av miljøet.
+ *
+ * `SNOAT_OWNER_ACCOUNTS` er med vilje **ikke** satt i denne filen. Modulen ser
+ * altså en tom liste, og alt som handler om oppslag beviser dermed at ingen
+ * blir fritatt uten et treff.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+describe("parseEierliste", () => {
+  it("gir tomme sett for en tom liste", () => {
+    for (const raw of ["", "   ", ",,", undefined, null]) {
+      const liste = parseEierliste(raw);
+      assert.equal(liste.ider.size, 0, `«${String(raw)}» ga ID-er`);
+      assert.equal(liste.eposter.size, 0, `«${String(raw)}» ga e-poster`);
+    }
+  });
+
+  it("skiller e-poster fra bruker-ID-er på @", () => {
+    const liste = parseEierliste("c7495323-2718-4d30-82ed-dcd080a5898f, daniel@frostbytes.no");
+
+    assert.deepEqual([...liste.ider], ["c7495323-2718-4d30-82ed-dcd080a5898f"]);
+    assert.deepEqual([...liste.eposter], ["daniel@frostbytes.no"]);
+  });
+
+  it("tåler mellomrom, store bokstaver og tomme ledd", () => {
+    // Verdien kommer fra en .env-fil skrevet for hånd. Et etterfølgende komma
+    // eller en stor bokstav i en e-post skal ikke gjøre eieren til en vanlig
+    // konto – og et tomt ledd skal ikke bli en tom streng i settet.
+    const liste = parseEierliste("  ABC-123 , ,Daniel@Frostbytes.NO,");
+
+    assert.deepEqual([...liste.ider], ["abc-123"]);
+    assert.deepEqual([...liste.eposter], ["daniel@frostbytes.no"]);
+  });
+});
+
+describe("den tomme lista fritar ingen", () => {
+  const tom = parseEierliste("");
+
+  it("gir usant for enhver bruker-ID", () => {
+    // Kjernen. En fritaksliste som svarer «ja» på ingenting er ikke en
+    // fritaksliste, det er en åpen dør.
+    assert.equal(erEierId("c7495323-2718-4d30-82ed-dcd080a5898f", tom), false);
+    assert.equal(erEierId("hvem-som-helst", tom), false);
+  });
+
+  it("gir usant for enhver e-post", () => {
+    assert.equal(erEierEpost("daniel@frostbytes.no", tom), false);
+    assert.equal(erEierEpost("angriper@example.com", tom), false);
+  });
+
+  it("slipper ikke gjennom en tom ID eller en manglende e-post", () => {
+    // En bruker uten e-post i Supabase Auth (SMS-innlogging, en tjenestekonto)
+    // må ikke kunne treffe en tom streng som ble stående igjen i settet.
+    const liste = parseEierliste("daniel@frostbytes.no,c7495323");
+
+    assert.equal(erEierEpost(null, liste), false);
+    assert.equal(erEierEpost(undefined, liste), false);
+    assert.equal(erEierEpost("", liste), false);
+    assert.equal(erEierId("", liste), false);
+    assert.equal(erEierId(null, liste), false);
+  });
+
+  it("gjør erEierkonto() usann uten å slå opp noe", async () => {
+    // Denne filen setter ikke `SNOAT_OWNER_ACCOUNTS`, så modulen kjører med tom
+    // liste. Kallet må svare usant med én gang – går det til Supabase Auth her,
+    // henger testen eller feiler på en manglende server, og det er nettopp
+    // beviset på at kortslutningen ligger først.
+    assert.equal(await erEierkonto("c7495323-2718-4d30-82ed-dcd080a5898f"), false);
+  });
+});
+
+describe("EIER_LIMITS", () => {
+  it("er ubegrenset på ekte, ikke et stort tall", () => {
+    // Et stort tall er et tak, og et tak treffes en dag. Sammenligningene i
+    // håndhevingen (`>=`, `<`, `slice`) oppfører seg riktig på `Infinity`.
+    assert.equal(EIER_LIMITS.maxRunningProjects, Infinity);
+    assert.equal(EIER_LIMITS.maxRunningDevSites, Infinity);
+    assert.equal(EIER_LIMITS.memoryMb, Infinity);
+    assert.equal(EIER_LIMITS.buildMemoryMb, Infinity);
+    assert.equal(EIER_LIMITS.cpus, Infinity);
+    assert.equal(EIER_LIMITS.buildMinutesPerMonth, Infinity);
+    assert.equal(EIER_LIMITS.analytics, true);
+  });
+
+  it("står ikke i plantabellen", () => {
+    // `PLAN_LIMITS` beskriver hva en kunde får kjøpt. En eierkonto er ikke et
+    // produkt, og en rad der ingen kan betale for ville gjort tabellen usann –
+    // og dukket opp i `planCatalogue()`, som itererer nøklene her.
+    for (const limits of Object.values(PLAN_LIMITS)) {
+      assert.notEqual(limits, EIER_LIMITS);
+      assert.ok(
+        Number.isFinite(limits.maxRunningProjects),
+        "en kjøpbar plan skal ha et endelig tak",
+      );
+    }
+  });
+
+  it("går foran alle planer i byggekøen", () => {
+    // `enqueue()` setter bygget inn foran den første med lavere prioritet.
+    for (const limits of Object.values(PLAN_LIMITS)) {
+      assert.ok(limits.queuePriority < EIER_LIMITS.queuePriority);
+    }
+  });
+
+  it("lar to eierbygg beholde ankomstrekkefølgen", () => {
+    // Sammenligningen i `enqueue()` er streng ulikhet, og `Infinity < Infinity`
+    // er usant. Uten det ville køen blitt LIFO mellom eierens egne bygg.
+    assert.equal(EIER_LIMITS.queuePriority < EIER_LIMITS.queuePriority, false);
+  });
+});
+
+describe("entitlementFrom for en eierkonto", () => {
+  it("gir EIER_LIMITS i stedet for planens", () => {
+    const e = eier();
+
+    assert.equal(e.eier, true);
+    assert.equal(e.limits, EIER_LIMITS);
+  });
+
+  it("er aldri nedgradert, uansett hva som står i abonnementet", () => {
+    // `downgraded` er flagget suspensjonssveipet plukker kandidater på, og det
+    // som velger «fiks kortet»-varianten av feilmeldingene. En eierkonto med et
+    // forfalt kort fra fjoråret skal ikke bli noen av delene.
+    const forfalt = {
+      user_id: "c7495323",
+      plan: "pro",
+      status: "unpaid",
+      delinquent_since: "2020-01-01T00:00:00.000Z",
+    } as unknown as Subscription;
+
+    const e = eier(forfalt);
+
+    assert.equal(e.downgraded, false);
+    assert.equal(e.graceEndsAt, null);
+    assert.equal(e.limits, EIER_LIMITS);
+  });
+
+  it("lar prosjektets egen plan overstyre ingenting", () => {
+    // Den avgjørende forskjellen mellom et flagg på kontoen og en femte tier:
+    // eierens prosjektrader sier `free` eller `pro`, og `limitsFor()` leser
+    // normalt raden framfor kontoen. Gjorde den det her, ville fritaket
+    // forsvunnet nettopp i `resourcesFor()` og `buildMemoryFor()`.
+    assert.equal(limitsFor(eier(), prosjekt({ plan: "free" })), EIER_LIMITS);
+    assert.equal(limitsFor(eier(), prosjekt({ plan: "pro" })), EIER_LIMITS);
+  });
+});
+
+describe("eierkontoen treffer ingen av grensene", () => {
+  it("slipper gjennom apptaket uansett hvor mange som kjører", () => {
+    assert.equal(appLimitError(eier(), 0), null);
+    assert.equal(appLimitError(eier(), 10_000), null);
+  });
+
+  it("slipper gjennom dev-taket uansett hvor mange som kjører", () => {
+    assert.equal(devSiteLimitError(eier(), 10_000), null);
+  });
+
+  it("slipper gjennom byggeminuttene", () => {
+    // Samme sammenligning som `assertCanDeploy()` gjør: `used >= limit`.
+    assert.equal(1_000_000 >= eier().limits.buildMinutesPerMonth, false);
+  });
+
+  it("kan ikke bli plukket av suspensjonssveipet", () => {
+    // Andre gjerde. Sveipet hopper over eierkontoer i `candidates()`, men selv
+    // om den sjekken skulle forsvinne, skal `runningOverLimit()` med
+    // eiergrensene ikke finne noe å stoppe. `slice(Infinity)` er tom.
+    const running = new Set(["app-1", "app-2", "dev-a"]);
+    const rows = [app("app-1"), app("app-2"), devSide("dev-a")];
+
+    assert.deepEqual(runningOverLimit(rows, running, EIER_LIMITS), []);
+  });
+
+  it("har trafikkstatistikk", () => {
+    assert.equal(limitsFor(eier(), prosjekt({ plan: "free" })).analytics, true);
+  });
+});
+
+describe("uendelig må ikke nå Docker", () => {
+  it("gir byggeminne uten tak i stedet for vertens tak", () => {
+    // ⚠️ Fella. `Math.min(Infinity, SNOAT_BUILD_NODE_MEMORY_MB)` er
+    // konfigurasjonsverdien, altså et tak – ikke uendelig. `null` betyr at
+    // `--max-old-space-size` ikke settes i det hele tatt.
+    assert.equal(buildMemoryFor(eier()), null);
+    assert.notEqual(buildMemoryFor(eier()), 8192);
+    assert.equal(buildMemoryFor(eier(), prosjekt({ plan: "pro", parent_project_id: "app-1" })), null);
+  });
+
+  it("gir kjøreressurser uten tak, også for en dev-side", () => {
+    // Halvparten av ingen grense er fortsatt ingen grense – og `Math.floor(
+    // Infinity * 0.5)` er `Infinity`, altså akkurat verdien vi ble kvitt.
+    assert.deepEqual(resourcesFor(eier(), prosjekt({ plan: "pro" })), {
+      memoryMb: null,
+      cpus: null,
+    });
+    assert.deepEqual(
+      resourcesFor(eier(), prosjekt({ plan: "pro", parent_project_id: "app-1" })),
+      { memoryMb: null, cpus: null },
+    );
+  });
+
+  it("oversetter «ingen grense» til Dockers egen 0", () => {
+    // 0 er ikke «null megabyte» for Docker, det er «ingen grense». Se
+    // `dockerMemoryBytes()`.
+    assert.equal(dockerMemoryBytes(null), 0);
+    assert.equal(dockerNanoCpus(null), 0);
+    assert.equal(nodeHeapOption(null), null);
+  });
+
+  it("sender aldri NaN eller Infinity videre til Docker", () => {
+    // Den siste linjen før verdien forlater oss. Alle planene, eierkontoen, og
+    // for sikkerhets skyld verdiene som aldri skulle kommet hit i det hele tatt.
+    const ressurser = [
+      ...Object.keys(PLAN_LIMITS).flatMap((plan) => [
+        resourcesFor(entitlement(plan as SubscriptionTier), prosjekt({ plan: plan as SubscriptionTier })),
+        resourcesFor(
+          entitlement(plan as SubscriptionTier),
+          prosjekt({ plan: plan as SubscriptionTier, parent_project_id: "app-1" }),
+        ),
+      ]),
+      resourcesFor(eier(), prosjekt({ plan: "pro" })),
+      resourcesFor(eier(), prosjekt({ plan: "pro", parent_project_id: "app-1" })),
+      // Skulle uendelig noen gang slippe forbi `resourcesFor()`, skal
+      // oversettelsen fange det her i stedet for å bli «json: unsupported value».
+      { memoryMb: Infinity, cpus: Infinity },
+      { memoryMb: Number.NaN, cpus: Number.NaN },
+    ];
+
+    for (const r of ressurser) {
+      const memory = dockerMemoryBytes(r.memoryMb);
+      const nanoCpus = dockerNanoCpus(r.cpus);
+
+      assert.ok(Number.isInteger(memory), `Memory=${memory} er ikke et heltall`);
+      assert.ok(Number.isInteger(nanoCpus), `NanoCpus=${nanoCpus} er ikke et heltall`);
+      assert.ok(memory >= 0 && nanoCpus >= 0);
+
+      const heap = nodeHeapOption(r.memoryMb);
+      if (heap !== null) {
+        assert.doesNotMatch(heap, /Infinity|NaN/, `NODE_OPTIONS ble «${heap}»`);
+      }
+    }
+  });
+});
+
+describe("en vanlig konto er upåvirket av at eierlista finnes", () => {
+  it("beholder planens grenser", () => {
+    const pro = entitlement("pro");
+
+    assert.equal(pro.eier, false);
+    assert.equal(pro.limits, PLAN_LIMITS.pro);
+    assert.equal(limitsFor(pro, prosjekt({ plan: "pro" })), PLAN_LIMITS.pro);
+  });
+
+  it("beholder taket, byggeminnet og ressursene", () => {
+    const pro = entitlement("pro");
+
+    assert.ok(appLimitError(pro, 10), "Pro skal fortsatt sperre på ti apper");
+    assert.equal(buildMemoryFor(pro, prosjekt({ plan: "pro" })), 4096);
+    assert.deepEqual(resourcesFor(pro, prosjekt({ plan: "pro" })), { memoryMb: 2048, cpus: 2 });
+  });
+
+  it("kan fortsatt bli nedgradert og suspendert", () => {
+    // Uten dette ville vi ikke visst om `eier`-grenen slo ut den vanlige.
+    const nedgradert = entitlement("free", {
+      billedPlan: "pro",
+      status: "past_due",
+      downgraded: true,
+    });
+
+    assert.equal(nedgradert.eier, false);
+    assert.ok(appLimitError(nedgradert, 1));
+
+    const running = new Set(["app-1", "app-2"]);
+    assert.deepEqual(
+      runningOverLimit([app("app-1"), app("app-2")], running, PLAN_LIMITS.free).map((r) => r.id),
+      ["app-2"],
+    );
   });
 });

@@ -19,6 +19,7 @@ import { githubWebhooks } from "./routes/webhooks.js";
 import { startAnalyticsIngest } from "./services/analytics-ingest.js";
 import { failOrphanedDeployments, reconcileRoutes } from "./services/deploy.js";
 import { startHealthSweep } from "./services/helse.js";
+import { eierlisteAntall } from "./services/plans.js";
 import { startSuspensionSweep } from "./services/suspension.js";
 import type { ErrorDetail } from "./types.js";
 
@@ -223,6 +224,9 @@ const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
       port: info.port,
       workspace: config.SNOAT_WORKSPACE_DIR,
       appsNetwork: config.SNOAT_APPS_NETWORK,
+      // Eierkontoer kjører uten plangrenser. Står det 0/0 her, er lista tom –
+      // og tom betyr ingen fritatte, aldri alle. Se `SNOAT_OWNER_ACCOUNTS`.
+      eierkontoer: eierlisteAntall(),
     },
     "Snoat backend kjører",
   );

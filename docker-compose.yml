@@ -397,6 +397,10 @@ services:
       STRIPE_AUTOMATIC_TAX: ${STRIPE_AUTOMATIC_TAX:-false}
       SNOAT_BILLING_GRACE_DAYS: ${SNOAT_BILLING_GRACE_DAYS:-14}
       SNOAT_BILLING_SUSPEND_ENABLED: ${SNOAT_BILLING_SUSPEND_ENABLED:-false}
+      # Kontoer uten plangrenser. Komma-separerte bruker-ID-er og/eller
+      # e-poster. ⚠️ Tom = INGEN eierkontoer, aldri alle. Se .env.example og
+      # `EIER_LIMITS` i backend/src/services/plans.ts.
+      SNOAT_OWNER_ACCOUNTS: ${SNOAT_OWNER_ACCOUNTS:-}
 
       # Resend – varsler til drift. Valgfri: uten RESEND_API_KEY *eller*
       # SNOAT_NOTIFY_TO sendes ingenting, og varslene blir en linje i loggen.

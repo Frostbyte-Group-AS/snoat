@@ -28,6 +28,10 @@ export const Route = createFileRoute("/settings/billing")({
  *
  * Fargen skifter til `text-error` først når grensen er *nådd*, ikke når den
  * nærmer seg: en måler som står rød på 80 % lærer brukeren å ignorere rødt.
+ *
+ * ⚠️ `limit === null` betyr **ingen grense**, ikke null. Da er det ingen bøtte å
+ * fylle, og måleren viser forbruket som et tall i stedet for å tegne en stripe
+ * mot et tak som ikke finnes. Se `AccountLimits` i `lib/api.ts`.
  */
 function Meter({
   label,
@@ -38,33 +42,39 @@ function Meter({
   label: string;
   hint: string;
   used: number;
-  limit: number;
+  limit: number | null;
 }) {
-  const share = limit > 0 ? Math.min(used / limit, 1) : 0;
-  const maxed = used >= limit;
+  const { t } = useTranslation();
+  const unlimited = limit === null;
+  const share = !unlimited && limit > 0 ? Math.min(used / limit, 1) : 0;
+  const maxed = !unlimited && used >= limit;
 
   return (
     <div className="flex flex-col gap-2 rounded-[12px] bg-muted p-5">
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-body text-[15px] text-ink">{label}</span>
         <span className={`font-mono text-[15px] ${maxed ? "text-error" : "text-ink/70"}`}>
-          {used} / {limit}
+          {unlimited ? `${used} / ∞` : `${used} / ${limit}`}
         </span>
       </div>
 
-      <div
-        className="h-1.5 overflow-hidden rounded-none bg-muted"
-        role="progressbar"
-        aria-valuenow={used}
-        aria-valuemin={0}
-        aria-valuemax={limit}
-        aria-label={label}
-      >
+      {unlimited ? (
+        <p className="font-body text-[14px] text-ink">{t("billing.no_limit")}</p>
+      ) : (
         <div
-          className={`h-full rounded-none transition-all duration-500 ${maxed ? "bg-error" : "bg-ink"}`}
-          style={{ width: `${share * 100}%` }}
-        />
-      </div>
+          className="h-1.5 overflow-hidden rounded-none bg-muted"
+          role="progressbar"
+          aria-valuenow={used}
+          aria-valuemin={0}
+          aria-valuemax={limit}
+          aria-label={label}
+        >
+          <div
+            className={`h-full rounded-none transition-all duration-500 ${maxed ? "bg-error" : "bg-ink"}`}
+            style={{ width: `${share * 100}%` }}
+          />
+        </div>
+      )}
 
       <p className="font-body text-[14px] text-ink/70">{hint}</p>
     </div>
@@ -110,7 +120,10 @@ function PlanCard({
   format: Formatters;
 }) {
   const { t } = useTranslation();
-  const isCurrent = billing.billedPlan === plan.id;
+  // En eierkonto står ikke på noen av planene, og skal ikke få en av dem
+  // markert som sin. Uten dette ville Free stått uthevet som «nåværende» på en
+  // konto som er unntatt planene i sin helhet.
+  const isCurrent = !billing.unlimited && billing.billedPlan === plan.id;
 
   return (
     <div className={`ink-card-lg lift flex flex-col gap-5 p-6 ${isCurrent ? "bg-sun-soft" : ""}`}>
@@ -306,8 +319,19 @@ function BillingPage() {
                   {t("billing.current_plan")}
                 </span>
                 <span className="font-display text-[26px] font-bold text-ink">
-                  {t(`billing.plan_${state.billedPlan}`)}
+                  {state.unlimited
+                    ? t("billing.plan_owner")
+                    : t(`billing.plan_${state.billedPlan}`)}
                 </span>
+
+                {/* Fritaket må stå der planen ellers ville stått. En konto uten
+                    grenser som ser ut som en Free-konto er forvirrende – og
+                    målerne under sier «∞» uten å forklare hvorfor. */}
+                {state.unlimited && (
+                  <span className="font-body text-[14px] text-ink/70">
+                    {t("billing.owner_body")}
+                  </span>
+                )}
 
                 {state.cancelAtPeriodEnd && state.currentPeriodEnd ? (
                   <span className="font-body text-[14px] text-ink/70">
@@ -343,7 +367,8 @@ function BillingPage() {
                 used={state.usage.runningProjects}
                 limit={state.limits.maxRunningProjects}
               />
-              {state.limits.maxRunningDevSites > 0 && (
+              {(state.limits.maxRunningDevSites === null ||
+                state.limits.maxRunningDevSites > 0) && (
                 <Meter
                   label={t("billing.usage_dev_sites")}
                   hint={t("billing.usage_dev_sites_hint")}

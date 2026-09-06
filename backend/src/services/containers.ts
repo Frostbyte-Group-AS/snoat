@@ -51,8 +51,49 @@ interface ProjectContainer {
  * nettopp minne per container gratisplanen selger mindre av.
  */
 export interface ContainerResources {
-  memoryMb: number;
-  cpus: number;
+  /** MB, eller `null` for «ingen grense» (eierkonto – se `EIER_LIMITS`). */
+  memoryMb: number | null;
+  /** vCPU-andel, eller `null` for «ingen grense». */
+  cpus: number | null;
+}
+
+/**
+ * Minnetaket slik Docker vil ha det: bytes, som et endelig heltall.
+ *
+ * ⚠️ **`0` er Dockers egen måte å si «ingen grense» på**, og det er derfor
+ * ubegrenset oversettes hit og ikke til et stort tall. `HostConfig.Memory`
+ * uten verdi betyr det samme – containeren får bruke det verten har – så 0 er
+ * ikke en snarvei, det er den dokumenterte verdien.
+ *
+ * `Infinity` og `NaN` er ugyldige i JSON-en som går på Docker-socketen og
+ * skulle en av dem slippe gjennom, feiler ikke kallet på noe som peker mot
+ * plangrensene – det feiler på «json: unsupported value». Derfor fanges de her,
+ * på den siste linjen før verdien forlater oss, i tillegg til i `plans.ts`.
+ */
+export function dockerMemoryBytes(memoryMb: number | null): number {
+  if (memoryMb === null || !Number.isFinite(memoryMb) || memoryMb <= 0) return 0;
+  return Math.floor(memoryMb) * 1024 * 1024;
+}
+
+/** CPU-andelen slik Docker vil ha den. `0` = ingen grense, som for minnet. */
+export function dockerNanoCpus(cpus: number | null): number {
+  if (cpus === null || !Number.isFinite(cpus) || cpus <= 0) return 0;
+  return Math.round(cpus * 1e9);
+}
+
+/**
+ * `NODE_OPTIONS`-linjen containeren skal kjøre med, eller `null` når det ikke
+ * skal settes noe tak.
+ *
+ * Uten tak lar vi variabelen være helt i fred i stedet for å sette den til noe.
+ * V8 dimensjonerer da heapen etter verten, som er nettopp det «ingen grense»
+ * betyr – og siden en ubegrenset konto også bygger uten tak
+ * (`buildMemoryFor()` svarer `null`), ligger det ingen byggeverdi bakt inn i
+ * image-et som da ville blitt stående.
+ */
+export function nodeHeapOption(memoryMb: number | null): string | null {
+  if (memoryMb === null || !Number.isFinite(memoryMb) || memoryMb <= 0) return null;
+  return `NODE_OPTIONS=--max-old-space-size=${Math.floor(memoryMb * 0.75)}`;
 }
 
 /** Docker svarer med HTTP-statuskoder på socketen; de skiller «finnes ikke» fra reell feil. */
@@ -176,6 +217,8 @@ export async function runContainer(
   // container med dette navnet. Den kjørende versjonen har et annet navn.
   await removeContainerByName(name);
 
+  const heap = nodeHeapOption(resources.memoryMb);
+
   const env = [
     `PORT=${config.SNOAT_APP_PORT}`,
     `HOST=0.0.0.0`,
@@ -188,7 +231,10 @@ export async function runContainer(
     // to fra hver sin kilde – for eksempel fordi planen hever den ene og
     // konfigurasjonen den andre – er OOM-drapet tilbake, og da i en form som
     // bare rammer kunder på én plan.
-    `NODE_OPTIONS=--max-old-space-size=${Math.floor(resources.memoryMb * 0.75)}`,
+    //
+    // `null` fra `nodeHeapOption()` betyr at containeren ikke har noe minnetak,
+    // og da settes variabelen ikke i det hele tatt.
+    ...(heap === null ? [] : [heap]),
     // Brukerens egne variabler kommer sist og vinner: Docker lar den siste
     // forekomsten av en nøkkel gjelde.
     ...Object.entries(project.env_vars ?? {}).map(([key, value]) => `${key}=${value}`),
@@ -207,8 +253,9 @@ export async function runContainer(
     HostConfig: {
       // Ressurstak – ett prosjekt skal ikke kunne spise opp verten. Hvor høyt
       // taket er, avgjøres av kundens plan (`services/plans.ts`).
-      Memory: resources.memoryMb * 1024 * 1024,
-      NanoCpus: Math.round(resources.cpus * 1e9),
+      // 0 = ingen grense. Se `dockerMemoryBytes()`.
+      Memory: dockerMemoryBytes(resources.memoryMb),
+      NanoCpus: dockerNanoCpus(resources.cpus),
       // `on-failure:N`, ikke `unless-stopped`. Se `SNOAT_APP_RESTART_MAX_RETRIES`
       // i config.ts for hele resonnementet: en app som krasjer forbigående
       // (OOM) kommer opp igjen av seg selv innenfor de N forsøkene, men en app

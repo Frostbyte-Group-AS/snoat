@@ -398,6 +398,32 @@ const schema = z.object({
     .default(false),
 
   /**
+   * Kontoer som kjører uten plangrenser i det hele tatt.
+   *
+   * Komma-separert liste av **bruker-ID-er** (`auth.users.id`, samme verdi som
+   * `projects.user_id`) og/eller **e-postadresser**. En oppføring med `@` i seg
+   * leses som e-post, alt annet som en ID.
+   *
+   * ⚠️ **Standard er tom, og tom betyr INGEN eierkontoer – aldri alle.**
+   * Det er den farligste standardverdien som finnes her: en fritaksliste som
+   * tolker «ingenting oppgitt» som «alle er fritatt» ville slått av hele
+   * betalingsmuren i det øyeblikket variabelen falt ut av miljøet. Derfor er
+   * regelen at et fritak krever et *treff*, og et treff krever en oppføring.
+   * `erEierkonto()` i `services/plans.ts` returnerer usant med én gang lista er
+   * tom, og `plans.test.ts` beviser det.
+   *
+   * Grunnen til at dette er en miljøvariabel og ikke en rad i basen eller en
+   * konstant i koden: lista skal kunne endres uten en deploy. Den leses ved
+   * oppstart, så en endring krever en omstart av backend – ikke et nytt bygg.
+   *
+   * ID-formen er den anbefalte. Den slås opp uten et eneste nettverkskall;
+   * e-postformen må hente brukeren fra Supabase Auth
+   * (`auth.admin.getUserById`, samme vei som `services/notify.ts` bruker) og
+   * ligger dermed i deploy-stien.
+   */
+  SNOAT_OWNER_ACCOUNTS: optionalEnv,
+
+  /**
    * Resend – utgående e-post.
    *
    * Valgfri. Uten nøkkelen sender vi ingenting, og varslene blir en linje i
