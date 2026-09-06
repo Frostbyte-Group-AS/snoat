@@ -9,8 +9,23 @@ import type { DeploymentStatus } from "@/lib/database.types";
  *   Live      svart flate    (den sterkeste tilstanden får den sterkeste flaten)
  *   Bygger    gul flate      (noe pågår)
  *   I kø      hvit m/ramme   (venter, ingenting skjer ennå)
- *   Feilet    rød ramme      (eneste stedet rødt brukes i systemet)
+ *   Feilet    rød ramme      (bygget feilet)
+ *   Nede      rød ramme      (bygget gikk bra, men containeren svarer ikke – se under)
  *   Hviler    grå flate      (stoppet, fullført, aldri deployet)
+ *
+ * ── «NEDE», OG HVORFOR DEN IKKE ER DET SAMME SOM «FULLFØRT» ─────────────────
+ * En deployment kan være `success` uten at appen faktisk kjører: containeren
+ * kan ha dødd lenge etter at bygget var ferdig (OOM, krasj-loop som til slutt
+ * ga opp – se `services/helse.ts` på backend). Det var løgnen som gjorde at
+ * `eierfullstack` sto som «Live» i produksjon mens siden svarte 502. `unhealthy`
+ * kommer fra `projects.container_died_at` (migrasjon 0015) – databasens egen
+ * rettelse av tilstanden, ikke et gjett i grensesnittet.
+ *
+ * «Nede» deler `fail`-tonen med «Feilet» – begge er «se hit» i rødt – men er en
+ * egen etikett: den skal aldri gjenbruke «Fullført», som betyr noe helt annet
+ * («en nyere deployment overtok»). En app som skulle kjøre, men ikke gjør det,
+ * er nettopp den typen ting rødt er reservert for i dette systemet, uansett om
+ * det var selve bygget eller det som skjedde etterpå som gikk galt.
  *
  * Prikkene fra forrige generasjon er borte med vilje: en 6 px sirkel i farge
  * var det eneste som skilte «Bygger» fra «Feilet» for en fargeblind bruker.
@@ -44,6 +59,7 @@ export function DeploymentStatusBadge({
   isLive = true,
   stopped = false,
   stopping = false,
+  unhealthy = false,
 }: {
   status: DeploymentStatus | null;
   isLive?: boolean;
@@ -51,6 +67,13 @@ export function DeploymentStatusBadge({
   stopped?: boolean;
   /** Stopp-forespørselen pågår akkurat nå. */
   stopping?: boolean;
+  /**
+   * Helsesveipet på backend fant at containeren er borte, selv om dette er den
+   * deploymenten databasen (fortsatt) kaller `success` (`projects.container_died_at`).
+   * Skal aldri settes for en deployment som er forbigått av en nyere – bruk
+   * `isLive` til det, som før.
+   */
+  unhealthy?: boolean;
 }) {
   let info = BY_STATUS[status ?? "none"];
 
@@ -61,13 +84,17 @@ export function DeploymentStatusBadge({
   // Rekkefølgen er meningsbærende.
   //
   // «Stenger» er en pågående handling brukeren nettopp startet, og skal vises
-  // uansett hva den siste deploymenten sier. «Stoppet» viker derimot for et bygg
-  // som pågår: starter man en ny deployment på et stoppet prosjekt, er «Bygger»
-  // det riktige svaret – backend nullstiller `stopped_at` i samme øyeblikk.
+  // uansett hva den siste deploymenten sier. «Stoppet» går foran «Nede»: er
+  // prosjektet slått av med vilje, er det den forklaringen som er sann og
+  // nyttig, ikke et gammelt helseavvik fra før stoppet. «Nede» viker i sin tur
+  // for et bygg som pågår – en ny deployment er allerede i gang med å rette
+  // nettopp det avviket badgen ellers ville meldt.
   if (stopping) {
     info = { label: "Stenger …", tone: "work" };
   } else if (stopped && status !== "building" && status !== "queued") {
     info = { label: "Stoppet", tone: "rest" };
+  } else if (unhealthy && status !== "building" && status !== "queued") {
+    info = { label: "Nede", tone: "fail" };
   }
 
   // `key` på etiketten gjør at merket toner inn på nytt når tilstanden faktisk

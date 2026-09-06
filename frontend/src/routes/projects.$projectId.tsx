@@ -110,6 +110,12 @@ function ProjectDetailPage() {
     latestDeployment?.status === "queued" || latestDeployment?.status === "building";
   /** Brukeren har slått av appen. Backend nullstiller feltet ved neste deployment. */
   const isStopped = Boolean(project?.stopped_at);
+  /**
+   * Helsesveipet på backend (`services/helse.ts`) fant at containeren er borte,
+   * selv om siste deployment er `success` (`projects.container_died_at`, 0015).
+   * En app stemplet «Live» som ikke svarer, skal ikke stå som det.
+   */
+  const isUnhealthy = Boolean(project?.container_died_at);
   // En dev-side er en prosjektrad med en forelder (migrasjon 0013). Den styres
   // med en av/på-bryter i stedet for Stopp/Start, se kommentaren ved bryteren.
   const isDevSite = Boolean(project?.parent_project_id);
@@ -267,6 +273,7 @@ function ProjectDetailPage() {
                 status={latestDeployment?.status ?? null}
                 stopped={isStopped}
                 stopping={stopMutation.isPending}
+                unhealthy={isUnhealthy}
               />
               {/* Hvilken gren står vi i? Merkelappen er gul mens det bygges –
                   det er nettopp da spørsmålet «er dette produksjon eller dev?»
@@ -299,9 +306,10 @@ function ProjectDetailPage() {
               {/* Begge adressene appen svarer på, ikke bare Snoat-adressen. Har
                   kunden koblet til et eget domene, er det som regel det hen
                   faktisk bruker – og fram til nå måtte hen inn i DNS-fanen for å
-                  se om det virket. Lenkene skjules når appen er stoppet: en
-                  lenke som ser levende ut, men gir 502, er verre enn ingen. */}
-              {latestDeployment?.url && !isStopped ? (
+                  se om det virket. Lenkene skjules når appen er stoppet, eller
+                  når helsesveipet har funnet at den er nede: en lenke som ser
+                  levende ut, men gir 502, er verre enn ingen. */}
+              {latestDeployment?.url && !isStopped && !isUnhealthy ? (
                 <>
                   <a
                     href={latestDeployment.url}
@@ -705,6 +713,10 @@ function DeploymentsTab({
   const isBuilding = latest?.status === "queued" || latest?.status === "building";
 
   const latestSuccessId = deployments.find((d) => d.status === "success")?.id;
+  // Helsesveipet retter avviket på *prosjektet*, ikke på en enkelt deployment –
+  // det gjelder derfor bare den ene raden databasen fortsatt kaller «success».
+  // Eldre rader er «Fullført» uansett, det betyr noe helt annet der.
+  const isUnhealthy = Boolean(project.container_died_at);
 
   return (
     <div className="flex flex-col gap-8">
@@ -720,6 +732,7 @@ function DeploymentsTab({
                 <DeploymentStatusBadge
                   status={latest.status}
                   isLive={latest.id === latestSuccessId}
+                  unhealthy={latest.id === latestSuccessId && isUnhealthy}
                 />
                 <span className="font-mono text-sm text-ink/70">
                   {latest.commit_hash
@@ -771,7 +784,12 @@ function DeploymentsTab({
         ) : (
           <div className="stagger flex flex-col divide-y divide-hair">
             {deployments.map((d) => (
-              <DeploymentRow key={d.id} deployment={d} isLive={d.id === latestSuccessId} />
+              <DeploymentRow
+                key={d.id}
+                deployment={d}
+                isLive={d.id === latestSuccessId}
+                unhealthy={d.id === latestSuccessId && isUnhealthy}
+              />
             ))}
           </div>
         )}
@@ -799,7 +817,16 @@ function DeploymentsTab({
  * tidspunktet man står og ser på den. Nå teller sekundene her også, i gult, så
  * det pågående bygget er like tydelig i historikken som i terminalen.
  */
-function DeploymentRow({ deployment, isLive }: { deployment: Deployment; isLive: boolean }) {
+function DeploymentRow({
+  deployment,
+  isLive,
+  unhealthy = false,
+}: {
+  deployment: Deployment;
+  isLive: boolean;
+  /** Bare sann for raden `isLive` gjelder – se `DeploymentsTab`. */
+  unhealthy?: boolean;
+}) {
   const { t } = useTranslation();
   const format = useFormatters();
   const isBuilding = deployment.status === "queued" || deployment.status === "building";
@@ -808,7 +835,7 @@ function DeploymentRow({ deployment, isLive }: { deployment: Deployment; isLive:
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-4">
-        <DeploymentStatusBadge status={deployment.status} isLive={isLive} />
+        <DeploymentStatusBadge status={deployment.status} isLive={isLive} unhealthy={unhealthy} />
         <span className="font-mono text-sm text-ink">
           {deployment.commit_hash
             ? deployment.commit_hash.slice(0, 7)
@@ -833,7 +860,7 @@ function DeploymentRow({ deployment, isLive }: { deployment: Deployment; isLive:
         <span className="font-body text-[16px] text-ink/70">
           {format.dateTime(deployment.created_at)}
         </span>
-        {deployment.url && isLive && (
+        {deployment.url && isLive && !unhealthy && (
           <a
             href={deployment.url}
             target="_blank"

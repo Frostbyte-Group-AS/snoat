@@ -29,6 +29,7 @@ Hvert repository som er koblet til plattformen.
   - `env_vars` (JSONB for `.env`)
   - `github_installation_id` (valgfri, se under)
   - `stopped_at` (når brukeren slo av appen; NULL = kjører)
+  - `container_died_at` (migrasjon 0015; satt av helsesveipet, se under)
   - `created_at`
 
 `stopped_at` (migrasjon 0005) er den **synlige** tilstanden til et stoppet
@@ -48,6 +49,15 @@ dashboardet slutter å si «Stoppet» i samme øyeblikk byggingen starter.
 `name` er subdomenet applikasjonen blir live på, og valideres derfor mot
 `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$` i databasen. Kombinasjonen
 `(user_id, name)` er unik.
+
+`container_died_at` (migrasjon 0015) er den samme typen rettelse som
+`stopped_at`, bare for en annen løgn: en deployment kan stå som `success` uten
+at containeren fortsatt kjører (OOM, en krasj-loop som til slutt ga opp). Uten
+feltet utledes «Live» utelukkende av `deployments.status`, akkurat som
+`stopped_at`-problemet over – og en app som var død i produksjon fortsatte å
+vises som Live i dashboardet. `services/helse.ts` setter feltet når det
+periodiske sveipet finner avviket, og nullstiller det når containeren er
+tilbake eller en ny deployment lykkes. Se `03_deployment_flow.md`.
 
 `github_installation_id` peker på installasjonen repoet ble valgt gjennom.
 Er den satt, kloner backend med et installasjonstoken – det er dette som gjør

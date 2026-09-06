@@ -131,6 +131,52 @@ export async function notifyFirstDeploymentLive(
   ]);
 }
 
+/**
+ * Varsler drift om at helsesveipet (`services/helse.ts`) fant et avvik: basen
+ * påstår appen kjører, men containeren er borte fra Docker.
+ *
+ * ## Hvorfor bare ved overgangen, ikke ved hvert sveip
+ *
+ * Sveipet kjører hvert par minutter (`SNOAT_HEALTH_CHECK_INTERVAL_MS`). Uten en
+ * overgangssjekk ville en app som står nede i en dag gitt flere hundre
+ * identiske e-poster – nøyaktig samme grunn som `notifyFirstDeploymentLive` bare
+ * varsler første gang en app blir live. `helse.ts` kaller denne kun idet
+ * `container_died_at` går fra NULL til satt, aldri på et sveip som bekrefter et
+ * avvik som allerede er kjent.
+ */
+export async function notifyContainerUnhealthy(project: Project, detail: string): Promise<void> {
+  if (!notificationsEnabled()) return;
+
+  const owner = await ownerEmail(project.user_id);
+
+  await send(`Snoat: ${project.name} svarer ikke`, [
+    `Prosjekt:  ${project.name}`,
+    `Avvik:     ${detail}`,
+    `Eier:      ${owner ?? project.user_id}`,
+    "",
+    "Basen er rettet: prosjektet vises ikke lenger som Live i dashboardet.",
+    "Containeren er ikke startet på nytt av dette varselet – se CONTEXT_FOR_AI/03_deployment_flow.md.",
+  ]);
+}
+
+/**
+ * Varsler drift om at en app helsesveipet tidligere meldte som nede, svarer
+ * igjen – enten fordi Docker sin egen `on-failure`-restart lyktes til slutt,
+ * eller fordi noen rettet det manuelt uten å redeploye.
+ */
+export async function notifyContainerRecovered(project: Project): Promise<void> {
+  if (!notificationsEnabled()) return;
+
+  const owner = await ownerEmail(project.user_id);
+
+  await send(`Snoat: ${project.name} svarer igjen`, [
+    `Prosjekt:  ${project.name}`,
+    `Eier:      ${owner ?? project.user_id}`,
+    "",
+    "Helsesveipet fant containeren oppe igjen, og basen er rettet tilbake til Live.",
+  ]);
+}
+
 /** E-posten til eieren, for at varselet skal si hvem det gjelder. */
 async function ownerEmail(userId: string): Promise<string | null> {
   const { data, error } = await supabase.auth.admin.getUserById(userId);

@@ -164,6 +164,49 @@ const schema = z.object({
   SNOAT_APP_CPUS: z.coerce.number().positive().default(1),
 
   /**
+   * Maks antall ganger Docker selv starter en applikasjonscontainer på nytt
+   * etter et krasj, før den gir opp og lar containeren stå stoppet.
+   *
+   * ── HVORFOR IKKE `unless-stopped` LENGER ────────────────────────────────
+   * Fram til containerhelse-sveipet (`services/helse.ts`) kom på plass hadde
+   * containere `RestartPolicy: unless-stopped` – Docker startet en krasjende
+   * app på nytt i det uendelige, uten tak og uten at noen fikk vite det.
+   * En container som dør av forbigående minnemangel bør komme opp igjen av seg
+   * selv, men en som krasjer i loop (feil i koden, en manglende
+   * miljøvariabel) skal ikke restarte for alltid i stillhet – det var nettopp
+   * den stillheten som gjorde at `eierfullstack` sto som «Live» i produksjon
+   * lenge etter at appen var død.
+   *
+   * `on-failure:N` gir det beste av begge: forbigående krasj (OOM, en
+   * restart av verten) rettes automatisk innenfor de første forsøkene, mens en
+   * app som fortsetter å krasje gir opp etter N ganger og blir stående stoppet
+   * – synlig for `helse.ts`, som oppdager at containeren er borte og retter
+   * tilstanden i basen i stedet for at den blir stående og lyve.
+   *
+   * Docker nullstiller ikke telleren over tid – kun en ny container (altså en
+   * ny deployment) gjør det. Et prosjekt som krasjer sjelden, men over lang
+   * nok tid, kan derfor til slutt slutte å restarte helt av seg selv også.
+   * Det er en bevisst avveining: helsesveipet er sikkerhetsnettet uansett
+   * årsak, og et ubegrenset antall restarter er nøyaktig risikoen vi tar bort.
+   */
+  SNOAT_APP_RESTART_MAX_RETRIES: z.coerce.number().int().nonnegative().default(5),
+
+  /**
+   * Hvor ofte helsesveipet (`services/helse.ts`) sammenligner det databasen
+   * påstår kjører mot det Docker faktisk har.
+   *
+   * `assertStillRunning()` ser bare på containeren i sekundene rundt en
+   * utrulling. Dør containeren en time senere – OOM, krasj-loop som til slutt
+   * ga opp, eller noen som fjernet den manuelt – oppdaget ingenting det før
+   * dette sveipet: `reconcileRoutes()` kjører kun ved backend-oppstart, og en
+   * app kunne stå som `success`/Live i basen og i dashboardet i dagevis mens
+   * den svarte 502. To minutter er hyppig nok til at et kundemerkbart avbrudd
+   * oppdages i god tid før noen rekker å lure på hvorfor siden er nede, uten
+   * å spørre Docker oftere enn nødvendig.
+   */
+  SNOAT_HEALTH_CHECK_INTERVAL_MS: z.coerce.number().int().positive().default(2 * 60 * 1000),
+
+  /**
    * Hvor lenge den forrige containeren får på seg å fullføre forespørsler den
    * holder på, etter at Caddy har flyttet ny trafikk til den nye versjonen
    * (SIGTERM → SIGKILL). Gjør den siste delen av en rullerende utrulling myk.

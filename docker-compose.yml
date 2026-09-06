@@ -358,6 +358,12 @@ services:
       SNOAT_APP_MEMORY_MB: ${SNOAT_APP_MEMORY_MB:-512}
       SNOAT_APP_CPUS: ${SNOAT_APP_CPUS:-1}
       SNOAT_APP_STOP_TIMEOUT_S: ${SNOAT_APP_STOP_TIMEOUT_S:-10}
+      # Containerhelse (services/helse.ts). Maks antall ganger Docker selv
+      # restarter en krasjende container før den gir opp – se config.ts for
+      # hvorfor dette erstattet `unless-stopped`. Sveipet under oppdager
+      # containeren som ga opp, og hvor ofte det skjer.
+      SNOAT_APP_RESTART_MAX_RETRIES: ${SNOAT_APP_RESTART_MAX_RETRIES:-5}
+      SNOAT_HEALTH_CHECK_INTERVAL_MS: ${SNOAT_HEALTH_CHECK_INTERVAL_MS:-120000}
       SNOAT_BUILD_TIMEOUT_MS: ${SNOAT_BUILD_TIMEOUT_MS:-1800000}
       SNOAT_DEFAULT_NODE_VERSION: ${SNOAT_DEFAULT_NODE_VERSION:-22}
       SNOAT_MAX_CONCURRENT_BUILDS: ${SNOAT_MAX_CONCURRENT_BUILDS:-1}

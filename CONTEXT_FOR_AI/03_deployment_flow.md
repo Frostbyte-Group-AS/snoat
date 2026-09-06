@@ -246,9 +246,11 @@ nøkkelen omgår ikke bare RLS, den omgår også constrainten.
 **5. Container.** Kun for prosjekter *uten* `static_output_dir`.
 `dockerode.createContainer` med image-et, brukerens
 miljøvariabler, ressurstak (`Memory`, `NanoCpus`) og `RestartPolicy:
-unless-stopped`. Containeren kobles til nettverket `snoat_apps` og **publiserer
-ingen port på verten** – Caddy når den på containernavnet over det interne
-nettverket.
+on-failure:N` (`SNOAT_APP_RESTART_MAX_RETRIES`, standard 5 – se
+`containers.ts` og `10_recent_updates_and_roadmap.md` for hvorfor det ikke
+lenger er `unless-stopped`). Containeren kobles til nettverket `snoat_apps` og
+**publiserer ingen port på verten** – Caddy når den på containernavnet over
+det interne nettverket.
 
 Navnet er `snoat-app-<slug>-<deployment-id-prefiks>`, altså **unikt per
 deployment**. Det er mekanismen som gjør rullerende utrulling mulig: den nye
@@ -270,8 +272,8 @@ kjørt **sammenhengende** i `SNOAT_STABLE_FOR_MS` (15 s som standard) siden
 framfor å henge. Feiler sjekken, hentes de siste 50 linjene fra applikasjonens
 egen logg inn i byggeloggen.
 
-Ett enkelt øyeblikksbilde er ikke nok – `RestartPolicy: unless-stopped` starter
-en krasjende app på nytt igjen og igjen, og `State.Running` er sann i glimtene
+Ett enkelt øyeblikksbilde er ikke nok – `RestartPolicy: on-failure:N` starter en
+krasjende app på nytt flere ganger, og `State.Running` er sann i glimtene
 mellom omstartene. En app i krasj-loop ville ellers sluppet gjennom som «Live»
 *og* fått en fungerende versjon revet ned under seg.
 
@@ -629,6 +631,59 @@ drept mellom helsesjekk og opprydding – kunne overta trafikken ved neste omsta
 bare fordi den er nyest. Er det flere kjørende containere for samme prosjekt,
 logges det som en `warn`; neste deployment rydder dem.
 
+**Dette kjører kun ved oppstart.** Dør containeren en time senere, oppdager
+ingenting det – se neste avsnitt for mekanismen som faktisk løser det.
+
+## Containerhelse: en app som er død skal ikke stå som Live
+
+`eierfullstack` sto som `success`/Live i produksjon i dagevis etter at
+containeren var borte – `docker stats` viste `0B / 0B`, Caddy hadde fortsatt
+ruten, siden svarte 502. To hull i det som fantes fra før gjorde at ingen
+merket det: `assertStillRunning()` er ett vindu rett etter utrulling og ser
+aldri på appen igjen, og `reconcileRoutes()` over kjører kun ved
+backend-oppstart. Et system som lyver om egen tilstand er verre enn ett som
+feiler synlig – derfor `services/helse.ts`.
+
+**Sveipet.** Hvert `SNOAT_HEALTH_CHECK_INTERVAL_MS` (standard 2 minutter,
+`startHealthSweep()` i `index.ts`): finn hvert prosjekt databasen påstår har en
+kjørende container – ikke stoppet, ikke statisk, med minst én vellykket
+deployment – og sammenlign mot `containers.runningProjectIds()`, ett samlet
+Docker-kall for hele verten.
+
+**Retting, ikke bare logging.** Finner sveipet et avvik, settes
+`projects.container_died_at` (migrasjon 0015) til tidspunktet – det er
+rettelsen av basens tilstand problemet krevde. Kommer containeren tilbake
+(Docker sin egen `on-failure`-restart lyktes til slutt, eller noen rettet det
+manuelt), nullstilles feltet av samme sveip. En ny vellykket deployment
+nullstiller det med én gang også (`clearHealthFlag()`), i stedet for at
+dashboardet skal vise «Nede» i opptil to minutter etter at problemet faktisk er
+løst.
+
+**Grensesnittet.** `DeploymentStatusBadge` viser «Nede» – rødt, samme
+alvorlighet som «Feilet» – når `container_died_at` er satt, i stedet for å
+kalle det «Live». Lenker til appen skjules samtidig som badgen endrer seg: en
+lenke som ser levende ut, men gir 502, er verre enn ingen.
+
+**Varsel.** Ved *overgangen* til nede (ikke ved hvert sveip som bekrefter et
+allerede kjent avvik) sender `services/notify.ts` én e-post til
+`SNOAT_NOTIFY_TO`, og likeså ved gjenoppretting. Samme infrastruktur som
+`notifyFirstDeploymentLive` – ingen ny utsendingsvei.
+
+**Restart-regelen som gjør at sveipet har noe å finne.** Containere kjørte
+tidligere med `RestartPolicy: unless-stopped` – Docker restartet en krasjende
+app i det uendelige, uten tak og uten at noen fikk vite det. Nå er den
+`on-failure:N` (`SNOAT_APP_RESTART_MAX_RETRIES`, standard 5, se `containers.ts`
+og `config.ts`): en container som dør av forbigående minnemangel kommer opp
+igjen av seg selv innenfor de første forsøkene, men en app i krasj-loop gir opp
+etter N ganger og blir stående stoppet – synlig for dette sveipet i stedet for
+å restarte i stillhet for alltid.
+
+**Hva sveipet bevisst ikke gjør.** Det rører verken Docker eller Caddy – ingen
+restart, ingen sletting, ingen omdirigering av ruten bort fra den døde
+containeren. Ruten blir stående til en ny deployment bytter den eller noen
+griper inn manuelt. Sveipets jobb er å si sannheten i basen og i
+dashboardet, ikke å reparere infrastrukturen på egen hånd.
+
 ## Krav til brukerens applikasjon
 
 - Må lytte på porten i `$PORT` (`SNOAT_APP_PORT`, standard 3000) på `0.0.0.0`.
@@ -659,7 +714,15 @@ logges det som en `warn`; neste deployment rydder dem.
   svarer på `$PORT`. En app som starter uten å binde porten regnes som frisk.
   Backend ligger ikke på `snoat_apps`-nettverket og kan derfor ikke nå appen
   direkte; en ordentlig readiness-probe må gå gjennom Caddy eller kobles på
-  nettverket.
+  nettverket. Gjelder både `assertStillRunning()` ved utrulling og det
+  periodiske sveipet i `services/helse.ts` – begge ser på Docker, ingen av dem
+  spør appen selv om noe.
+- **Automatisk rute-reparasjon når en container er død.** `services/helse.ts`
+  oppdager avviket og retter *basens* påstand (`container_died_at`), men rører
+  ikke Caddy-ruten. Er containeren først borte, blir ruten stående og peke på
+  ingenting til noen deployer på nytt eller griper inn manuelt – se
+  «Containerhelse» over for hvorfor det er en bevisst grense og ikke en
+  forglemmelse.
 - **Tilbakerulling til forrige versjon.** Vi beholder den gamle containeren til
   den nye er frisk, men når den først er fjernet, finnes ingen «rull tilbake til
   forrige deployment»-knapp. Image-et fra forrige build har mistet taggen sin

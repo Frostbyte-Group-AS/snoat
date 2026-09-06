@@ -73,6 +73,17 @@ export interface Project {
    * NULL for prosjekter opprettet herfra – dashboardet skriver aldri feltet.
    */
   external_ref?: string | null;
+  /**
+   * Satt av det periodiske helsesveipet på backend (migrasjon 0015,
+   * `services/helse.ts`) når containeren prosjektet skal ha kjørende er borte
+   * fra Docker, selv om siste deployment er `success` og prosjektet ikke er
+   * stoppet.
+   *
+   * NULL = ingen kjent avvik. Dette er tilstanden som gjør at et prosjekt
+   * stemplet `success` likevel ikke vises som «Live» – se
+   * `DeploymentStatusBadge`.
+   */
+  container_died_at?: string | null;
   created_at: string;
 }
 

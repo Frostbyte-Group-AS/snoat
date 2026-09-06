@@ -18,6 +18,7 @@ import { tlsPermission } from "./routes/tls.js";
 import { githubWebhooks } from "./routes/webhooks.js";
 import { startAnalyticsIngest } from "./services/analytics-ingest.js";
 import { failOrphanedDeployments, reconcileRoutes } from "./services/deploy.js";
+import { startHealthSweep } from "./services/helse.js";
 import { startSuspensionSweep } from "./services/suspension.js";
 import type { ErrorDetail } from "./types.js";
 
@@ -256,10 +257,15 @@ void (async () => {
     logger.warn({ err: error }, "Kunne ikke synkronisere Caddy-ruter");
   }
 
-  // Etter reconcile med vilje: sveipet leser hvilke containere som kjører, og
+  // Etter reconcile med vilje: sveipene leser hvilke containere som kjører, og
   // skal se verden slik den faktisk er – ikke slik den var før rutene ble
   // gjenopprettet.
   startSuspensionSweep();
+
+  // Containerhelse: reconcileRoutes() over kjører kun her, ved oppstart. Dør en
+  // container en time senere, oppdager ingenting det uten dette periodiske
+  // sveipet – se services/helse.ts for hele hendelsen som gjorde det nødvendig.
+  startHealthSweep();
 
   // Caddy kobler seg til denne lytteren for å strømme access-loggen. Den har
   // `soft_start` i loggkonfigurasjonen, så rekkefølgen er ikke kritisk: er vi

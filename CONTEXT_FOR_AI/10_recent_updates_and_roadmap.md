@@ -4,6 +4,43 @@ Denne filen dokumenterer nye funksjonaliteter og forbedringer som er innført i 
 
 ---
 
+## 0f. Containerhelse: en app som er død skal ikke stå som Live
+
+`eierfullstack` sto som `success`/Live i produksjon i dagevis mens containeren
+var borte fra Docker – `docker stats` viste `0B / 0B`, Caddy hadde fortsatt
+ruten, siden svarte 502. Ingenting oppdaget det: `assertStillRunning()` sjekker
+bare sekundene rundt en utrulling, og `reconcileRoutes()` kjører kun ved
+backend-oppstart.
+
+**Sveipet.** `services/helse.ts` sammenligner hvert `SNOAT_HEALTH_CHECK_INTERVAL_MS`
+(standard 2 min) det databasen påstår kjører mot `containers.runningProjectIds()`
+– ett Docker-kall for hele verten. Finner det et avvik, settes
+`projects.container_died_at` (migrasjon 0015, additiv): basens tilstand
+*rettes*, ikke bare logges. En ny vellykket deployment eller at containeren er
+tilbake ved neste sveip nullstiller feltet igjen.
+
+**Grensesnittet.** `DeploymentStatusBadge` får en ny etikett, «Nede» (rødt,
+samme alvor som «Feilet»), i stedet for å fortsette å vise «Live» for en app som
+ikke svarer. Lenker til appen skjules samtidig, som de allerede gjorde for et
+stoppet prosjekt.
+
+**Restart-regelen.** Applikasjonscontainere gikk fra `RestartPolicy:
+unless-stopped` (restarter en krasjende app i det uendelige, i stillhet) til
+`on-failure:N` (`SNOAT_APP_RESTART_MAX_RETRIES`, standard 5): en forbigående
+krasj (OOM) rettes automatisk, en krasj-loop gir opp etter N forsøk og blir
+stående – synlig for sveipet over, i stedet for å restarte for alltid uten at
+noen får vite det.
+
+**Varsel.** Én e-post ved overgangen til nede og én ved gjenoppretting, over den
+samme Resend-infrastrukturen som `notifyFirstDeploymentLive` (`SNOAT_NOTIFY_TO`)
+– ingen ny utsendingsvei.
+
+**Bevisst utenfor omfang:** sveipet rører ikke Docker eller Caddy. Det
+restarter ingenting, sletter ingenting, og flytter ikke ruten bort fra en død
+container – se `03_deployment_flow.md` for resonnementet. Se også
+`08_security_model.md` og `07_local_development.md`, som begge nevner den nye
+restart-regelen der de før beskrev `unless-stopped`.
+
 ## 0e. Dev-grener som virket, og som er til å finne
 
 Tre ting: en feil som gjorde dev-sider ubrukelige, en adresse som sier hva den
