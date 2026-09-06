@@ -191,6 +191,14 @@ export interface Deployment {
   url: string | null;
   /** Hvor lenge bygget kjørte. NULL mens det pågår, og for rader fra før 0004. */
   duration_ms: number | null;
+  /**
+   * Grenen dette bygget kom fra (migrasjon 0014).
+   *
+   * Skrives ved opprettelsen med prosjektets valgte gren, og oppdateres med den
+   * git faktisk sjekket ut så snart klonen er ferdig – for et prosjekt uten
+   * valgt gren er det først da svaret finnes. NULL for rader fra før 0014.
+   */
+  branch: string | null;
   created_at: string;
 }
 

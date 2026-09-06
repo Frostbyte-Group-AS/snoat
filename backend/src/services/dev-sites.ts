@@ -192,11 +192,17 @@ async function refreshRoute(project: Project): Promise<void> {
     if (!existing) return;
 
     const hash = project.access_protected ? await passwordHashFor(project.id) : null;
+    const aliases = await aliasHostnamesFor(project);
+
+    // ⚠️ `routeUpstream()`/`routeRoot()` så tidligere bare på `handle[0]`, som
+    // er basic-auth-vakten på en beskyttet app. Begge svarte da null, ingen av
+    // grenene ble tatt, og «fjern passord» skrev aldri noe til Caddy: appen ble
+    // stående låst mens dashboardet sa at den var åpen.
     const upstream = caddy.routeUpstream(existing);
     const root = caddy.routeRoot(existing);
 
     if (upstream) {
-      await caddy.upsertAppRoute(project.name, project.custom_domain, upstream, hash);
+      await caddy.upsertAppRoute(project.name, project.custom_domain, upstream, hash, aliases);
     } else if (root) {
       await caddy.upsertStaticRoute(
         project.name,
@@ -204,6 +210,7 @@ async function refreshRoute(project: Project): Promise<void> {
         root,
         project.static_spa_fallback,
         hash,
+        aliases,
       );
     }
   } catch (error) {
@@ -241,6 +248,47 @@ export async function passwordHashFor(projectId: string): Promise<string | null>
   }
 
   return (data as { password_hash: string } | null)?.password_hash ?? null;
+}
+
+/**
+ * Vertsnavnene et prosjekt svarer på i tillegg til `<navn>.snoat.com`.
+ *
+ * For et hovedprosjekt: ingen. For en dev-side: `<gren>.<hovedprosjekt>`, slik
+ * at adressen sier hva den er uten at man må kunne navnekonvensjonen. Se
+ * `caddy.devAliasHostname()` for hvorfor den kommer i tillegg og ikke i stedet.
+ *
+ * Feiler oppslaget av forelderen, svarer vi tomt framfor å velte deploymenten:
+ * `<navn>.snoat.com` virker uansett, og en dev-side uten pen adresse er bedre
+ * enn ingen dev-side.
+ */
+export async function aliasHostnamesFor(project: Project): Promise<string[]> {
+  if (!project.parent_project_id || !project.branch) return [];
+
+  const { data, error } = await supabase
+    .from("projects")
+    .select("name")
+    .eq("id", project.parent_project_id)
+    .maybeSingle();
+
+  if (error || !data) {
+    logger.warn({ project: project.name, err: error }, "Fant ikke hovedprosjektet til dev-siden");
+    return [];
+  }
+
+  const alias = caddy.devAliasHostname((data as { name: string }).name, project.branch);
+  return alias ? [alias] : [];
+}
+
+/**
+ * Adressen vi viser og lagrer på deploymenten.
+ *
+ * Dev-siden har to som virker; den pene er den kunden skal få se, og den som
+ * skal stå i `deployments.url` slik at dashboardet ikke trenger å kjenne
+ * navnekonvensjonen for å lenke riktig.
+ */
+export function publicUrlFor(project: Project, aliasHosts: string[]): string {
+  const alias = aliasHosts[0];
+  return alias ? caddy.hostnameUrl(alias) : caddy.appUrl(project.name);
 }
 
 /** Dev-sidene som hører til et prosjekt. */

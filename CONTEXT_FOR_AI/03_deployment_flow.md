@@ -330,6 +330,34 @@ prosjektet den er et miljø for, `branch` er grenen den følger, og `name` er
 `tls-ask`, Caddy-rutene, analytics-hostmapet og `assertCanDeploy` slår alle opp
 på `projects.name`, og de virker uendret for en rad som ser ut som alle andre.
 
+### To adresser, én rute
+
+Dev-siden svarer på **begge** disse:
+
+- `<prosjekt>-<gren>.snoat.com` — navnet, altså identiteten.
+- `<gren>.<prosjekt>.snoat.com` — den vi viser. `dev.eierfullstack.snoat.com`.
+
+Den pene kommer i *tillegg*, ikke i stedet for. `projects.name` er fortsatt det
+alt slår opp på, og å bytte den ut ville vært å flytte containernavn,
+analytics-hostmapet, plangrensene og `tls-ask` samtidig. I stedet legges begge
+vertsnavnene i host-matcheren på samme rute (`caddy.devAliasHostname()` og
+`hostsFor()`), og `deployments.url` får den pene – slik at dashboardet lenker
+riktig uten å kjenne navnekonvensjonen.
+
+To ting måtte læres opp:
+
+- **`tls-ask`** (`routes/tls.ts`). `slugFromHostname()` godtar med vilje bare én
+  etikett, så den pene adressen fikk 404 og dermed aldri et sertifikat.
+  `devAliasParts()` snur navnet tilbake til `<prosjekt>` + `<gren>` og slår opp
+  raden `<prosjekt>-<gren>` med `parent_project_id` satt.
+- **Analytics-hostmapet** (`services/analytics-ingest.ts`). Uten aliaset i kartet
+  ble hvert treff på den pene adressen forkastet, og statistikken for dev-siden
+  sto tom uansett hvor mye den ble besøkt.
+
+DNS krever ingenting nytt: `*.snoat.com` dekker alle navn under seg som ikke har
+en nærmere node i sonen (RFC 4592), ikke bare én etikett. Verifisert mot 1.1.1.1
+og 8.8.8.8. Sertifikatet hentes on-demand per navn, som før.
+
 **Push-webhooken trengte ingen endring.** Den henter alle prosjekter på repoet og
 spør per rad om grenen stemmer (`isDeployBranch`, `routes/webhooks.ts`). To rader
 på samme repo med ulik gren gir dermed riktig oppførsel av seg selv: push til
@@ -378,6 +406,19 @@ Vakten er Caddys egen `authentication`-handler med `http_basic` og bcrypt, lagt
 **først** i handler-kjeden for ruten, slik at en 401 kommer før `reverse_proxy`
 har åpnet en forbindelse. `hash_cache` er slått på: bcrypt cost 12 er ~250 ms med
 vilje, og uten cachen ville hvert bilde og hver JS-fil på siden betalt den prisen.
+
+> ⚠️ **At vakten står først, veltet i sin tid hver eneste dev-deployment.**
+> `routeUpstream()` og `routeRoot()` i `lib/caddy.ts` leste bare `handle[0]` for
+> å finne ut hva ruten pekte på. På en beskyttet app *er* `handle[0]`
+> `authentication`, så begge svarte `null` på en rute som var helt i orden.
+> Steg 7 i pipelinen leser ruten tilbake etter byttet og sammenligner, konkluderte
+> med «Caddy peker på ingenting etter byttet», og rullet tilbake en container som
+> kjørte og svarte. Siden hver dev-side er beskyttet fra fødselen av, feilet
+> *alle* dev-deployments på siste steg – med «Successfully Built!» like over i
+> loggen. Samme blindsone gjorde at «fjern passord» aldri nådde Caddy:
+> `refreshRoute()` fant verken upstream eller root, og tok ingen av grenene.
+>
+> Begge leserne går nå gjennom hele handler-kjeden, også inn i `subroute`.
 
 Brukernavnet er alltid `snoat`. Basic auth krever et brukernavn, men det er
 *appen* som er beskyttet, ikke en konto – ett fast navn er mer ærlig enn å late

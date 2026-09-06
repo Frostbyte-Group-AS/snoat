@@ -31,9 +31,76 @@ export const appHostname = (slug: string) => `${slug}${config.SNOAT_APP_DOMAIN_S
  * sertifikatet ikke er tillitt lokalt – der er `http` det riktige svaret.
  */
 export function appUrl(slug: string): string {
-  const hostname = appHostname(slug);
+  return hostnameUrl(appHostname(slug));
+}
+
+/** Samme regel som `appUrl`, men for et vertsnavn vi allerede har. */
+export function hostnameUrl(hostname: string): string {
   const isLocal = hostname === "localhost" || hostname.endsWith(".localhost");
   return `${isLocal ? "http" : "https"}://${hostname}`;
+}
+
+/**
+ * Grenen som én DNS-etikett. Samme slugifisering som `devSiteName()` bruker på
+ * prosjektnavnet, slik at `dev.eierfullstack` og `eierfullstack-dev` alltid er
+ * det samme stedet – ellers ville de to adressene kunnet peke hver sin vei.
+ */
+export function branchLabel(branch: string): string | null {
+  const label = branch
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return label === "" || label.length > 63 ? null : label;
+}
+
+/**
+ * Dev-sidens adresse: `dev.eierfullstack.snoat.com`.
+ *
+ * Den kommer i TILLEGG til `eierfullstack-dev.snoat.com`, ikke i stedet for.
+ * `projects.name` er fortsatt identiteten – containernavn, analytics-hostmapet,
+ * plangrensene og tls-ask slår alle opp på den – og å bytte den ut ville vært å
+ * flytte alt dette samtidig. Ruten får i stedet begge vertsnavnene i
+ * host-matcheren sin, og dashboardet viser den pene.
+ *
+ * Formen krever at DNS svarer på to etiketter under suffikset. `*.snoat.com`
+ * gjør det: en wildcard dekker alle navn under seg som ikke har en nærmere node
+ * i sonen (RFC 4592), ikke bare én etikett. Verifisert 6. sep 2026 mot 1.1.1.1
+ * og 8.8.8.8 – `zz.qq.snoat.com` svarer med serverens IP.
+ */
+export function devAliasHostname(parentName: string, branch: string): string | null {
+  const label = branchLabel(branch);
+  if (!label) return null;
+
+  // En dev-side på samme gren som produksjonen finnes ikke, men skulle navnet
+  // kollidere med hovedprosjektets eget vertsnavn er det hovedprosjektet som
+  // eier adressen.
+  if (`${label}.${parentName}` === parentName) return null;
+
+  return `${label}.${appHostname(parentName)}`;
+}
+
+/**
+ * Motsatt vei: `dev.eierfullstack.snoat.com` → `{ parentName, branchLabel }`.
+ *
+ * Brukes av tls-ask, som ellers ville nektet sertifikat for dev-adressen –
+ * `slugFromHostname()` avviser med vilje alt som har punktum i seg.
+ */
+export function devAliasParts(
+  hostname: string,
+): { parentName: string; branchLabel: string } | null {
+  const suffix = config.SNOAT_APP_DOMAIN_SUFFIX;
+  if (!hostname.endsWith(suffix)) return null;
+
+  const labels = hostname.slice(0, -suffix.length).split(".");
+  if (labels.length !== 2) return null;
+
+  const [branch, parent] = labels;
+  const valid = (value: string | undefined) => typeof value === "string" && /^[a-z0-9-]+$/.test(value);
+
+  return valid(branch) && valid(parent)
+    ? { parentName: parent as string, branchLabel: branch as string }
+    : null;
 }
 
 /**
@@ -157,10 +224,11 @@ export async function upsertAppRoute(
   customDomain: string | null,
   upstream: string,
   accessPasswordHash: string | null = null,
+  aliasHosts: string[] = [],
 ): Promise<string> {
   return await upsertRoute(
     slug,
-    customDomain,
+    hostsFor(slug, customDomain, aliasHosts),
     [{ handler: "reverse_proxy", upstreams: [{ dial: upstream }] }],
     { upstream, protected: Boolean(accessPasswordHash) },
     accessPasswordHash,
@@ -186,14 +254,28 @@ export async function upsertStaticRoute(
   root: string,
   spaFallback: boolean,
   accessPasswordHash: string | null = null,
+  aliasHosts: string[] = [],
 ): Promise<string> {
   return await upsertRoute(
     slug,
-    customDomain,
+    hostsFor(slug, customDomain, aliasHosts),
     staticHandlers(root, spaFallback),
     { root, spaFallback, protected: Boolean(accessPasswordHash) },
     accessPasswordHash,
   );
+}
+
+/**
+ * Vertsnavnene ruten skal svare på, i den rekkefølgen de skal stå.
+ *
+ * Et eget domene tar med subdomenene sine. Caddys host-matcher støtter `*` som
+ * én etikett helt foran, så `*.example.com` treffer `a.example.com`, men ikke
+ * `example.com` selv – derfor må begge stå oppført.
+ */
+function hostsFor(slug: string, customDomain: string | null, aliasHosts: string[] = []): string[] {
+  const hosts = [appHostname(slug), ...aliasHosts];
+  if (customDomain) hosts.push(customDomain, `*.${customDomain}`);
+  return [...new Set(hosts)];
 }
 
 function staticHandlers(root: string, spaFallback: boolean): Array<Record<string, unknown>> {
@@ -269,19 +351,12 @@ function basicAuthHandler(hash: string): Record<string, unknown> {
 
 async function upsertRoute(
   slug: string,
-  customDomain: string | null,
+  hosts: string[],
   handle: Array<Record<string, unknown>>,
   logContext: Record<string, unknown>,
   accessPasswordHash: string | null = null,
 ): Promise<string> {
-  const hostname = appHostname(slug);
-
-  // Et eget domene tar med subdomenene sine. Caddys host-matcher støtter `*` som
-  // én etikett helt foran, så `*.example.com` treffer `a.example.com`, men ikke
-  // `example.com` selv – derfor må begge stå oppført.
-  const hosts = customDomain
-    ? [hostname, customDomain, `*.${customDomain}`]
-    : [hostname];
+  const hostname = hosts[0] ?? appHostname(slug);
 
   // Vakten står *først*: en 401 skal komme før reverse_proxy har åpnet en
   // forbindelse til appen, og før file_server har lest en fil fra disk.
@@ -346,37 +421,79 @@ export async function getAppRoute(slug: string): Promise<CaddyRoute | null> {
 
 /** Setter en tidligere lest rute tilbake. Brukes ved rollback eller endring av domene. */
 export async function restoreAppRoute(slug: string, customDomain: string | null, route: CaddyRoute): Promise<void> {
-  await upsertRoute(slug, customDomain, route.handle, { restored: true });
+  // Vertsnavnene tas fra ruten slik den sto, ikke bygges opp på nytt: en
+  // dev-side svarer også på `dev.<prosjekt>`-adressen sin, og en rollback som
+  // utledet hostene av slug og eget domene ville stille fjernet den.
+  //
+  // Handler-kjeden settes tilbake som den var – vakten står allerede først i
+  // den, så hashen skal ikke legges på en gang til.
+  await upsertRoute(
+    slug,
+    route.match?.[0]?.host ?? hostsFor(slug, customDomain),
+    route.handle,
+    { restored: true },
+  );
+}
+
+/**
+ * Alle handlerne i en rute, også de som ligger inne i en `subroute`.
+ *
+ * ⚠️ Leserne under så tidligere bare på `handle[0]`, og det var feil så snart
+ * appen var passordbeskyttet: `upsertRoute()` setter basic-auth-vakten *først*,
+ * så `handle[0]` er `authentication` og ikke `reverse_proxy`. Begge leserne
+ * svarte da `null` på en rute som var helt i orden, og
+ * `runPipeline()` konkluderte med «Caddy peker på ingenting etter byttet» og
+ * rullet tilbake en container som kjørte. Siden hver dev-side er beskyttet fra
+ * fødselen av, feilet *hver eneste* dev-deployment på siste steg.
+ */
+function* allHandlers(
+  handlers: Array<Record<string, unknown>> | undefined,
+): Generator<Record<string, unknown>> {
+  for (const handler of handlers ?? []) {
+    yield handler;
+
+    const routes = handler.routes;
+    if (!Array.isArray(routes)) continue;
+
+    for (const sub of routes as Array<{ handle?: Array<Record<string, unknown>> }>) {
+      yield* allHandlers(sub.handle);
+    }
+  }
 }
 
 export function routeUpstream(route: CaddyRoute | null): string | null {
-  const first = route?.handle?.[0];
-  if (!first || first.handler !== "reverse_proxy") return null;
+  for (const handler of allHandlers(route?.handle)) {
+    if (handler.handler !== "reverse_proxy") continue;
 
-  const upstreams = first.upstreams;
-  if (!Array.isArray(upstreams)) return null;
+    const upstreams = handler.upstreams;
+    if (!Array.isArray(upstreams)) continue;
 
-  const dial = (upstreams[0] as { dial?: unknown } | undefined)?.dial;
-  return typeof dial === "string" ? dial : null;
+    const dial = (upstreams[0] as { dial?: unknown } | undefined)?.dial;
+    if (typeof dial === "string") return dial;
+  }
+
+  return null;
+}
+
+/** Sant når ruten krever passord. Leses tilbake fra Caddy, ikke fra databasen. */
+export function routeIsProtected(route: CaddyRoute | null): boolean {
+  for (const handler of allHandlers(route?.handle)) {
+    if (handler.handler === "authentication") return true;
+  }
+
+  return false;
 }
 
 /**
  * Katalogen en statisk rute peker på.
  *
  * `root` ligger på ulikt sted i de to formene `staticHandlers()` lager: rett på
- * det første handler-objektet uten SPA-fallback, og inne i subrouten med.
+ * et handler-objekt uten SPA-fallback, og inne i subrouten med. Derfor leter vi
+ * gjennom hele kjeden framfor å vite hvor den skal stå.
  */
 export function routeRoot(route: CaddyRoute | null): string | null {
-  const first = route?.handle?.[0];
-  if (!first) return null;
-
-  if (typeof first.root === "string") return first.root;
-
-  if (Array.isArray(first.routes)) {
-    for (const sub of first.routes as Array<{ handle?: Array<Record<string, unknown>> }>) {
-      const root = sub.handle?.[0]?.root;
-      if (typeof root === "string") return root;
-    }
+  for (const handler of allHandlers(route?.handle)) {
+    if (typeof handler.root === "string") return handler.root;
   }
 
   return null;

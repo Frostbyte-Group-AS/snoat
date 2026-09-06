@@ -18,7 +18,7 @@ import { finnStatiskErklaering } from "./static-declaration.js";
 import { pruneOldSites, publishStaticSite, removeProjectSites, siteDirFor } from "./static-site.js";
 import { invalidateHostMap } from "./analytics-ingest.js";
 import { notifyFirstDeploymentLive } from "./notify.js";
-import { passwordHashFor } from "./dev-sites.js";
+import { aliasHostnamesFor, passwordHashFor, publicUrlFor } from "./dev-sites.js";
 import { rm, stat } from "node:fs/promises";
 
 /**
@@ -163,7 +163,7 @@ export async function failOrphanedDeployments(): Promise<number> {
 async function setStatus(
   deploymentId: string,
   status: DeploymentStatus,
-  fields: Partial<Pick<Deployment, "url" | "commit_hash" | "duration_ms">> = {},
+  fields: Partial<Pick<Deployment, "url" | "commit_hash" | "duration_ms" | "branch">> = {},
 ): Promise<void> {
   const { error } = await supabase
     .from("deployments")
@@ -232,7 +232,13 @@ export async function startDeployment(project: Project): Promise<Deployment> {
 
   const { data, error } = await supabase
     .from("deployments")
-    .insert({ project_id: project.id, status: "queued" })
+    // `branch` skrives allerede her, med det prosjektet peker på. Byggelisten
+    // skal kunne si hvilken gren som bygges mens det står i kø, ikke først når
+    // klonen er ferdig – det er nettopp da man lurer på om man ser
+    // produksjonsbygget eller dev-bygget. Er feltet NULL, bygges repoets
+    // standardgren, og `runPipeline` skriver over med navnet git faktisk sjekket
+    // ut så snart det er kjent.
+    .insert({ project_id: project.id, status: "queued", branch: project.branch })
     .select()
     .single();
 
@@ -369,6 +375,7 @@ async function rollback(
           project.custom_domain,
           previousUpstream,
           await accessHashFor(project),
+          await aliasHostnamesFor(project).catch(() => [] as string[]),
         );
         logs.write(`Ruten peker igjen på ${previousUpstream}.`);
       } catch (error) {
@@ -464,6 +471,7 @@ async function deployStatic(
   deployment: Deployment,
   image: string,
   previousRoute: Awaited<ReturnType<typeof caddy.getAppRoute>>,
+  aliasHosts: string[],
   logs: LogStream,
 ): Promise<void> {
   const root = await publishStaticSite(project, deployment.id, image, logs);
@@ -476,6 +484,7 @@ async function deployStatic(
       root,
       project.static_spa_fallback,
       await accessHashFor(project),
+      aliasHosts,
     );
 
     const active = await caddy.appRouteRoot(project.name);
@@ -527,7 +536,10 @@ async function runPipeline(
   entitlement: Entitlement,
   logs: LogStream,
 ): Promise<void> {
-  const url = caddy.appUrl(project.name);
+  // Dev-sider svarer på to adresser (se `caddy.devAliasHostname`). Den pene er
+  // den vi lagrer og viser; begge legges i ruten.
+  const aliasHosts = await aliasHostnamesFor(project).catch(() => [] as string[]);
+  const url = publicUrlFor(project, aliasHosts);
   const started = Date.now();
 
   await setStatus(deployment.id, "building");
@@ -538,7 +550,7 @@ async function runPipeline(
     // Er den satt, er det den grenen som bygges, og `cloneRepository` skriver
     // valget til byggeloggen slik at det er etterprøvbart hvilken kode som ble
     // rullet ut.
-    const { directory, commitHash } = await cloneRepository(
+    const { directory, commitHash, branch } = await cloneRepository(
       project.repo_url,
       project.id,
       deployment.id,
@@ -546,7 +558,10 @@ async function runPipeline(
       project.github_installation_id,
       project.branch,
     );
-    await setStatus(deployment.id, "building", { commit_hash: commitHash });
+    // Grenen lagres på deploymenten, ikke bare i loggteksten. Prosjektets
+    // `branch` kan endres i morgen, og da ville byggehistorikken påstått at
+    // gårsdagens bygg kom fra den nye grenen.
+    await setStatus(deployment.id, "building", { commit_hash: commitHash, branch });
 
     await warnOnRepeatedFailedCommit(project, deployment, commitHash, logs).catch((error: unknown) => {
       logger.warn({ project: project.name, err: error }, "Kunne ikke sjekke forrige commit");
@@ -567,7 +582,7 @@ async function runPipeline(
     });
 
     if (project.static_output_dir) {
-      await deployStatic(project, deployment, image, previousRoute, logs);
+      await deployStatic(project, deployment, image, previousRoute, aliasHosts, logs);
 
       logs.write(`Live på ${url}`);
 
@@ -614,6 +629,7 @@ async function runPipeline(
         project.custom_domain,
         upstream,
         await accessHashFor(project),
+        aliasHosts,
       );
 
       // Caddy bytter ruten i minnet – vi leser den tilbake før vi river ned den
@@ -754,6 +770,7 @@ export async function ensureProjectRoute(project: Project): Promise<RouteStatus>
       root,
       project.static_spa_fallback,
       await accessHashFor(project),
+      await aliasHostnamesFor(project),
     );
     return { routed: true };
   }
@@ -773,6 +790,7 @@ export async function ensureProjectRoute(project: Project): Promise<RouteStatus>
     project.custom_domain,
     containers.upstreamFor(name),
     await accessHashFor(project),
+    await aliasHostnamesFor(project),
   );
 
   // Rullerende utrulling som ble avbrutt midtveis (backend drept mellom
