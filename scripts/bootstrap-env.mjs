@@ -272,7 +272,7 @@ SNOAT_STABLE_TIMEOUT_MS=${preserved("SNOAT_STABLE_TIMEOUT_MS", "90000")}
 SNOAT_DEFAULT_NODE_VERSION=${preserved("SNOAT_DEFAULT_NODE_VERSION", "22")}
 # Samtidige builds på hele verten, og heap-tak per build (MB).
 SNOAT_MAX_CONCURRENT_BUILDS=${preserved("SNOAT_MAX_CONCURRENT_BUILDS", "1")}
-SNOAT_BUILD_NODE_MEMORY_MB=${preserved("SNOAT_BUILD_NODE_MEMORY_MB", "1536")}
+SNOAT_BUILD_NODE_MEMORY_MB=${preserved("SNOAT_BUILD_NODE_MEMORY_MB", "8192")}
 # Statiske sider serveres fra disk uten container (03_deployment_flow.md).
 SNOAT_SITES_DIR=${preserved("SNOAT_SITES_DIR", "/srv/sites")}
 # --- Stripe: abonnement og betaling ------------------------------------------

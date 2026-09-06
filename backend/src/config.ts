@@ -199,10 +199,25 @@ const schema = z.object({
    * i stedet med «JavaScript heap out of memory» – en feil som rammer én kunde og
    * står forklart i loggen, i stedet for å ta ned alle.
    *
-   * Settes for lavt feiler store prosjekter unødvendig. Tommelfingerregel: rundt
-   * 75 % av minnet verten kan avse til én build.
+   * ── DETTE ER ET TAK, IKKE EN VERDI ──────────────────────────────────────
+   *
+   * Fram til 6. september 2026 var dette tallet selve byggeminnet, likt for
+   * alle planer. En betalende kunde fikk dermed nøyaktig samme byggetak som en
+   * gratisbruker: planen ga flere apper og mer kjøreminne, men ikke én megabyte
+   * mer å bygge med. For et prosjekt som var for stort til å bygge, hjalp det
+   * ikke å betale.
+   *
+   * Byggeminnet er nå en PLANGRENSE (`buildMemoryMb` i `services/plans.ts`).
+   * Denne variabelen er vertens tak: planen ber om et tall, og det laveste av
+   * de to vinner. Kjører Snoat på en liten VPS, senkes den her — et tak vi ikke
+   * kan innfri er verre enn et lavt.
+   *
+   * Standard 8192 slipper business-planen helt gjennom på en vert som har
+   * minne til det. Byggene er serialisert (`SNOAT_MAX_CONCURRENT_BUILDS`) og
+   * varer i minutter, så et bygg kan låne mye mer enn en app som står døgnet
+   * rundt kan binde opp.
    */
-  SNOAT_BUILD_NODE_MEMORY_MB: z.coerce.number().int().positive().default(1536),
+  SNOAT_BUILD_NODE_MEMORY_MB: z.coerce.number().int().positive().default(8192),
 
   /**
    * Node-versjonen prosjekter bygges med når repoet ikke oppgir en selv.

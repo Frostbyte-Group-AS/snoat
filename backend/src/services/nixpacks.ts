@@ -35,6 +35,15 @@ export async function buildImage(
   project: Project,
   directory: string,
   logs: LogStream,
+  /**
+   * Heap-tak for bygget, i MB — fra `buildMemoryFor()` i `services/plans.ts`.
+   *
+   * Kommer som argument og ikke fra `config`, fordi tallet avhenger av kundens
+   * PLAN. Leste vi det her, ville alle planer fått samme byggetak, og det var
+   * nettopp feilen: en betalende kunde fikk ikke mer å bygge med enn en
+   * gratisbruker.
+   */
+  buildMemoryMb: number,
 ): Promise<string> {
   const image = imageNameFor(project);
 
@@ -76,8 +85,8 @@ export async function buildImage(
   // allerede begynt å swappe. Med taket feiler bygget med en forklarlig
   // heap-feil i stedet for å ta ned plattformen for alle andre.
   if (!Object.hasOwn(userEnv, "NODE_OPTIONS")) {
-    args.push("--env", `NODE_OPTIONS=--max-old-space-size=${config.SNOAT_BUILD_NODE_MEMORY_MB}`);
-    logs.write(`Minnetak under bygging: ${config.SNOAT_BUILD_NODE_MEMORY_MB} MB heap.`);
+    args.push("--env", `NODE_OPTIONS=--max-old-space-size=${buildMemoryMb}`);
+    logs.write(`Minnetak under bygging: ${buildMemoryMb} MB heap (fra planen).`);
   }
 
   logs.write(`nixpacks build ${directory} --name ${image}`);

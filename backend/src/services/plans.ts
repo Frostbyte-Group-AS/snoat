@@ -16,8 +16,29 @@ import * as containers from "./containers.js";
 export interface PlanLimits {
   /** Samtidig kjørende dynamiske apper. Statiske sider teller ikke. */
   maxRunningProjects: number;
-  /** Minne per container, i MB. */
+  /** Minne per container når appen KJØRER, i MB. */
   memoryMb: number;
+  /**
+   * Heap-tak for Node under BYGGING, i MB.
+   *
+   * ── HVORFOR DETTE ER ET EGET TALL ────────────────────────────────────────
+   *
+   * Å bygge og å kjøre koster ikke det samme. `next build` holder hele
+   * modulgrafen, typeinformasjonen og alle chunkene i minnet samtidig; den
+   * ferdige serveren serverer ferdige filer. Et bygg kan trenge fire ganger så
+   * mye som appen bruker etterpå.
+   *
+   * Fram til 6. september 2026 fantes bare ETT tall, `SNOAT_BUILD_NODE_MEMORY_MB`
+   * i config, likt for alle planer. En kunde som betalte fikk altså nøyaktig
+   * samme byggetak som en gratisbruker — planen ga flere kjørende apper og mer
+   * kjøreminne, men ikke én megabyte mer å bygge med. For et prosjekt som var
+   * for stort til å bygge, hjalp det ikke å betale.
+   *
+   * Byggene er dessuten serialisert (`SNOAT_MAX_CONCURRENT_BUILDS`, standard 1)
+   * og varer i minutter. Verten kan derfor låne ut mye mer til ett bygg enn den
+   * kan binde opp i en app som står døgnet rundt.
+   */
+  buildMemoryMb: number;
   /** CPU-andel per container. */
   cpus: number;
   /** Byggeminutter per kalendermåned, på tvers av alle prosjekter. */
@@ -52,6 +73,7 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
   free: {
     maxRunningProjects: 1,
     memoryMb: 256,
+    buildMemoryMb: 1024,
     cpus: 0.5,
     buildMinutesPerMonth: 100,
     queuePriority: 0,
@@ -59,8 +81,9 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
   },
   pro: {
     maxRunningProjects: 5,
-    memoryMb: 1024,
-    cpus: 1,
+    memoryMb: 2048,
+    buildMemoryMb: 4096,
+    cpus: 2,
     buildMinutesPerMonth: 500,
     queuePriority: 10,
     analytics: true,
@@ -68,6 +91,7 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
   business: {
     maxRunningProjects: 20,
     memoryMb: 8192,
+    buildMemoryMb: 8192,
     cpus: 4,
     buildMinutesPerMonth: 2000,
     queuePriority: 20,
@@ -88,8 +112,9 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
    */
   agency: {
     maxRunningProjects: 50,
-    memoryMb: 1024,
-    cpus: 1,
+    memoryMb: 2048,
+    buildMemoryMb: 4096,
+    cpus: 2,
     buildMinutesPerMonth: 20_000,
     queuePriority: 5,
     analytics: true,
@@ -227,6 +252,17 @@ export async function entitlementFor(userId: string): Promise<Entitlement> {
 export function limitsFor(entitlement: Entitlement, project?: Project): PlanLimits {
   const tier: SubscriptionTier = project?.plan ?? entitlement.plan;
   return PLAN_LIMITS[tier] ?? entitlement.limits;
+}
+
+/**
+ * Heap-taket bygget skal kjøre under, i MB.
+ *
+ * Planen ber om et tall; `SNOAT_BUILD_NODE_MEMORY_MB` er vertens tak og vinner
+ * hvis det er lavere. En liten VPS skal kunne kjøre Snoat uten å love et bygg
+ * den ikke har minne til — et tak vi ikke kan innfri er verre enn et lavt.
+ */
+export function buildMemoryFor(entitlement: Entitlement, project?: Project): number {
+  return Math.min(limitsFor(entitlement, project).buildMemoryMb, config.SNOAT_BUILD_NODE_MEMORY_MB);
 }
 
 /** Ressurstaket containeren skal kjøres under. */

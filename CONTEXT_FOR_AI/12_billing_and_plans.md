@@ -15,12 +15,38 @@ Free-grensene, og dashboardet skjuler kjøpsknappene.
 | Pris eks. mva (Norge) | 0 | 199 kr/mnd | 799 kr/mnd |
 | Pris eks. mva (øvrige) | 0 | 19 €/mnd | 79 €/mnd |
 | Dynamiske apper samtidig | 1 | 5 | 20 |
-| RAM per app | 256 MB | 1 GB | 8 GB |
-| vCPU per app | 0,5 | 1 | 4 |
+| RAM per app (kjørende) | 256 MB | 2 GB | 8 GB |
+| RAM under bygging | 1 GB | 4 GB | 8 GB |
+| vCPU per app | 0,5 | 2 | 4 |
 | Byggeminutter per måned | 100 | 500 | 2 000 |
 | Byggekø | Standard | Prioritert | Prioritert |
 | Statiske sider | Ubegrenset | Ubegrenset | Ubegrenset |
 | Trafikkstatistikk | – | ✓ | ✓ |
+
+### Bygging og kjøring er to ulike tall
+
+`memoryMb` er hva appen får når den KJØRER. `buildMemoryMb` er heap-taket
+`next build` og `vite build` får mens de bygger. De er med vilje ulike, og
+byggetallet er høyest.
+
+Grunnen er hva de to faktisk gjør: et bygg holder hele modulgrafen,
+typeinformasjonen og alle chunkene i minnet samtidig, mens den ferdige serveren
+serverer ferdige filer. Et bygg kan trenge fire ganger så mye som appen bruker
+etterpå.
+
+Verten kan låne ut mye mer til et bygg enn den kan binde opp i en app som står
+døgnet rundt, av to grunner: byggene er serialisert
+(`SNOAT_MAX_CONCURRENT_BUILDS`, standard 1), og de varer i minutter.
+
+**Fram til 6. september 2026 fantes bare ett tall.** `SNOAT_BUILD_NODE_MEMORY_MB`
+i config var byggeminnet for alle planer. En kunde som betalte fikk flere apper
+og mer kjøreminne — men ikke én megabyte mer å bygge med. For et prosjekt som
+var for stort til å bygge, hjalp det altså ikke å oppgradere. Den variabelen er
+nå vertens **tak**: planen ber om et tall, og det laveste av de to vinner.
+
+> Merk at taket må heves i miljøet, ikke bare i planen. Produksjonsserveren
+> hadde `SNOAT_BUILD_NODE_MEMORY_MB=1536` i `.env`, som ville kappet alle
+> planene tilbake til det gamle tallet uten at noe sa fra.
 
 Grensene står **kun ett sted i koden**: `PLAN_LIMITS` i
 `backend/src/services/plans.ts`. Både håndhevingen, ressurstaket på containeren

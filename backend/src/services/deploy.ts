@@ -11,6 +11,7 @@ import {
   assertCanDeploy,
   entitlementFor,
   planName,
+  buildMemoryFor,
   resourcesFor,
   type Entitlement,
 } from "./plans.js";
@@ -569,7 +570,7 @@ async function runPipeline(
 
     await assertKjoremodusStemmer(project, directory, logs);
 
-    const image = await buildImage(project, directory, logs);
+    const image = await buildImage(project, directory, logs, buildMemoryFor(entitlement, project));
 
     // Hva serverer trafikk nå? Leses før vi rører noe, slik at vi kan peke
     // tilbake hit hvis den nye versjonen ikke kommer opp. `null` = første
