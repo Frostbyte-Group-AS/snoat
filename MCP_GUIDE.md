@@ -134,18 +134,47 @@ Byggelogger klippes til de siste 20 000 tegnene og kjøres gjennom `redactCreden
 | --- | --- | --- |
 | `snoat_list_projects` | lesende | Alle prosjekter med status på siste deployment. |
 | `snoat_get_project` | lesende | Detaljer for ett prosjekt. |
-| `snoat_get_deployments` | lesende | De 20 siste deploymentene. |
+| `snoat_get_deployments` | lesende | De 20 siste deploymentene, med hvilken **gren** hver bygget. |
 | `snoat_get_deployment_logs` | lesende | Bygge- og kjøretidslogg for én deployment. |
 | `snoat_get_analytics` | lesende | Besøkstall, responstider, statuskoder, toppstier. |
 | `snoat_get_domain_status` | lesende | DNS, Caddy-rute og TLS-sertifikat for eget domene. |
+| `snoat_list_dev_sites` | lesende | Dev-grenene til et prosjekt: gren, adresse og om de er passordbeskyttet. |
 | `snoat_list_github_repos` | lesende | Tilkoblede GitHub-kontoer og repoene Snoat kan klone, med installasjons-ID per repo. |
 | `snoat_create_project` | skrivende | Nytt prosjekt fra en GitHub-repo. Bygger ikke automatisk. |
 | `snoat_update_project` | skrivende | Byggekommando, miljøvariabler, statiske innstillinger, GitHub-installasjon. |
 | `snoat_connect_github` | skrivende | Registrerer en GitHub App-installasjon på kontoen. |
 | `snoat_trigger_deployment` | skrivende | Legger et bygg i kø. |
 | `snoat_set_custom_domain` | skrivende | Kobler eller fjerner eget domene. |
+| `snoat_create_dev_site` | skrivende | Spinner opp en passordbeskyttet forhåndsvisning av en gren. Arver repo, plan og miljøvariabler. |
+| `snoat_set_access_password` | skrivende | Setter eller fjerner passordet foran en app. Virker uten ny deployment. |
 | `snoat_stop_project` | destruktiv | Stopper appen. Prosjektet beholdes. |
 | `snoat_delete_project` | destruktiv | Permanent sletting. Krever bekreftelse. |
+
+
+### Dev-grener
+
+En dev-gren er en egen prosjektrad med `parent_project_id` satt. Den arver repo,
+byggekommando, plan og miljøvariabler fra hovedprosjektet, bygger en annen gren,
+og er **passordbeskyttet fra fødselen av** — en forhåndsvisning uten passord
+ville ligget åpent på internett.
+
+Miljøvariablene arves som en **kopi**, ikke en referanse: dev-siden skal kunne
+peke på en testdatabase uten at produksjonen gjør det.
+
+Adressen finnes i to former, og begge svarer:
+
+```
+eierfullstack-dev.snoat.com      # navnet raden faktisk har
+dev.eierfullstack.snoat.com      # aliaset, det man leser høyt
+```
+
+`projects.name` er fortsatt identiteten — containernavn, plangrenser, analytics
+og sertifikatutstedelse slår alle opp på den. Aliaset er et ekstra vertsnavn på
+samme Caddy-rute.
+
+**Når et dev-bygg ser rart ut, les grenen først.** Et prosjekt og dets dev-sider
+bygger ulike grener, og et bygg som ser feil ut er ofte bare den andre grenen.
+`snoat_get_deployments` oppgir den nå.
 
 ### GitHub-tilgang avgjøres før prosjektet opprettes
 

@@ -587,7 +587,10 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: "snoat_get_deployments",
     title: "Hent deployments",
-    description: "Henter de 20 siste deploymentene for et prosjekt, med status og varighet.",
+    description:
+      "Henter de 20 siste deploymentene for et prosjekt, med status, varighet og hvilken GREN som ble bygget. " +
+      "Grenen er verdt å lese: et prosjekt og dets dev-sider bygger ulike grener, og et bygg som ser feil ut " +
+      "er ofte bare den andre grenen.",
     inputSchema: {
       type: "object",
       properties: { projectId: { type: "string", description: "Prosjektets ID." } },
@@ -598,13 +601,16 @@ export const MCP_TOOLS: McpTool[] = [
     async run(args, ctx) {
       const { projectId } = projectIdSchema.parse(args);
       const data = await callOrThrow(ctx, "GET", `/projects/${projectId}/deployments`);
-      const list = (data as { deployments?: Array<{ status?: string }> }).deployments ?? [];
+      const list =
+        (data as { deployments?: Array<{ status?: string; branch?: string | null }> }).deployments ?? [];
+      const siste = list[0];
+      const gren = siste?.branch ? ` på gren «${siste.branch}»` : "";
 
       return {
         summary:
           list.length === 0
             ? "Prosjektet har ingen deployments ennå."
-            : `${list.length} deployment${list.length === 1 ? "" : "er"}, siste status: ${list[0]?.status}.`,
+            : `${list.length} deployment${list.length === 1 ? "" : "er"}, siste status: ${siste?.status}${gren}.`,
         data,
       };
     },
@@ -738,6 +744,116 @@ export const MCP_TOOLS: McpTool[] = [
       const data = await callOrThrow(ctx, "GET", `/projects/${projectId}/domain/status`);
 
       return { summary: "Domenestatus hentet.", data };
+    },
+  },
+
+  /*
+   * ── DEV-GRENER ────────────────────────────────────────────────────────────
+   *
+   * En dev-side er en egen prosjektrad med `parent_project_id` satt: den arver
+   * repo, byggekommando, plan og miljøvariabler fra hovedprosjektet, men bygger
+   * en annen gren og er passordbeskyttet fra fødselen av.
+   *
+   * Verktøyene her finnes fordi en assistent ellers måtte be brukeren om å gå
+   * inn i grensesnittet for å spinne opp en forhåndsvisning — som er nøyaktig
+   * den friksjonen dev-grener skal fjerne.
+   */
+  {
+    name: "snoat_list_dev_sites",
+    title: "List dev-grener",
+    description:
+      "Henter dev-grenene til et prosjekt: hvilken gren hver av dem bygger, adressen de svarer på, " +
+      "og om de er passordbeskyttet.",
+    inputSchema: {
+      type: "object",
+      properties: { projectId: { type: "string", description: "HOVEDprosjektets ID, ikke dev-sidens." } },
+      required: ["projectId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    async run(args, ctx) {
+      const { projectId } = projectIdSchema.parse(args);
+      const data = await callOrThrow(ctx, "GET", `/projects/${projectId}/dev-sites`);
+      const list = (data as { devSites?: Array<{ branch?: string }> }).devSites ?? [];
+
+      return {
+        summary:
+          list.length === 0
+            ? "Prosjektet har ingen dev-grener."
+            : `${list.length} dev-gren${list.length === 1 ? "" : "er"}: ${list.map((d) => d.branch ?? "?").join(", ")}.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_create_dev_site",
+    title: "Opprett dev-gren",
+    description:
+      "Spinner opp en passordbeskyttet forhåndsvisning av en gren. Den arver repo, byggekommando, plan og " +
+      "miljøvariabler fra hovedprosjektet — miljøvariablene som en KOPI, så dev-siden kan peke på en testdatabase " +
+      "uten at produksjonen gjør det. Passordet er påkrevd: en dev-side uten det ville ligget åpent på internett. " +
+      "Svaret kommer så snart raden finnes; bygget følges med snoat_get_deployments.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "HOVEDprosjektets ID. En dev-side kan ikke ha egne dev-sider." },
+        branch: { type: "string", description: "Grenen som skal bygges, f.eks. «dev»." },
+        password: { type: "string", description: "Passordet som beskytter forhåndsvisningen." },
+      },
+      required: ["projectId", "branch", "password"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    async run(args, ctx) {
+      const { projectId, branch, password } = z
+        .object({ projectId: z.string(), branch: z.string(), password: z.string() })
+        .parse(args);
+
+      const data = await callOrThrow(ctx, "POST", `/projects/${projectId}/dev-sites`, {
+        branch,
+        password,
+      });
+      const site = (data as { project?: { name?: string; id?: string } }).project;
+
+      return {
+        summary: `Dev-grenen «${branch}» er opprettet som ${site?.name ?? "et nytt prosjekt"}. Bygget starter nå.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_set_access_password",
+    title: "Sett eller fjern passord",
+    description:
+      "Legger et passord foran en app, eller fjerner det med password: null. Caddy-ruten skrives om umiddelbart, " +
+      "så endringen gjelder uten en ny deployment. Gjelder alle prosjekter, ikke bare dev-grener — «legg et passord " +
+      "foran denne appen» er like nyttig for en kundedemo.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Prosjektets ID — hovedprosjekt eller dev-side." },
+        password: {
+          type: ["string", "null"],
+          description: "Det nye passordet, eller null for å fjerne beskyttelsen.",
+        },
+      },
+      required: ["projectId", "password"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    async run(args, ctx) {
+      const { projectId, password } = z
+        .object({ projectId: z.string(), password: z.string().nullable() })
+        .parse(args);
+
+      const data = await callOrThrow(ctx, "PATCH", `/projects/${projectId}/access`, { password });
+
+      return {
+        summary: password === null ? "Passordbeskyttelsen er fjernet." : "Passordet er satt.",
+        data,
+      };
     },
   },
 
