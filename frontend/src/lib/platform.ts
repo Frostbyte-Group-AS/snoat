@@ -27,3 +27,37 @@ export function projectUrl(slug: string): string {
   const isLocal = hostname === "localhost" || hostname.endsWith(".localhost");
   return `${isLocal ? "http" : "https"}://${hostname}`;
 }
+
+/**
+ * Grenen som én DNS-etikett. Speiler `branchLabel()` i backend
+ * (`lib/caddy.ts`) – de to må gi samme svar, ellers viser dashboardet en
+ * adresse Caddy ikke ruter.
+ */
+export function branchLabel(branch: string): string | null {
+  const label = branch
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return label === "" || label.length > 63 ? null : label;
+}
+
+/**
+ * Dev-sidens pene adresse: `dev.eierfullstack.snoat.com`.
+ *
+ * Dev-siden svarer også på `eierfullstack-dev.snoat.com` – navnet er fortsatt
+ * identiteten – men det er denne som vises, fordi den sier hva den er uten at
+ * man må kunne navnekonvensjonen. `null` når grenen ikke kan bli en etikett.
+ */
+export function devSiteHostname(parentName: string, branch: string): string | null {
+  const label = branchLabel(branch);
+  return label ? `${label}.${projectHostname(parentName)}` : null;
+}
+
+/** Full URL til dev-sidens pene adresse, eller `null`. */
+export function devSiteUrl(parentName: string, branch: string): string | null {
+  const hostname = devSiteHostname(parentName, branch);
+  if (!hostname) return null;
+  const isLocal = hostname.endsWith(".localhost");
+  return `${isLocal ? "http" : "https"}://${hostname}`;
+}

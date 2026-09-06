@@ -4,6 +4,57 @@ Denne filen dokumenterer nye funksjonaliteter og forbedringer som er innført i 
 
 ---
 
+## 0e. Dev-grener som virket, og som er til å finne
+
+Tre ting: en feil som gjorde dev-sider ubrukelige, en adresse som sier hva den
+er, og en flytting av selve funksjonen dit man jobber.
+
+### Feilen: hver dev-deployment feilet på siste steg
+
+`routeUpstream()` og `routeRoot()` i `lib/caddy.ts` leste bare `handle[0]` for å
+finne ut hva en Caddy-rute pekte på. På en passordbeskyttet app står
+`authentication`-vakten først i kjeden, så begge svarte `null` på en rute som var
+riktig skrevet. Steg 7 i pipelinen leser ruten tilbake etter byttet, fant
+«ingenting», og rullet tilbake en container som kjørte og svarte. Hver dev-side
+er beskyttet fra fødselen av, så *alle* dev-deployments feilet – etter at loggen
+hadde skrevet «Successfully Built!» og «Containeren står stabilt».
+
+Bekreftet mot drift 6. sep 2026: `eierfullstack-dev` og `osia-dev` endte begge
+på `Caddy peker på ingenting etter byttet`, og `osia-dev.snoat.com` svarte
+samtidig 401 – altså fantes ruten, med vakten først, nøyaktig som beskrevet.
+
+Samme blindsone gjorde at «fjern passord» aldri nådde Caddy: `refreshRoute()`
+fant verken upstream eller root og tok ingen av grenene. Appen ble stående låst
+mens dashboardet sa at den var åpen.
+
+Begge leserne går nå gjennom hele handler-kjeden, også inn i `subroute`.
+
+### Adressen: `<gren>.<prosjekt>.snoat.com`
+
+Dev-siden svarer nå også på `dev.eierfullstack.snoat.com`, i tillegg til
+`eierfullstack-dev.snoat.com`. Se `03_deployment_flow.md` for hvorfor det er et
+alias og ikke en omdøping, og hva `tls-ask` og analytics-hostmapet måtte lære.
+Adressen står ved lenken i dev-gren-lista, klar til å kopieres.
+
+### Synlighet: gren på hvert bygg, dev-grener der man jobber
+
+- `deployments.branch` (migrasjon 0014) lagrer grenen bygget faktisk kom fra.
+  Den vises som merkelapp i prosjektoverskriften, på hvert bygg i historikken,
+  i «Seneste deployment» og i terminalens topprad – gul mens det bygges. Før
+  sto svaret bare som «Gren: …» inne i loggteksten, og produksjons- og
+  dev-bygget så helt like ut.
+- Historikkraden teller nå sekunder mens bygget pågår. Den leste tidligere
+  varigheten ut av «Ferdig på …» i loggen, som først finnes når bygget er ferdig
+  – lista viste altså ingenting i det eneste tidsrommet man ser på den.
+- Dev-gren-kortet er flyttet fra Innstillinger til Deployments-fanen, og
+  skjemaet er foldet bort til man trykker «Ny dev-gren», slik at lista og
+  adressene er det man ser først.
+- Dashboardet henter nå dev-sidene også, og viser dem som klikkbare
+  grenmerkelapper på prosjektkortet. Spørringen filtrerte dem bort før, og da
+  fantes de ingen steder i oversikten.
+
+---
+
 ## 0d. Mykere strek, terminal som følger systemet, og bevegelse overalt
 
 Fire ting etter at «Ink & Sun» hadde stått en stund og blitt brukt.
