@@ -27,25 +27,41 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 async function fetchProjects(): Promise<ProjectWithLatestDeployment[]> {
+  // Hele lista hentes, dev-sidene inkludert, og grupperes her.
+  //
+  // Spørringen filtrerte tidligere bort dev-sidene med
+  // `.is("parent_project_id", null)`, og det var riktig så langt det gikk – de
+  // *er* prosjektrader (migrasjon 0013), og uten filteret ville «mittvel» og
+  // «mittvel-dev» stått side om side som to likestilte apper. Men da fantes
+  // dev-grenene ingen steder i oversikten i det hele tatt: eneste vei inn gikk
+  // via Innstillinger på hovedprosjektet. Nå står de som grener *under*
+  // prosjektet sitt, som er det de er.
   const { data, error } = await getSupabase()
     .from("projects")
     .select("*, deployments(*)")
-    // Dev-sider hører hjemme under prosjektet sitt, ikke som egne kort i
-    // oversikten. De *er* prosjektrader (migrasjon 0013), så uten dette filteret
-    // dobles listen for alle som bruker dem – og «mittvel» og «mittvel-dev» ville
-    // stått side om side som to likestilte apper.
-    .is("parent_project_id", null)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row) => {
+  const rows = (data ?? []).map((row) => {
     const { deployments, ...project } = row as Project & { deployments: Deployment[] };
     const latest = [...(deployments ?? [])].sort((a, b) =>
       b.created_at.localeCompare(a.created_at),
     )[0];
-    return { ...project, latestDeployment: latest ?? null };
+    return { ...project, latestDeployment: latest ?? null } as ProjectWithLatestDeployment;
   });
+
+  const devSitesByParent = new Map<string, ProjectWithLatestDeployment[]>();
+  for (const row of rows) {
+    if (!row.parent_project_id) continue;
+    const siblings = devSitesByParent.get(row.parent_project_id) ?? [];
+    siblings.push(row);
+    devSitesByParent.set(row.parent_project_id, siblings);
+  }
+
+  return rows
+    .filter((row) => !row.parent_project_id)
+    .map((row) => ({ ...row, devSites: devSitesByParent.get(row.id) ?? [] }));
 }
 
 function DashboardPage() {
@@ -280,6 +296,7 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
   const isBuilding = deployment?.status === "queued" || deployment?.status === "building";
   /** Appen er slått av. Statusen ligger på prosjektet, ikke på deploymenten. */
   const isStopped = Boolean(project.stopped_at);
+  const devSites = project.devSites ?? [];
 
   // En stoppet app har ingen adresse som svarer. Lenken skjules derfor, i stedet
   // for å sende brukeren til en 502.
@@ -344,6 +361,38 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
           <span className="block font-mono text-[13px] text-ink/50">{t("dashboard.no_url")}</span>
         )}
       </div>
+
+      {/* Dev-grenene, som klikkbare merkelapper.
+          De lå tidligere bare inne i Innstillinger på prosjektsiden, og var i
+          praksis usynlige. Her står de der man ser prosjektet, med grennavnet
+          som etikett – det er grenen man leter etter, ikke radnavnet
+          «prosjekt-gren». */}
+      {devSites.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {devSites.map((site) => (
+            <button
+              key={site.id}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void navigate({ to: "/projects/$projectId", params: { projectId: site.id } });
+              }}
+              title={site.name}
+              className={`inline-flex max-w-[180px] items-center gap-[6px] truncate border-2 px-[8px] py-[2px] font-mono text-[12px] transition-colors ${
+                site.stopped_at
+                  ? "border-hair text-ink/50 hover:border-line hover:text-ink"
+                  : "border-line text-ink hover:bg-sun"
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`h-[7px] w-[7px] shrink-0 ${site.stopped_at ? "bg-ash" : "bg-ink"}`}
+              />
+              {site.branch ?? site.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       <hr className="hairline" />
 

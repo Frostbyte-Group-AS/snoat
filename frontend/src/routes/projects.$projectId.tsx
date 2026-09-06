@@ -114,6 +114,23 @@ function ProjectDetailPage() {
   // med en av/på-bryter i stedet for Stopp/Start, se kommentaren ved bryteren.
   const isDevSite = Boolean(project?.parent_project_id);
 
+  // Hovedprosjektet en dev-side hører til. Brukes til å si hvor man er – uten
+  // det heter en dev-side bare «eierfullstack-dev», og man må kunne
+  // navnekonvensjonen for å se sammenhengen.
+  const parentProject = useQuery({
+    queryKey: ["project", project?.parent_project_id],
+    queryFn: async () => {
+      const { data, error } = await getSupabase()
+        .from("projects")
+        .select("id, name")
+        .eq("id", project!.parent_project_id!)
+        .single();
+      if (error) throw error;
+      return data as { id: string; name: string };
+    },
+    enabled: Boolean(project?.parent_project_id),
+  });
+
   const deployMutation = useMutation({
     mutationFn: () => deployProject(projectId),
     onSuccess: async () => {
@@ -244,13 +261,29 @@ function ProjectDetailPage() {
         {/* Project Header */}
         <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div className="anim-rise">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h1 className="font-display text-[32px] font-bold text-ink">{project.name}</h1>
               <DeploymentStatusBadge
                 status={latestDeployment?.status ?? null}
                 stopped={isStopped}
                 stopping={stopMutation.isPending}
               />
+              {/* Hvilken gren står vi i? Merkelappen er gul mens det bygges –
+                  det er nettopp da spørsmålet «er dette produksjon eller dev?»
+                  stilles, og svaret lå tidligere bare inne i loggteksten. */}
+              <BranchChip
+                branch={latestDeployment?.branch ?? project.branch}
+                tone={isBuilding ? "loud" : "quiet"}
+              />
+              {isDevSite && parentProject.data && (
+                <Link
+                  to="/projects/$projectId"
+                  params={{ projectId: parentProject.data.id }}
+                  className="font-body text-[15px] text-ink/70 underline decoration-hair underline-offset-[4px] hover:text-ink hover:decoration-ink"
+                >
+                  {t("project.dev_branch_of", { project: parentProject.data.name })}
+                </Link>
+              )}
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-4 text-[16px]">
@@ -400,6 +433,40 @@ function ProjectDetailPage() {
   );
 }
 
+/**
+ * Grenen et bygg kom fra, som en liten merkelapp.
+ *
+ * Den finnes fordi produksjonen og dev-grenen er to prosjektrader som ser helt
+ * like ut i dashboardet: samme repo, samme byggelogg, samme terminal. Uten
+ * grennavnet ved siden av bygget var det ingen måte å se om man leste
+ * produksjonsbygget eller dev-bygget – man måtte lete etter «Gren: …» inne i
+ * loggteksten.
+ *
+ * `null` når vi ikke vet (rader fra før migrasjon 0014). Da skriver vi
+ * ingenting, framfor å gjette på prosjektets gjeldende gren – den kan ha vært
+ * en annen da bygget kjørte.
+ */
+function BranchChip({
+  branch,
+  tone = "quiet",
+}: {
+  branch: string | null | undefined;
+  tone?: "quiet" | "loud";
+}) {
+  if (!branch) return null;
+
+  return (
+    <span
+      title={branch}
+      className={`inline-flex max-w-[220px] shrink-0 items-center truncate border-2 px-[8px] py-[1px] font-mono text-[12px] ${
+        tone === "loud" ? "border-line bg-sun text-ink" : "border-hair text-ink/70"
+      }`}
+    >
+      {branch}
+    </span>
+  );
+}
+
 // -----------------------------------------------------------------------------
 // Component: Sliding Segmented Tab Bar
 // -----------------------------------------------------------------------------
@@ -529,24 +596,6 @@ export function useBuildDuration(deployment: Deployment | null): string | null {
   return null;
 }
 
-export function getDeploymentDuration(deployment: Deployment): string | null {
-  if (deployment.status === "queued" || deployment.status === "building") return null;
-  if (deployment.logs) {
-    const match = deployment.logs.match(/(?:Ferdig på|Feilet etter)\s+([\d.]+)s/i);
-    if (match?.[1]) {
-      const secVal = parseFloat(match[1]);
-      if (!isNaN(secVal)) {
-        if (secVal < 60) return `${match[1]}s`;
-        const totalSecs = Math.round(secVal);
-        const m = Math.floor(totalSecs / 60);
-        const s = totalSecs % 60;
-        return `${m}m ${s < 10 ? "0" : ""}${s}s`;
-      }
-    }
-  }
-  return null;
-}
-
 // -----------------------------------------------------------------------------
 // Component: Build Stage Box Card
 // -----------------------------------------------------------------------------
@@ -603,7 +652,7 @@ function BuildStageCard({ deployment }: { deployment: Deployment | null }) {
           </span>
 
           <div className="flex flex-col">
-            <span className="font-body text-[15px] text-ink font-semibold">
+            <span className="flex flex-wrap items-center gap-2 font-body text-[15px] text-ink font-semibold">
               {isBuilding
                 ? "Bygging og publisering pågår"
                 : isSuccess
@@ -611,6 +660,9 @@ function BuildStageCard({ deployment }: { deployment: Deployment | null }) {
                   : isFailed
                     ? "Bygging feilet"
                     : "Status"}
+              {/* Grenen står i samme linje som «Bygging … pågår», ikke bare i
+                  loggen: det er her blikket er mens man venter. */}
+              <BranchChip branch={deployment.branch} tone={isBuilding ? "loud" : "quiet"} />
             </span>
             {/* `key` på steglinja gjør at teksten toner inn på nytt hver gang
                 bygget bytter steg, i stedet for å bytte ord uten forvarsel. */}
@@ -674,6 +726,7 @@ function DeploymentsTab({
                     ? latest.commit_hash.slice(0, 7)
                     : t("project_details.manual_build")}
                 </span>
+                <BranchChip branch={latest.branch} tone={isBuilding ? "loud" : "quiet"} />
               </div>
               <div className="flex items-center gap-4">
                 {latestBuildDuration && (
@@ -717,46 +770,78 @@ function DeploymentsTab({
           <p className="font-body text-[16px] text-ink/70">{t("project_details.no_history")}</p>
         ) : (
           <div className="stagger flex flex-col divide-y divide-hair">
-            {deployments.map((d) => {
-              const duration = getDeploymentDuration(d);
-              const isLive = d.id === latestSuccessId;
-              return (
-                <div
-                  key={d.id}
-                  className="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
-                >
-                  <div className="flex items-center gap-4">
-                    <DeploymentStatusBadge status={d.status} isLive={isLive} />
-                    <span className="font-mono text-sm text-ink">
-                      {d.commit_hash
-                        ? d.commit_hash.slice(0, 7)
-                        : t("project_details.manual_deploy")}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    {duration && (
-                      <span className="inline-flex items-center gap-1 font-mono text-xs text-ink/70 bg-muted px-2.5 py-1 rounded-none">
-                        {duration}
-                      </span>
-                    )}
-                    <span className="font-body text-[16px] text-ink/70">
-                      {format.dateTime(d.created_at)}
-                    </span>
-                    {d.url && isLive && (
-                      <a
-                        href={d.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-body text-[15px] text-ink hover:underline"
-                      >
-                        {t("project.visit")}
-                      </a>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {deployments.map((d) => (
+              <DeploymentRow key={d.id} deployment={d} isLive={d.id === latestSuccessId} />
+            ))}
           </div>
+        )}
+      </div>
+
+      {/* Dev-grenene står her, ved siden av byggene, og ikke nederst i
+          Innstillinger der de sto før. En dev-gren spinnes opp midt i arbeidet
+          for å vise noe fram – da skal den være der man allerede er, ikke bak
+          to klikk i et konfigurasjonspanel.
+
+          Bare på hovedprosjekter: databasen håndhever dybde 1, så kortet på en
+          dev-side kunne bare sagt nei. */}
+      {!project.parent_project_id && <DevSitesCard project={project} />}
+    </div>
+  );
+}
+
+/**
+ * Én rad i byggehistorikken.
+ *
+ * Egen komponent fordi raden trenger `useBuildDuration()`, og en hook kan ikke
+ * kalles inne i en `.map`. Det er verdt det: raden leste før varigheten ut av
+ * loggteksten («Ferdig på …»), og den linja finnes først når bygget er ferdig.
+ * Lista viste altså ingenting mens det faktisk skjedde noe – nøyaktig det
+ * tidspunktet man står og ser på den. Nå teller sekundene her også, i gult, så
+ * det pågående bygget er like tydelig i historikken som i terminalen.
+ */
+function DeploymentRow({ deployment, isLive }: { deployment: Deployment; isLive: boolean }) {
+  const { t } = useTranslation();
+  const format = useFormatters();
+  const isBuilding = deployment.status === "queued" || deployment.status === "building";
+  const duration = useBuildDuration(deployment);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
+      <div className="flex flex-wrap items-center gap-4">
+        <DeploymentStatusBadge status={deployment.status} isLive={isLive} />
+        <span className="font-mono text-sm text-ink">
+          {deployment.commit_hash
+            ? deployment.commit_hash.slice(0, 7)
+            : t("project_details.manual_deploy")}
+        </span>
+        {/* Grenen per rad, ikke bare på det siste bygget: et prosjekt kan ha
+            bygget fra flere grener over tid, og en liste der alle radene ser
+            like ut er en liste man ikke kan bruke til å finne ut hva som
+            skjedde. */}
+        <BranchChip branch={deployment.branch} tone={isBuilding ? "loud" : "quiet"} />
+      </div>
+      <div className="flex flex-wrap items-center gap-6">
+        {duration && (
+          <span
+            className={`inline-flex items-center gap-1 rounded-none px-2.5 py-1 font-mono text-xs ${
+              isBuilding ? "bg-sun text-ink" : "bg-muted text-ink/70"
+            }`}
+          >
+            {isBuilding ? t("project_details.building_duration", { duration }) : duration}
+          </span>
+        )}
+        <span className="font-body text-[16px] text-ink/70">
+          {format.dateTime(deployment.created_at)}
+        </span>
+        {deployment.url && isLive && (
+          <a
+            href={deployment.url}
+            target="_blank"
+            rel="noreferrer"
+            className="font-body text-[15px] text-ink hover:underline"
+          >
+            {t("project.visit")}
+          </a>
         )}
       </div>
     </div>
@@ -798,8 +883,16 @@ function TerminalTab({
     <div className="ink-card-lg terminal-shell anim-rise overflow-hidden p-0">
       {/* Terminal Bar Header */}
       <div className="terminal-bar flex flex-wrap items-center justify-between gap-4 px-6 py-4">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="font-body text-[15px]">{t("project.terminal_title")}</span>
+          {/* Terminalen viser bare den *siste* deploymenten, og loggteksten er
+              lang: står grenen bare som «Gren: dev» et sted inne i den, må man
+              rulle for å finne ut hvilket bygg man ser på. Her står den. */}
+          {latestDeployment?.branch && (
+            <span className="terminal-dim font-mono text-xs">
+              {t("project.terminal_branch", { branch: latestDeployment.branch })}
+            </span>
+          )}
           {isBuilding ? (
             <span className="flex items-center gap-1.5 rounded-none bg-sun px-2.5 py-0.5 font-mono text-xs text-ink">
               <span aria-hidden="true" className="anim-breathe h-2 w-2 rounded-none bg-ink" />
@@ -1600,11 +1693,11 @@ function SettingsTab({ project }: { project: Project }) {
       {/* Project Plan & Subscription Card */}
       <ProjectPlanCard project={project} />
 
-      {/* Passordet foran appen gjelder alle prosjekter. Dev-sidene gjelder bare
-          hovedprosjekter: databasen håndhever dybde 1, så et kort på en dev-side
-          kunne bare sagt nei. */}
+      {/* Passordet foran appen gjelder alle prosjekter og hører hjemme her.
+          Dev-grenene gjør det ikke lenger: de sto nederst på denne siden, under
+          plan og passord, og der fant ingen dem. Kortet står nå i
+          Deployments-fanen. */}
       <AccessPasswordCard project={project} />
-      {!project.parent_project_id && <DevSitesCard project={project} />}
 
       {/* General Settings */}
       <form

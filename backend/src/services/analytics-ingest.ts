@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import net from "node:net";
 import { config } from "../config.js";
+import { devAliasHostname } from "../lib/caddy.js";
 import { lookupCountry } from "../lib/geoip.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
@@ -64,17 +65,38 @@ async function refreshHostMap(): Promise<void> {
   if (refreshing) return refreshing;
 
   refreshing = (async () => {
-    const { data, error } = await supabase.from("projects").select("id, name, custom_domain");
+    const { data, error } = await supabase
+      .from("projects")
+      .select("id, name, custom_domain, parent_project_id, branch");
 
     if (error) {
       logger.warn({ err: error.message }, "Kunne ikke friske opp vertsnavn-kartet");
       return;
     }
 
+    type Row = {
+      id: string;
+      name: string;
+      custom_domain: string | null;
+      parent_project_id: string | null;
+      branch: string | null;
+    };
+
+    const rows = (data ?? []) as Row[];
+    const nameById = new Map(rows.map((row) => [row.id, row.name]));
+
     const next = new Map<string, string>();
-    for (const row of (data ?? []) as Array<{ id: string; name: string; custom_domain: string | null }>) {
+    for (const row of rows) {
       next.set(`${row.name}${config.SNOAT_APP_DOMAIN_SUFFIX}`.toLowerCase(), row.id);
       if (row.custom_domain) next.set(row.custom_domain.toLowerCase(), row.id);
+
+      // En dev-side svarer også på `<gren>.<hovedprosjekt>`. Uten denne linja
+      // ville alle treff på den pene adressen falt utenfor kartet og blitt
+      // forkastet, og statistikken for dev-siden vært tom uansett hvor mye den
+      // ble besøkt.
+      const parentName = row.parent_project_id ? nameById.get(row.parent_project_id) : null;
+      const alias = parentName && row.branch ? devAliasHostname(parentName, row.branch) : null;
+      if (alias) next.set(alias.toLowerCase(), row.id);
     }
 
     hostMap = next;

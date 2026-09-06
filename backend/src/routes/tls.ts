@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { parentDomain, slugFromHostname } from "../lib/caddy.js";
+import { devAliasParts, parentDomain, slugFromHostname } from "../lib/caddy.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
 
@@ -39,12 +39,30 @@ tlsPermission.get("/tls-ask", async (c) => {
 
   const slug = slugFromHostname(domain);
 
+  // `dev.eierfullstack.snoat.com` er dev-sidens pene adresse (se
+  // `caddy.devAliasHostname`). `slugFromHostname()` avviser den med vilje –
+  // den godtar bare én etikett – så uten dette oppslaget svarte vi 404, Caddy
+  // hentet aldri sertifikat, og adressen ville brutt handshaken på 443.
+  //
+  // Navnet slås opp mot `projects.name`, som for en dev-side *er*
+  // `<hovedprosjekt>-<gren>`: de to adressene peker per konstruksjon på samme
+  // rad. `parent_project_id`-kravet er det som hindrer at et hvilket som helst
+  // prosjekt kalt «dev-noe» kan hente sertifikat for et fremmed subdomene.
+  const devAlias = slug ? null : devAliasParts(domain);
+
   const lookup = async (column: "name" | "custom_domain", value: string) =>
     await supabase.from("projects").select("id").eq(column, value).maybeSingle();
 
   let { data, error } = slug
     ? await lookup("name", slug)
-    : await lookup("custom_domain", domain);
+    : devAlias
+      ? await supabase
+          .from("projects")
+          .select("id")
+          .eq("name", `${devAlias.parentName}-${devAlias.branchLabel}`)
+          .not("parent_project_id", "is", null)
+          .maybeSingle()
+      : await lookup("custom_domain", domain);
 
   // Et eget domene dekker subdomenene sine, siden en flerleietaker-app gir hver
   // kunde sitt eget `<kunde>.domenet` og de ikke kan registreres én for én.
@@ -54,7 +72,7 @@ tlsPermission.get("/tls-ask", async (c) => {
   // Merk at on-demand utsteder ett sertifikat per navn, ikke ett wildcard:
   // Let's Encrypt teller 50 per registrert domene per uke, så en app som får
   // mange nye subdomener på kort tid kan møte den grensen.
-  if (!slug && !error && !data) {
+  if (!slug && !devAlias && !error && !data) {
     const parent = parentDomain(domain);
     if (parent) {
       ({ data, error } = await lookup("custom_domain", parent));
@@ -68,10 +86,10 @@ tlsPermission.get("/tls-ask", async (c) => {
   }
 
   if (!data) {
-    logger.info({ domain, slug }, "TLS avvist: ingen prosjekt med denne slugen");
+    logger.info({ domain, slug, devAlias }, "TLS avvist: ingen prosjekt med denne slugen");
     return c.text("ukjent domene", 404);
   }
 
-  logger.info({ domain, slug }, "TLS innvilget");
+  logger.info({ domain, slug, devAlias }, "TLS innvilget");
   return c.text("ok", 200);
 });

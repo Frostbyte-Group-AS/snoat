@@ -85,6 +85,15 @@ export interface Deployment {
   url: string | null;
   /** Byggets varighet i millisekunder. NULL mens det pågår, og for rader fra før 0004. */
   duration_ms: number | null;
+  /**
+   * Grenen bygget kom fra (migrasjon 0014).
+   *
+   * Egen kolonne og ikke `project.branch`: den kan endres i morgen, og da ville
+   * byggehistorikken påstått at gårsdagens bygg kom fra den nye grenen. NULL
+   * for rader fra før 0014 – da vet vi rett og slett ikke, og UI-et skal si
+   * ingenting framfor å gjette.
+   */
+  branch: string | null;
   created_at: string;
 }
 
@@ -127,4 +136,12 @@ export interface Subscription {
 /** Et prosjekt slik dashboardet henter det: med sin nyeste deployment. */
 export interface ProjectWithLatestDeployment extends Project {
   latestDeployment: Deployment | null;
+  /**
+   * Dev-grenene under prosjektet (migrasjon 0013).
+   *
+   * Bare satt på hovedprosjekter, og bare av `fetchProjects()` i dashboardet –
+   * andre spørringer etter samme type lar den stå udefinert framfor å påstå at
+   * prosjektet ikke har dev-grener.
+   */
+  devSites?: ProjectWithLatestDeployment[];
 }

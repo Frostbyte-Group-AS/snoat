@@ -82,6 +82,15 @@ export function workspaceFor(projectId: string, deploymentId: string): string {
 export interface CloneResult {
   directory: string;
   commitHash: string;
+  /**
+   * Grenen som faktisk ble sjekket ut.
+   *
+   * Er `projects.branch` satt, er det den. Er den NULL, er det repoets
+   * standardgren – og da er dette det eneste stedet svaret finnes, siden
+   * ingenting i databasen sier hva GitHub valgte. `null` bare hvis
+   * `rev-parse` mot alle odds ikke svarer.
+   */
+  branch: string | null;
 }
 
 /**
@@ -186,7 +195,7 @@ export async function cloneRepository(
   );
   logs.write(`Commit: ${commitHash}`);
 
-  return { directory, commitHash: commitHash.trim() };
+  return { directory, commitHash: commitHash.trim(), branch: wanted ?? checkedOut };
 }
 
 /** Rydder bort kildekoden etter en deployment. Imaget er det vi trenger videre. */

@@ -239,7 +239,9 @@
     "delete_confirm": "Er du sikker på at du vil slette dette prosjektet? Handlingen kan ikke angres.",
     "not_found_title": "Prosjektet ble ikke funnet",
     "not_found_desc": "Prosjektet kan ha blitt slettet eller du har ikke tilgang.",
-    "loading_project": "Laster prosjekt…"
+    "loading_project": "Laster prosjekt…",
+    "building_branch": "Bygger {{branch}}",
+    "built_branch": "Bygget {{branch}}"
   },
   "project": {
     "tab_deployments": "Deployments",
@@ -300,7 +302,13 @@
     "runtime_server_help": "Appen kjører i en container og svarer på forespørsler. Riktig for vanlig Next.js, Express, Nuxt med SSR og API-er.",
     "runtime_static": "Statiske filer",
     "runtime_static_help": "Bygget produserer bare filer, og Caddy serverer dem rett fra disk. Ingen container kjører, og siden koster ingenting når ingen besøker den.",
-    "runtime_static_dir_required": "Velg hvilken katalog bygget legger filene i. Vite og Astro bruker <code class=\"font-mono\">dist</code>, Next.js med <code class=\"font-mono\">output: 'export'</code> bruker <code class=\"font-mono\">out</code>."
+    "runtime_static_dir_required": "Velg hvilken katalog bygget legger filene i. Vite og Astro bruker <code class=\"font-mono\">dist</code>, Next.js med <code class=\"font-mono\">output: 'export'</code> bruker <code class=\"font-mono\">out</code>.",
+    "branch_label": "Gren",
+    "branch_unknown": "ukjent gren",
+    "dev_branch_of": "Dev-gren av {{project}}",
+    "production_branch": "Produksjon",
+    "dev_branch": "Dev",
+    "terminal_branch": "Gren: {{branch}}"
   },
   "branch": {
     "label": "Gren",
@@ -538,15 +546,22 @@
     "connector": "AI-tilkobling"
   },
   "dev_sites": {
-    "title": "Dev-side",
-    "desc": "En passordbeskyttet utgave av appen fra en annen gren. Hovedsiden og domenet ditt står urørt – dev-siden får sin egen adresse, og bygges automatisk når du pusher til grenen den følger.",
+    "title": "Dev-grener",
+    "desc": "En passordbeskyttet utgave av appen fra en annen gren, klar til å vises fram. Hovedsiden og domenet ditt står urørt – dev-grenen får sin egen adresse, og bygges automatisk når du pusher til grenen den følger.",
     "from_branch": "Bygger fra {{branch}}",
     "locked": "Passordbeskyttet",
     "open": "Åpen",
     "password": "Passord for dev-siden",
     "password_hint": "Minst 8 tegn. Nettleseren spør om det første gang siden åpnes – brukernavnet er «snoat».",
     "create": "Opprett dev-side",
-    "creating": "Oppretter …"
+    "creating": "Oppretter …",
+    "heading_none": "Ingen dev-gren ennå",
+    "new": "Ny dev-gren",
+    "cancel": "Avbryt",
+    "address": "Adresse",
+    "open_site": "Åpne",
+    "building": "Bygger nå",
+    "no_address_yet": "Ingen adresse ennå – bygges første gang"
   },
   "access": {
     "title": "Passord foran appen",

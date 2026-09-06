@@ -149,6 +149,7 @@ En historikk over hver gang et prosjekt bygges.
   - `created_at`
 
   - `duration_ms` (hvor lenge bygget kjørte)
+  - `branch` (grenen bygget kom fra, migrasjon 0014)
 
 `status` er en Postgres-enum (`public.deployment_status`). `logs` skrives som ren
 tekst av backend, som holder hele loggen i minnet og skriver den komplette
@@ -159,6 +160,17 @@ samtidige flush-er mister linjer.
 skrives i **både** suksess- og feilgrenen av pipelinen: et bygg som feiler etter
 ti minutter har brukt ti minutter av verten. NULL betyr at bygget pågår, eller at
 raden er fra før 0004.
+
+`branch` (migrasjon 0014) er grenen bygget faktisk kom fra. Den skrives to
+ganger: ved opprettelsen med `projects.branch`, slik at byggelisten kan si
+hvilken gren som bygges allerede mens raden står i kø, og på nytt etter klonen
+med den git sjekket ut – for et prosjekt uten valgt gren er det først da svaret
+finnes.
+
+Egen kolonne, og ikke et oppslag mot `projects.branch`: den kan endres i morgen,
+og da ville byggehistorikken påstått at gårsdagens bygg kom fra den nye grenen.
+NULL betyr «vet ikke» – rader fra før 0014, eller et bygg som aldri kom forbi
+klonen.
 
 ## subscriptions
 

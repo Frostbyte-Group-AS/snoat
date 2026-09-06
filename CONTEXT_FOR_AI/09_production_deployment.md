@@ -279,6 +279,15 @@ SNOAT_DOMAIN=snoat.com SNOAT_SERVER_IP=38.87.117.167 node scripts/bootstrap-env.
 Bytter serveren IP, må frontend bygges på nytt – Vite baker verdien inn i
 bundlen, akkurat som de andre `VITE_`-variablene.
 
+**Dev-sidene bruker to etiketter under samme suffiks:**
+`dev.eierfullstack.snoat.com` i tillegg til `eierfullstack-dev.snoat.com`. Det
+krever ingen ny DNS-record. `*.snoat.com` dekker alle navn under seg som ikke
+har en nærmere node i sonen (RFC 4592) – ikke bare én etikett – og sertifikatet
+hentes on-demand per navn, som for alle andre appdomener. Legger noen inn en
+eksplisitt A-record for `eierfullstack.snoat.com` i sonen, slutter wildcarden å
+dekke navnene under den, og dev-adressene under det prosjektet slutter å
+resolve. Ikke gjør det.
+
 ### Frontend bygges med build-args, ikke runtime-env
 
 Vite baker `VITE_`-variabler inn i bundlen under `npm run build`. Å sette dem

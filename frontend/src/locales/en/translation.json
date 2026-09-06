@@ -239,7 +239,9 @@
     "delete_confirm": "Are you sure you want to delete this project? This action cannot be undone.",
     "not_found_title": "Project not found",
     "not_found_desc": "The project may have been deleted or you do not have access.",
-    "loading_project": "Loading project…"
+    "loading_project": "Loading project…",
+    "building_branch": "Building {{branch}}",
+    "built_branch": "Built {{branch}}"
   },
   "project": {
     "tab_deployments": "Deployments",
@@ -300,7 +302,13 @@
     "runtime_server_help": "The app runs in a container and answers requests. Correct for regular Next.js, Express, Nuxt with SSR and APIs.",
     "runtime_static": "Static files",
     "runtime_static_help": "The build only produces files, and Caddy serves them straight from disk. No container runs, and the site costs nothing when nobody visits.",
-    "runtime_static_dir_required": "Choose which directory the build writes files to. Vite and Astro use <code class=\"font-mono\">dist</code>, Next.js with <code class=\"font-mono\">output: 'export'</code> uses <code class=\"font-mono\">out</code>."
+    "runtime_static_dir_required": "Choose which directory the build writes files to. Vite and Astro use <code class=\"font-mono\">dist</code>, Next.js with <code class=\"font-mono\">output: 'export'</code> uses <code class=\"font-mono\">out</code>.",
+    "branch_label": "Branch",
+    "branch_unknown": "unknown branch",
+    "dev_branch_of": "Dev branch of {{project}}",
+    "production_branch": "Production",
+    "dev_branch": "Dev",
+    "terminal_branch": "Branch: {{branch}}"
   },
   "branch": {
     "label": "Branch",
@@ -538,15 +546,22 @@
     "connector": "AI connection"
   },
   "dev_sites": {
-    "title": "Dev site",
-    "desc": "A password-protected copy of your app from another branch. Your main site and domain are untouched — the dev site gets its own address, and rebuilds automatically when you push to the branch it follows.",
+    "title": "Dev branches",
+    "desc": "A password-protected copy of the app from another branch, ready to show. Your main site and domain are untouched – the dev branch gets its own address and rebuilds whenever you push to the branch it follows.",
     "from_branch": "Builds from {{branch}}",
     "locked": "Password protected",
     "open": "Open",
     "password": "Password for the dev site",
     "password_hint": "At least 8 characters. The browser asks for it the first time the site is opened — the username is “snoat”.",
     "create": "Create dev site",
-    "creating": "Creating …"
+    "creating": "Creating …",
+    "heading_none": "No dev branch yet",
+    "new": "New dev branch",
+    "cancel": "Cancel",
+    "address": "Address",
+    "open_site": "Open",
+    "building": "Building now",
+    "no_address_yet": "No address yet – built on first deploy"
   },
   "access": {
     "title": "Password in front of the app",
