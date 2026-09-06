@@ -80,6 +80,16 @@ function planFeatures(plan: PlanOption, t: TFunction): string[] {
     t("billing.feature_static"),
   ];
 
+  // Dev-sider nevnes bare der de finnes. Gratisplanen har null, og «0 dev-sider»
+  // i en punktliste over hva du får er ikke informasjon.
+  if (plan.limits.maxRunningDevSites > 0) {
+    features.splice(
+      1,
+      0,
+      t("billing.feature_dev_sites", { count: plan.limits.maxRunningDevSites }),
+    );
+  }
+
   if (plan.limits.queuePriority > 0) features.push(t("billing.feature_priority"));
   if (plan.id === "business") features.push(t("billing.feature_ehf"));
 
@@ -333,6 +343,14 @@ function BillingPage() {
                 used={state.usage.runningProjects}
                 limit={state.limits.maxRunningProjects}
               />
+              {state.limits.maxRunningDevSites > 0 && (
+                <Meter
+                  label={t("billing.usage_dev_sites")}
+                  hint={t("billing.usage_dev_sites_hint")}
+                  used={state.usage.runningDevSites}
+                  limit={state.limits.maxRunningDevSites}
+                />
+              )}
               <Meter
                 label={t("billing.usage_build_minutes")}
                 hint={t("billing.usage_build_minutes_hint")}

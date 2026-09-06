@@ -223,6 +223,14 @@ export function listGithubBranches(repo: string): Promise<RepoBranches> {
 /** Grensene som følger en plan. Speiler `PlanLimits` i backend. */
 export interface PlanLimits {
   maxRunningProjects: number;
+  /**
+   * Dev-sider har eget tak og teller ikke mot `maxRunningProjects`.
+   *
+   * En dev-side er en avledning av en app kunden alt betaler for – samme repo,
+   * annen gren – så den skal ikke fylle en produksjonsplass. `0` betyr at planen
+   * ikke har funksjonen i det hele tatt, ikke at taket er nådd.
+   */
+  maxRunningDevSites: number;
   memoryMb: number;
   cpus: number;
   buildMinutesPerMonth: number;
@@ -271,6 +279,8 @@ export function getPricing(market: MarketId): Promise<PricingState> {
 
 export interface BillingUsage {
   runningProjects: number;
+  /** Kjørende dev-sider. Måles mot `maxRunningDevSites`, ikke mot apptaket. */
+  runningDevSites: number;
   totalProjects: number;
   staticProjects: number;
   buildMinutesUsed: number;

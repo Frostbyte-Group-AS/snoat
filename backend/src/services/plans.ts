@@ -14,8 +14,45 @@ import * as containers from "./containers.js";
  * `containers.ts` og `deploy.ts` leser herfra, ikke fra `config`.
  */
 export interface PlanLimits {
-  /** Samtidig kjørende dynamiske apper. Statiske sider teller ikke. */
+  /**
+   * Samtidig kjørende dynamiske apper. Statiske sider teller ikke – og fra
+   * 6. september 2026 teller heller ikke dev-sider, som har sitt eget tak under.
+   */
   maxRunningProjects: number;
+  /**
+   * Samtidig kjørende dev-sider.
+   *
+   * ── HVORFOR DETTE ER ET EGET TALL ────────────────────────────────────────
+   *
+   * En dev-side er en ordinær prosjektrad med `parent_project_id` satt
+   * (`services/dev-sites.ts`, migrasjon 0013): samme repo, annen gren, eget
+   * vertsnavn, egen container. Fram til nå telte den derfor som en hel app, og
+   * det gjorde at ett produkt med testmiljø kostet to plasser. Pro var reelt
+   * «2–3 produkter med dev-miljø», ikke ti apper.
+   *
+   * Beslutningen er at en dev-gren **ikke skal allokeres eller belastes som en
+   * fullverdig applikasjonsinstans**. Den er en avledning av noe kunden alt
+   * betaler for, og skal ikke spise en produksjonsplass.
+   *
+   * Men den kan ikke være gratis heller. Ti apper med hver sin dev-side er tjue
+   * containere på verten, og «teller ikke» uten et eget tak er et smutthull, ikke
+   * en beslutning. Derfor: eget tak, satt til **halvparten av apptaket** på de to
+   * utviklerplanene.
+   *
+   * Halvparten og ikke én per app, fordi det er den ærlige beskrivelsen av
+   * arbeidsflyten taket skal romme: man har et testmiljø på det man jobber med
+   * nå, ikke på alt man noen gang har rullet ut. En Pro-konto som fyller begge
+   * takene binder 15 containere, ikke 20 – og siden en dev-side kjører på halvt
+   * minne (`resourcesFor()`), er det verten merker en økning på ~25 %, ikke 100 %.
+   * Det er prisen på beslutningen, og den er verdt å se skrevet ned.
+   *
+   * `free: 0` er ikke gjerrighet: gratisplanen gir én kjørende app, og en dev-side
+   * er per definisjon en container nummer to for det samme produktet. Å gi den
+   * bort ville doblet fotavtrykket til den billigste planen. En dev-side som
+   * *allerede* kjører kan fortsatt rulles ut på nytt – `assertCanDeploy()`
+   * slipper alltid gjennom noe som står og går – så dette rammer bare nye.
+   */
+  maxRunningDevSites: number;
   /** Minne per container når appen KJØRER, i MB. */
   memoryMb: number;
   /**
@@ -72,6 +109,10 @@ export interface PlanLimits {
 export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
   free: {
     maxRunningProjects: 1,
+    // Ingen dev-sider. Gratisplanen gir én kjørende container; en dev-side er
+    // container nummer to for samme produkt, og det er nettopp den terskelen en
+    // betalt plan skal ligge over.
+    maxRunningDevSites: 0,
     memoryMb: 256,
     buildMemoryMb: 1024,
     cpus: 0.5,
@@ -94,9 +135,14 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
      * like ekte – men det betyr at en kunde som vil ha et testmiljø av noe hen
      * alt betaler for, bruker to plasser på én app. Taket måtte derfor være
      * romslig nok til at et dev-miljø ikke er et valg mot en produksjonsapp.
-     * Om dev-sider skal telle halvt, eller ha sitt eget tak, er en egen sak.
+     *
+     * ⚠️ Dette avsnittet beskriver hvordan det *var*. Dev-sider teller ikke
+     * lenger mot dette tallet – de har `maxRunningDevSites` under. Taket på ti
+     * står likevel: det var for lavt også uten dev-sidene.
      */
     maxRunningProjects: 10,
+    /** Halvparten av apptaket: et testmiljø på det man jobber med, ikke på alt. */
+    maxRunningDevSites: 5,
     memoryMb: 2048,
     buildMemoryMb: 4096,
     cpus: 2,
@@ -106,6 +152,8 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
   },
   business: {
     maxRunningProjects: 20,
+    /** Samme regel som Pro: halvparten av apptaket. */
+    maxRunningDevSites: 10,
     memoryMb: 8192,
     buildMemoryMb: 8192,
     cpus: 4,
@@ -128,6 +176,20 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
    */
   agency: {
     maxRunningProjects: 50,
+    /**
+     * Her brytes halvparts-regelen med vilje: 25 ville vært feil svar.
+     *
+     * `maxRunningProjects: 50` finnes for at en partner skal kunne drifte mange
+     * *kundesider*, og de er statiske. En dev-side er derimot en
+     * utviklerarbeidsflyt, brukt av partnerens eget team – og et team er lite
+     * uansett hvor mange kunder det har. Å la dev-taket skalere med et tall som
+     * finnes av en helt annen grunn ville gitt én konto lov til å binde 25
+     * containere ingen har bedt om.
+     *
+     * Fem, som Pro, er derfor det riktige. Resten av raden er allerede identisk
+     * med Pro sin.
+     */
+    maxRunningDevSites: 5,
     memoryMb: 2048,
     buildMemoryMb: 4096,
     cpus: 2,
@@ -270,21 +332,97 @@ export function limitsFor(entitlement: Entitlement, project?: Project): PlanLimi
   return PLAN_LIMITS[tier] ?? entitlement.limits;
 }
 
+/** Er raden en dev-side, altså et miljø for et annet prosjekt? */
+export function isDevSite(project?: Pick<Project, "parent_project_id">): boolean {
+  return Boolean(project?.parent_project_id);
+}
+
+/**
+ * Hvor stor andel av planens KJØREtid en dev-side får.
+ *
+ * ── HVORFOR EN HALV, OG HVORFOR AKKURAT KJØRETIDEN ───────────────────────────
+ *
+ * «Ressursbruken må optimaliseres deretter» gjelder det som er bundet opp
+ * *hele tiden*. En dev-side står døgnet rundt som alle andre containere, men den
+ * betjener en håndfull innloggede teammedlemmer bak et passord – ikke publikum.
+ * Minnet som går til samtidige forespørsler er derfor nær null; det som blir
+ * igjen er appens grunn-heap, og halvparten av planens apptall dekker den med
+ * god margin på Pro (1024 MB) og Business (4096 MB).
+ *
+ * En firedel ble vurdert og forkastet. 512 MB til en Next-app er den klassiske
+ * «virker helt til den ikke gjør det»-grensen: containeren blir OOM-drept av
+ * Docker en tilfeldig tirsdag, og for kunden ser det ut som at Snoat mistet
+ * appen – samme klasse uforståelig feil som `JavaScript heap out of memory`,
+ * bare på en app som virket i går.
+ *
+ * Merk at `runContainer()` regner `NODE_OPTIONS=--max-old-space-size` ut fra
+ * nøyaktig dette tallet. Kuttet treffer derfor V8 og Docker samtidig, som er det
+ * eneste som er trygt: tror V8 den har mer heap enn `HostConfig.Memory` tillater,
+ * rydder den for lat og containeren dør.
+ */
+const DEV_SITE_SHARE = 0.5;
+
+/**
+ * Gulv for en dev-side, uansett plan.
+ *
+ * Halvparten av gratisplanens 256 MB er 128 MB, og der starter ingen Node-app i
+ * det hele tatt. Et forhold uten gulv er et forhold som produserer et ubrukelig
+ * tall for den billigste planen – og selv om Free ikke har dev-sider i dag, skal
+ * ikke funksjonen kunne svare noe meningsløst hvis taket endres i morgen.
+ */
+const DEV_SITE_MIN_MEMORY_MB = 256;
+const DEV_SITE_MIN_CPUS = 0.5;
+
 /**
  * Heap-taket bygget skal kjøre under, i MB.
  *
  * Planen ber om et tall; `SNOAT_BUILD_NODE_MEMORY_MB` er vertens tak og vinner
  * hvis det er lavere. En liten VPS skal kunne kjøre Snoat uten å love et bygg
  * den ikke har minne til — et tak vi ikke kan innfri er verre enn et lavt.
+ *
+ * ⚠️ **En dev-side får fullt byggeminne, med vilje.** Kjøretiden kuttes; bygget
+ * gjør det ikke, og de tre grunnene er verdt å ha nedskrevet:
+ *
+ *   1. **Det er samme repo.** Dev-siden bygger samme modulgraf, samme
+ *      typeinformasjon og samme chunks som forelderen – bare fra en annen gren.
+ *      Toppen er den samme. Å kutte her ville gjort dev-sider umulige å bygge
+ *      nettopp for de prosjektene som trenger et testmiljø mest.
+ *   2. **Bygg er serialisert og kortvarige.** `SNOAT_MAX_CONCURRENT_BUILDS` er 1
+ *      og et bygg varer i minutter, så verten holder aldri to byggetopper
+ *      samtidig. Et bygg legger ikke noe til det som står bundet døgnet rundt,
+ *      og det er bare det siste beslutningen handler om.
+ *   3. **Feilen er dyr for kunden.** Et bygg med for lite minne dør på
+ *      `JavaScript heap out of memory` – en melding som peker mot kundens kode,
+ *      ikke mot planen vår. Litt ekstra minne i noen minutter er billigere enn
+ *      den supportrunden.
  */
 export function buildMemoryFor(entitlement: Entitlement, project?: Project): number {
   return Math.min(limitsFor(entitlement, project).buildMemoryMb, config.SNOAT_BUILD_NODE_MEMORY_MB);
 }
 
-/** Ressurstaket containeren skal kjøres under. */
+/**
+ * Ressurstaket containeren skal kjøres under.
+ *
+ * En dev-side får `DEV_SITE_SHARE` av planens kjøretid – se begrunnelsen der.
+ * Planen hentes fortsatt fra prosjektets egen rad når den har en, slik at en
+ * dev-side under et byråprosjekt regner ut fra byråets plan og ikke kontoens.
+ */
 export function resourcesFor(entitlement: Entitlement, project?: Project): containers.ContainerResources {
   const limits = limitsFor(entitlement, project);
-  return { memoryMb: limits.memoryMb, cpus: limits.cpus };
+
+  if (!isDevSite(project)) {
+    return { memoryMb: limits.memoryMb, cpus: limits.cpus };
+  }
+
+  return {
+    // Hele megabyte: Docker tar bytes, og et halvt megabyte er ingen presisjon
+    // noen har bruk for.
+    memoryMb: Math.max(Math.floor(limits.memoryMb * DEV_SITE_SHARE), DEV_SITE_MIN_MEMORY_MB),
+    // CPU er en *andel*, ikke en reservasjon: står produksjonsappen stille, får
+    // dev-siden alt den ber om uansett. Kuttet biter bare når de to kjemper om
+    // verten samtidig – og da skal produksjonen vinne.
+    cpus: Math.max(limits.cpus * DEV_SITE_SHARE, DEV_SITE_MIN_CPUS),
+  };
 }
 
 /** Første millisekund av inneværende kalendermåned, i UTC. */
@@ -294,8 +432,10 @@ function monthStart(): string {
 }
 
 export interface Usage {
-  /** Dynamiske apper som kjører nå. */
+  /** Dynamiske apper som kjører nå. Dev-sider er ikke med – de har sin egen. */
   runningProjects: number;
+  /** Dev-sider som kjører nå, målt mot `maxRunningDevSites`. */
+  runningDevSites: number;
   /** Prosjekter totalt, uansett type. */
   totalProjects: number;
   /** Statiske prosjekter – teller ikke mot noen grense. */
@@ -314,13 +454,15 @@ export interface Usage {
 export async function usageFor(userId: string): Promise<Usage> {
   const { data, error } = await supabase
     .from("projects")
-    .select("id, static_output_dir")
+    // `parent_project_id` er med fordi tellingen skiller apper fra dev-sider.
+    // Uten kolonnen ville begge tallene blitt regnet av samme rader.
+    .select("id, static_output_dir, parent_project_id")
     .eq("user_id", userId);
 
   if (error) throw new Error(`Kunne ikke lese prosjektene: ${error.message}`);
 
-  const projects = (data ?? []) as Array<Pick<Project, "id" | "static_output_dir">>;
-  const dynamic = projects.filter((project) => !project.static_output_dir);
+  const projects = (data ?? []) as ProjectRow[];
+  const staticProjects = projects.filter((project) => Boolean(project.static_output_dir)).length;
 
   const running = await containers.runningProjectIds().catch((err: unknown) => {
     logger.warn({ userId, err }, "Kunne ikke telle kjørende containere");
@@ -328,9 +470,10 @@ export async function usageFor(userId: string): Promise<Usage> {
   });
 
   return {
-    runningProjects: dynamic.filter((project) => running.has(project.id)).length,
+    runningProjects: countActiveApps(projects, running),
+    runningDevSites: countActiveDevSites(projects, running),
     totalProjects: projects.length,
-    staticProjects: projects.length - dynamic.length,
+    staticProjects,
     buildMinutesUsed: await buildMinutesUsed(userId),
   };
 }
@@ -366,25 +509,87 @@ export async function buildMinutesUsed(userId: string): Promise<number> {
 }
 
 /**
- * Hvor mange plasser kontoen bruker akkurat nå.
+ * Det minste en rad må ha med seg for at tellingen skal kunne plassere den.
  *
- * To ting teller *ikke*: statiske sider (de kjører ingen container) og rader
- * uten kjørende container (stoppet, krasjet eller aldri deployet).
+ * Eksportert fordi `suspension.ts` sender inn hele `Project`-rader og skal slippe
+ * å gjenta oppramsingen. Alle tre feltene er nødvendige: `static_output_dir`
+ * skiller fil fra container, `parent_project_id` skiller dev-side fra app, og
+ * `id` er nøkkelen mot settet fra Docker.
+ */
+export type ProjectRow = Pick<Project, "id" | "static_output_dir" | "parent_project_id">;
+
+/** Kjører raden en container akkurat nå? Statiske sider har ingen å kjøre. */
+function erIDrift(row: ProjectRow, running: ReadonlySet<string>): boolean {
+  return !row.static_output_dir && running.has(row.id);
+}
+
+/**
+ * Hvor mange app-plasser kontoen bruker akkurat nå.
  *
- * ⚠️ Dev-sider teller derimot fullt ut. En dev-side er en ordinær prosjektrad
- * med `parent_project_id` satt (`services/dev-sites.ts`), og den kjører sin egen
- * container – så for verten er den en app som alle andre. For kunden er den et
- * miljø for noe hen alt betaler for, og at de to synene spriker er grunnen til
- * at Pro-taket er romslig. Skal det endres, er det her tellingen bor.
+ * Tre ting teller *ikke*: statiske sider (de kjører ingen container), rader uten
+ * kjørende container (stoppet, krasjet eller aldri deployet) – og fra
+ * 6. september 2026 dev-sider.
+ *
+ * ⚠️ **Dev-sidene er den bevisste endringen.** En dev-side er en ordinær
+ * prosjektrad med `parent_project_id` satt (`services/dev-sites.ts`), og den
+ * telte tidligere som en hel app. For verten var det riktig – containeren er like
+ * ekte – men for kunden kostet ett produkt med testmiljø to plasser, og en Pro
+ * med ti apper var reelt «2–3 produkter med dev-miljø». Beslutningen er at en
+ * dev-gren ikke skal allokeres eller belastes som en fullverdig
+ * applikasjonsinstans; den er en avledning av noe som alt er betalt for.
+ *
+ * At verten fortsatt ser containeren er ikke glemt, det er håndtert to andre
+ * steder: `maxRunningDevSites` gir dev-sidene et eget tak, og `resourcesFor()`
+ * kjører dem på halvt minne og halv CPU.
  *
  * Skilt ut av `assertCanDeploy` fordi regelen er verdt å teste uten å måtte
  * stille opp både Docker og Supabase for å komme til den.
  */
 export function countActiveApps(
-  projects: ReadonlyArray<Pick<Project, "id" | "static_output_dir">>,
+  projects: ReadonlyArray<ProjectRow>,
   running: ReadonlySet<string>,
 ): number {
-  return projects.filter((row) => !row.static_output_dir && running.has(row.id)).length;
+  return projects.filter((row) => !row.parent_project_id && erIDrift(row, running)).length;
+}
+
+/** Motstykket: dev-sidene som kjører, målt mot `maxRunningDevSites`. */
+export function countActiveDevSites(
+  projects: ReadonlyArray<ProjectRow>,
+  running: ReadonlySet<string>,
+): number {
+  return projects.filter((row) => Boolean(row.parent_project_id) && erIDrift(row, running)).length;
+}
+
+/**
+ * Radene som ligger *over* grensene, med de eldste beholdt.
+ *
+ * Finnes for suspensjonssveipet (`services/suspension.ts`), som er den ene
+ * mekanismen i plattformen som tar ned kjørende kundeapper uten at et menneske
+ * trykker på noe. Den leste tidligere den samme filtreringen som `countActiveApps`
+ * gjorde – uten å skille app fra dev-side – og ville derfor begynt å oppføre seg
+ * feil i det øyeblikket tellingen her sluttet å gjøre det samme.
+ *
+ * Hver kategori kappes mot sitt eget tak. Rekkefølgen inn må være eldste først;
+ * det er kalleren som bestemmer den (`order("created_at")`), fordi den eldste
+ * appen oftest er den viktigste og skal være den som blir stående.
+ */
+export function runningOverLimit<T extends ProjectRow>(
+  projects: ReadonlyArray<T>,
+  running: ReadonlySet<string>,
+  limits: PlanLimits,
+): T[] {
+  const apper: T[] = [];
+  const devSider: T[] = [];
+
+  for (const row of projects) {
+    if (!erIDrift(row, running)) continue;
+    (row.parent_project_id ? devSider : apper).push(row);
+  }
+
+  return [
+    ...apper.slice(limits.maxRunningProjects),
+    ...devSider.slice(limits.maxRunningDevSites),
+  ];
 }
 
 /**
@@ -427,7 +632,67 @@ export function appLimitError(entitlement: Entitlement, active: number): DeployE
 }
 
 /**
+ * Feilen kunden får når dev-taket er fullt – eller `null` når det er plass igjen.
+ *
+ * Speiler `appLimitError()` med vilje, helt ned til `>=` og de to kodene. Den ene
+ * grunnen til at dette er en egen funksjon og ikke et flagg på den andre, er at
+ * meldingen må si **hvilken** grense som slo inn: «Planen tillater 10 apper» er
+ * feil svar på et forsøk på å rulle ut en dev-side nummer seks, og en kunde som
+ * får det svaret begynner å stoppe produksjonsapper for å få plass.
+ *
+ * Tre koder og ikke to, fordi det er tre ulike ting å be kunden om:
+ *
+ *   * `plan.dev_sites_not_included` – planen har ingen dev-sider i det hele tatt.
+ *     Å be noen «stoppe en dev-side du ikke bruker» når de ikke kan ha noen er
+ *     ikke en feilmelding, det er en gåte.
+ *   * `plan.dev_sites_limit_reached` – taket er nådd. Stopp en, eller oppgrader.
+ *   * `plan.dev_sites_limit_reached_downgraded` – betalingen har feilet. Da er
+ *     taket alltid gratisplanens null, og det kunden skal gjøre er å fikse kortet.
+ */
+export function devSiteLimitError(entitlement: Entitlement, active: number): DeployError | null {
+  const limit = entitlement.limits.maxRunningDevSites;
+  if (active < limit) return null;
+
+  // Setningen bøyer seg selv i tre former, som `appLimitError()` gjør i to.
+  // «tillater 0 dev-sider» er grammatisk riktig og likevel feil å si til noen –
+  // det leser som et tak man kan fylle opp, ikke som en funksjon man ikke har.
+  const antall = limit === 0 ? "ingen dev-sider" : `${limit} dev-${limit === 1 ? "side" : "sider"}`;
+  const teller = limit === 0 ? "" : `, og du har ${active} som kjører`;
+
+  const suffix = entitlement.downgraded
+    ? ` Betalingen for ${planName(entitlement.billedPlan)} har feilet, så kontoen kjører på gratisgrensene inntil den er i orden.`
+    : limit === 0
+      ? ` Oppgrader planen for å kjøre et passordbeskyttet testmiljø ved siden av appen.`
+      : ` Oppgrader planen, eller stopp en dev-side du ikke bruker.`;
+
+  const code = entitlement.downgraded
+    ? "plan.dev_sites_limit_reached_downgraded"
+    : limit === 0
+      ? "plan.dev_sites_not_included"
+      : "plan.dev_sites_limit_reached";
+
+  return new DeployError(
+    "plan",
+    `Planen ${planName(entitlement.plan)} tillater ${antall} samtidig${teller}.${suffix}`,
+    {
+      code,
+      params: {
+        plan: entitlement.plan,
+        billedPlan: entitlement.billedPlan,
+        limit,
+        running: active,
+      },
+    },
+  );
+}
+
+/**
  * Sperren som faktisk håndhever planen.
+ *
+ * Håndhever **tre** ting, i denne rekkefølgen: byggeminutter, og deretter enten
+ * apptaket eller dev-taket – aldri begge. Hvilket av de to som gjelder avgjøres
+ * av `parent_project_id` på raden som skal rulles ut, slik at feilmeldingen
+ * navngir den grensen som faktisk sperret.
  *
  * Kalles fra `startDeployment`, ikke fra prosjektopprettelsen. Det er et bevisst
  * valg med to grunner:
@@ -471,7 +736,7 @@ export async function assertCanDeploy(project: Project, entitlement: Entitlement
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id, static_output_dir")
+    .select("id, static_output_dir, parent_project_id")
     .eq("user_id", project.user_id);
 
   if (error) {
@@ -481,12 +746,14 @@ export async function assertCanDeploy(project: Project, entitlement: Entitlement
     return;
   }
 
-  const active = countActiveApps(
-    (data ?? []) as Array<Pick<Project, "id" | "static_output_dir">>,
-    running,
-  );
+  const rows = (data ?? []) as ProjectRow[];
 
-  const overLimit = appLimitError(entitlement, active);
+  // To tak, og raden avgjør hvilket den måles mot. En dev-side som ble målt mot
+  // apptaket ville fått en melding om apper den ikke kan gjøre noe med.
+  const overLimit = isDevSite(project)
+    ? devSiteLimitError(entitlement, countActiveDevSites(rows, running))
+    : appLimitError(entitlement, countActiveApps(rows, running));
+
   if (overLimit) throw overLimit;
 }
 

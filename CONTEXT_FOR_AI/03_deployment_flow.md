@@ -383,8 +383,11 @@ til en dev-side bytter derfor Stopp/Start-knappene for én bryter (`SiteToggle`)
 og hver rad i dev-side-lista har den samme bryteren.
 
 **Av** er `POST /projects/:id/stop`: container fjernet, Caddy-rute slettet,
-`stopped_at` satt. En stoppet app teller ikke mot `maxRunningProjects`, så en
-dev-side som ligger nede koster ingenting mot plangrensen.
+`stopped_at` satt. En stoppet app teller ikke mot noen grense, så en dev-side som
+ligger nede koster ingenting.
+
+Merk hvilken grense en dev-side som *står* teller mot: fra 6. september 2026 er
+det `maxRunningDevSites`, ikke `maxRunningProjects`. Se `12_billing_and_plans.md`.
 
 **På** er `POST /projects/:id/deploy`, altså et nytt bygg. Snoat beholder ikke
 containeren over et stopp – det er hele hensikten med å stoppe – så veien tilbake

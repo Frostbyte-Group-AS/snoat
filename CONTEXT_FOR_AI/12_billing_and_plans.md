@@ -15,13 +15,75 @@ Free-grensene, og dashboardet skjuler kjøpsknappene.
 | Pris eks. mva (Norge) | 0 | 199 kr/mnd | 799 kr/mnd |
 | Pris eks. mva (øvrige) | 0 | 19 €/mnd | 79 €/mnd |
 | Dynamiske apper samtidig | 1 | 10 | 20 |
+| Dev-sider samtidig | – | 5 | 10 |
 | RAM per app (kjørende) | 256 MB | 2 GB | 8 GB |
+| RAM per dev-side (kjørende) | – | 1 GB | 4 GB |
 | RAM under bygging | 1 GB | 4 GB | 8 GB |
 | vCPU per app | 0,5 | 2 | 4 |
 | Byggeminutter per måned | 100 | 500 | 2 000 |
 | Byggekø | Standard | Prioritert | Prioritert |
 | Statiske sider | Ubegrenset | Ubegrenset | Ubegrenset |
 | Trafikkstatistikk | – | ✓ | ✓ |
+
+### En dev-side er ikke en app til
+
+**Fra 6. september 2026.** En dev-side (`services/dev-sites.ts`, migrasjon 0013)
+er en ordinær prosjektrad med `parent_project_id` satt: samme repo, annen gren,
+eget vertsnavn, egen container. Den telte derfor som en hel app mot
+`maxRunningProjects`.
+
+For verten var det riktig – containeren er like ekte. For kunden betydde det at
+**ett produkt med testmiljø kostet to plasser**, og at Pro reelt var «2–3
+produkter med dev-miljø», ikke ti apper. Grensen traff ikke overforbruk, den traff
+normal arbeidsflyt.
+
+Beslutningen: *en dev-gren skal ikke allokeres eller belastes som en fullverdig
+applikasjonsinstans.* Den er en avledning av noe som alt er betalt for. Det er
+gjennomført i tre deler, og alle tre må være der – hver for seg er de feil:
+
+**1. Tellingen.** `countActiveApps()` hopper over rader med `parent_project_id`.
+`countActiveDevSites()` teller dem for seg. `assertCanDeploy()` velger tak etter
+hva raden er.
+
+**2. Eget tak.** «Teller ikke» uten et tak er et smutthull: ti apper med hver sin
+dev-side er tjue containere. `maxRunningDevSites` er derfor **halvparten av
+apptaket** på Pro og Business – den ærlige beskrivelsen av arbeidsflyten taket
+skal romme er «et testmiljø på det du jobber med nå», ikke på alt du har rullet
+ut. Free har **null**: gratisplanen gir én kjørende container, og en dev-side er
+container nummer to for samme produkt.
+
+> Byråplanen bryter halvparts-regelen med vilje og står på 5, ikke 25.
+> `maxRunningProjects: 50` finnes for at en partner skal kunne drifte mange
+> *kundesider*, og de er statiske. En dev-side er en utviklerarbeidsflyt, og et
+> team er lite uansett hvor mange kunder det har.
+
+**3. Optimalisert ressursbruk.** `resourcesFor()` gir en dev-side **halvparten**
+av planens kjøreminne og CPU, med et gulv på 256 MB / 0,5 vCPU. Den betjener en
+håndfull innloggede teammedlemmer bak et passord, ikke publikum, så minnet til
+samtidige forespørsler er nær null – det som blir igjen er grunn-heapen, og 1 GB
+dekker den med god margin på Pro. En firedel ble vurdert og forkastet: 512 MB til
+en Next-app er den klassiske «virker helt til den ikke gjør det»-grensen, og en
+container som OOM-drepes en tilfeldig tirsdag er like uforståelig for kunden som
+en byggefeil.
+
+**Byggeminnet kuttes derimot ikke.** Dev-siden bygger samme repo, samme modulgraf
+og samme chunks som forelderen – toppen er den samme. Bygg er dessuten
+serialisert (`SNOAT_MAX_CONCURRENT_BUILDS`, standard 1) og varer i minutter, så et
+bygg legger ingenting til det som står bundet døgnet rundt. Og feilen man får ved
+å kutte for hardt er `JavaScript heap out of memory`, en melding som peker mot
+kundens kode i stedet for mot planen vår. Se `buildMemoryFor()`.
+
+Regnestykket det koster: en Pro-konto som fyller begge takene binder 15
+containere i stedet for 10, men fordi dev-sidene kjører på halvt minne er det
+20 480 → 25 600 MB i verste fall – **+25 %, ikke +100 %**. Det er prisen på at en
+kunde slipper å velge mellom å teste og å være i produksjon.
+
+**Suspensjonssveipet deler på samme måte.** `runningOverLimit()` i `plans.ts` er
+felles kilde for både `assertCanDeploy()` og `services/suspension.ts`, slik at de
+to ikke kan komme i utakt. Konsekvensen er verdt å kjenne: gratisgrensene har
+null dev-sider, så en konto som faller ut av nådeperioden mister *alle*
+dev-sidene sine, også den eldste. Produksjonsappen står igjen – og det er riktig
+prioritering.
 
 ### Bygging og kjøring er to ulike tall
 
@@ -64,7 +126,8 @@ kundesider under **én** konto hos oss – i dag LeadLab, gjennom nettsidebygger
 «Snekkeren». Den settes for hånd med `source = 'invoice'`, slik at en senere
 Stripe-webhook ikke skriver over den.
 
-Grensene: 50 kjørende apper, 20 000 byggeminutter/md, 1 GB / 1 vCPU per app.
+Grensene: 50 kjørende apper, 5 dev-sider, 20 000 byggeminutter/md, 2 GB / 2 vCPU
+per app.
 Tallene er høye, men **ikke** `Infinity`, og det er et bevisst valg: et tak som
 aldri kan nås er et tak vi aldri får se virke. En integrasjon i en løkke har ingen
 menneskelig hånd som stopper den, og den skal treffe *noe* før den tar ned verten
@@ -274,8 +337,18 @@ har kode. En byggefeil fra Nixpacks er diagnostikk blandet med verktøy-output, 
 en halvoversatt versjon av den er verre enn originalen.
 
 Kodene som finnes nå: `plan.build_minutes_exhausted`, `plan.apps_limit_reached`,
-`plan.apps_limit_reached_downgraded`, `deploy.already_building`,
-`deploy.building_now`, `auth.signed_out`.
+`plan.apps_limit_reached_downgraded`, `plan.dev_sites_not_included`,
+`plan.dev_sites_limit_reached`, `plan.dev_sites_limit_reached_downgraded`,
+`plan.analytics_requires_paid`, `deploy.already_building`, `deploy.building_now`,
+`auth.signed_out`.
+
+**Feilmeldingen må si hvilket tak som slo inn.** «Planen tillater 10 apper» er
+feil svar på et forsøk på å rulle ut dev-side nummer seks – en kunde som får det
+svaret begynner å stoppe produksjonsapper til ingen nytte. `appLimitError()` og
+`devSiteLimitError()` er derfor to funksjoner, ikke én med et flagg, og
+dev-varianten har tre koder fordi det er tre ulike ting å be kunden om: planen har
+ingen dev-sider (`not_included`), taket er nådd (`limit_reached`), eller kortet
+har feilet (`..._downgraded`).
 
 ### Ressurstak per plan
 
@@ -283,6 +356,10 @@ Kodene som finnes nå: `plan.build_minutes_exhausted`, `plan.apps_limit_reached`
 `config.SNOAT_APP_MEMORY_MB` selv. `SNOAT_APP_MEMORY_MB` og `SNOAT_APP_CPUS`
 brukes ikke lenger av containeroppstarten – de står igjen i config som
 dokumentasjon på hva verten tåler.
+
+En dev-side kjører på halvparten av tallene i tabellen – se «En dev-side er ikke
+en app til» over. Kuttet skjer i `resourcesFor()`, altså på **ett** sted, nettopp
+fordi:
 
 ⚠️ `NODE_OPTIONS=--max-old-space-size` og `HostConfig.Memory` **må regnes fra
 samme tall**. Tror V8 den har mer heap enn Docker tillater, rydder den for lat og

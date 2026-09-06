@@ -40,6 +40,14 @@ import { notifyContainerRecovered, notifyContainerUnhealthy } from "./notify.js"
  *
  * ## Hva sveipet bevisst IKKE gjør
  *
+ * ⚠️ Det skiller heller **ikke** dev-sider fra apper, og det er med vilje. Fra
+ * 6. september 2026 teller en dev-side ikke mot `maxRunningProjects`
+ * (`services/plans.ts`), men det er en *plangrense*. Dette sveipet håndhever
+ * ingen grense – det sammenligner hva basen påstår mot hva Docker har. En
+ * dev-side som har mistet containeren sin skal stå som «Nede» i dashboardet på
+ * nøyaktig samme måte som en produksjonsapp, og det ville vært en regresjon å
+ * begynne å hoppe over den her fordi tellingen et annet sted gjør det.
+ *
  * Det rører verken Docker eller Caddy. Ingen restart, ingen sletting, ingen
  * omdirigering av ruten bort fra den døde containeren – bare det å oppdage
  * avviket og rette *databasens* påstand om det. Caddy-ruten blir stående til en

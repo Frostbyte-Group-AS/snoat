@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase.js";
 import type { Project, Subscription } from "../types.js";
 import * as containers from "./containers.js";
 import { teardownProject } from "./deploy.js";
-import { entitlementFrom, PLAN_LIMITS } from "./plans.js";
+import { entitlementFrom, PLAN_LIMITS, runningOverLimit } from "./plans.js";
 
 /**
  * Stopper apper som ligger over gratisgrensen etter at nådefristen for en
@@ -21,6 +21,15 @@ import { entitlementFrom, PLAN_LIMITS } from "./plans.js";
  *   2. **Bare det som er over grensen.** Kunden beholder det gratisplanen gir.
  *      Vi stopper de *nyeste* appene og lar de eldste stå, fordi den eldste
  *      oftest er den viktigste.
+ *
+ *      ⚠️ «Grensen» er fra 6. september 2026 **to** tall, ikke ett:
+ *      `maxRunningProjects` og `maxRunningDevSites`, kappet hver for seg av
+ *      `runningOverLimit()`. Beholdt vi den gamle blandede tellingen her, ville
+ *      sveipet talt en dev-side som en app – og da kunne en konto blitt fratatt
+ *      en produksjonsapp for å gi plass til et testmiljø gratisplanen uansett
+ *      ikke tillater. Merk konsekvensen: gratisplanen har null dev-sider, så en
+ *      konto som er falt ut av nådeperioden mister *alle* dev-sidene sine, også
+ *      den eldste. Det er tilsiktet – det er selve funksjonen som er betalt.
  *   3. **Av som standard.** `SNOAT_BILLING_SUSPEND_ENABLED` styrer om sveipet
  *      handler eller bare logger hva det ville gjort. Slå den på først når
  *      dunning-flyten er observert i produksjon.
@@ -77,12 +86,17 @@ async function candidates(): Promise<SuspensionCandidate[]> {
       continue;
     }
 
-    // Eldste først, slik at det er de nyeste som havner over grensen.
-    const active = ((projectRows ?? []) as Project[]).filter(
-      (project) => !project.static_output_dir && running.has(project.id),
+    // Radene kommer eldste først (`order("created_at")` over), og
+    // `runningOverLimit()` bygger på nettopp det: den beholder starten av hver
+    // liste og gir tilbake halen. Apper måles mot `maxRunningProjects`,
+    // dev-sider mot `maxRunningDevSites` – samme deling som `assertCanDeploy()`
+    // bruker, fra samme kilde, slik at de to ikke kan komme i utakt.
+    const overLimit = runningOverLimit(
+      (projectRows ?? []) as Project[],
+      running,
+      PLAN_LIMITS.free,
     );
 
-    const overLimit = active.slice(PLAN_LIMITS.free.maxRunningProjects);
     if (overLimit.length === 0) continue;
 
     found.push({

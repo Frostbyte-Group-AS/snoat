@@ -343,6 +343,17 @@ function planRows(plan: PlanOption, t: (k: string, o?: Record<string, unknown>) 
         },
       ),
     },
+    {
+      // Skjules på gratisplanen i stedet for å stå som «0 dev-sider». En rad som
+      // sier null leser som et tak man kan fylle opp; det er ikke det den er.
+      on: plan.limits.maxRunningDevSites > 0,
+      text: t(
+        plan.limits.maxRunningDevSites === 1
+          ? "pricing.limit_dev_sites"
+          : "pricing.limit_dev_sites_plural",
+        { count: plan.limits.maxRunningDevSites },
+      ),
+    },
     { on: true, text: t("pricing.limit_memory", { value: memory }) },
     { on: true, text: t("pricing.limit_cpu", { value: plan.limits.cpus }) },
     { on: true, text: t("pricing.limit_build", { count: plan.limits.buildMinutesPerMonth }) },
