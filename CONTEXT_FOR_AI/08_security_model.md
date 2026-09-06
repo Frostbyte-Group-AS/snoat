@@ -114,10 +114,17 @@ er utfallet riktignok trygt: helsesjekken feiler, og forrige versjon står.
 **Helsesjekken kan ikke overtales av en krasj-loop.** `assertStillRunning()`
 krever `RestartCount === 0` gjennom hele vinduet, ikke bare at containeren står
 oppe når vi ser etter. Uten det ville en app som krasjer i oppstart – og som
-`RestartPolicy: unless-stopped` starter igjen og igjen – blitt sluppet gjennom som
-«Live», *og* fått en fungerende versjon revet ned under seg. En deployment kan
-altså ikke ta ned en app som virker, verken ved uhell eller ved å bli laget slik
-med vilje.
+`RestartPolicy: on-failure:N` (`SNOAT_APP_RESTART_MAX_RETRIES`) starter på nytt
+flere ganger – blitt sluppet gjennom som «Live», *og* fått en fungerende versjon
+revet ned under seg. En deployment kan altså ikke ta ned en app som virker,
+verken ved uhell eller ved å bli laget slik med vilje.
+
+**Krasj-loop lenge etter en vellykket deployment er et eget problem.**
+`assertStillRunning()` dekker bare sekundene rundt utrullingen. Gir Docker opp
+restart-forsøkene en time – eller en uke – senere, oppdager ingenting det før
+`services/helse.ts` sitt periodiske sveip (`SNOAT_HEALTH_CHECK_INTERVAL_MS`)
+sammenligner det databasen påstår mot det Docker faktisk har, og retter
+`projects.container_died_at` deretter. Se `10_recent_updates_and_roadmap.md`.
 
 **Build-timeout.** `SNOAT_BUILD_TIMEOUT_MS` (standard 15 min) avbryter builds som
 henger.

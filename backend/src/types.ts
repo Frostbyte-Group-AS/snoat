@@ -72,6 +72,17 @@ export interface Project {
    * NULL for prosjekter opprettet fra dashboardet.
    */
   external_ref: string | null;
+  /**
+   * Satt av det periodiske helsesveipet (migrasjon 0015, `services/helse.ts`)
+   * når containeren prosjektet skal ha kjørende er borte fra Docker, selv om
+   * prosjektet ikke er stoppet og har en vellykket deployment.
+   *
+   * NULL = ingen kjent avvik akkurat nå – enten fordi alt stemmer, eller fordi
+   * prosjektet aldri har vært en kandidat (aldri deployet, eller stoppet).
+   * Dette er den rettelsen av databasetilstanden problemet krevde: en app
+   * stemplet `success` skal ikke stå som «Live» når containeren er borte.
+   */
+  container_died_at: string | null;
   created_at: string;
 }
 

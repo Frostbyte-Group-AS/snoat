@@ -263,6 +263,11 @@ VITE_SNOAT_SERVER_IP=${serverIp}
 SNOAT_APP_PORT=${preserved("SNOAT_APP_PORT", "3000")}
 SNOAT_APP_MEMORY_MB=${preserved("SNOAT_APP_MEMORY_MB", "512")}
 SNOAT_APP_CPUS=${preserved("SNOAT_APP_CPUS", "1")}
+# Containerhelse: maks restart-forsøk før Docker gir opp på en krasjende
+# container (erstatter `unless-stopped`), og hvor ofte sveipet i
+# services/helse.ts sammenligner basen mot Docker. Se config.ts.
+SNOAT_APP_RESTART_MAX_RETRIES=${preserved("SNOAT_APP_RESTART_MAX_RETRIES", "5")}
+SNOAT_HEALTH_CHECK_INTERVAL_MS=${preserved("SNOAT_HEALTH_CHECK_INTERVAL_MS", "120000")}
 SNOAT_BUILD_TIMEOUT_MS=${preserved("SNOAT_BUILD_TIMEOUT_MS", "1800000")}
 # Hvor lenge en ny container må ha kjørt sammenhengende før trafikken flyttes
 # til den, og taket på ventingen. Se assertStillRunning() i containers.ts.

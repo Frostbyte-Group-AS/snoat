@@ -209,7 +209,13 @@ export async function runContainer(
       // taket er, avgjøres av kundens plan (`services/plans.ts`).
       Memory: resources.memoryMb * 1024 * 1024,
       NanoCpus: Math.round(resources.cpus * 1e9),
-      RestartPolicy: { Name: "unless-stopped" },
+      // `on-failure:N`, ikke `unless-stopped`. Se `SNOAT_APP_RESTART_MAX_RETRIES`
+      // i config.ts for hele resonnementet: en app som krasjer forbigående
+      // (OOM) kommer opp igjen av seg selv innenfor de N forsøkene, men en app
+      // i krasj-loop gir opp i stedet for å restarte i det uendelige i
+      // stillhet. `services/helse.ts` er sikkerhetsnettet som oppdager
+      // containeren som ga opp og retter tilstanden i basen.
+      RestartPolicy: { Name: "on-failure", MaximumRetryCount: config.SNOAT_APP_RESTART_MAX_RETRIES },
       NetworkMode: config.SNOAT_APPS_NETWORK,
     },
     NetworkingConfig: {
@@ -265,9 +271,10 @@ async function failWithAppLogs(
  * under seg. Feiler sjekken, blir den forrige containeren stående.
  *
  * Vi poller gjennom hele vinduet i stedet for å inspisere én gang på slutten:
- * `RestartPolicy: unless-stopped` starter en krasjende app på nytt igjen og
- * igjen, og `State.Running` er sann i glimtene mellom omstartene. Ett enkelt
- * øyeblikksbilde slipper altså en app i krasj-loop rett gjennom.
+ * `RestartPolicy: on-failure:N` (se `SNOAT_APP_RESTART_MAX_RETRIES`) starter en
+ * krasjende app på nytt flere ganger før den gir opp, og `State.Running` er
+ * sann i glimtene mellom omstartene. Ett enkelt øyeblikksbilde slipper altså en
+ * app i krasj-loop rett gjennom, uansett om Docker til slutt gir opp eller ei.
  *
  * ── HVORFOR VI VENTER PÅ OPPETID, IKKE PÅ ET FAST VINDU ─────────────────────
  * Sjekken hadde et fast vindu på tre sekunder, og slapp gjennom en app som

@@ -76,6 +76,8 @@ Docker-nettverkene er delt i to:
 | `services/plans.ts` | `PLAN_LIMITS` – den eneste definisjonen av hva en plan gir. Regner ut rettigheter, forbruk og sperren `assertCanDeploy()`. |
 | `services/billing.ts` | Skriver abonnementstilstand fra Stripe-objekter. Idempotenslåsen for webhooks. |
 | `services/suspension.ts` | Timesveip som stopper apper over gratisgrensen når nådefristen er ute. Av som standard. |
+| `services/helse.ts` | Periodisk sveip (standard 2 min) som sammenligner det basen påstår kjører mot det Docker faktisk har, og retter `projects.container_died_at` ved avvik. Se `03_deployment_flow.md`. |
+| `services/notify.ts` | Utgående drifts-e-post over Resend: første deployment live, container nede/tilbake. |
 | `lib/stripe.ts` | Lat Stripe-klient, plangjenkjenning og signaturverifisering. |
 | `lib/docker.ts` | Delt Dockerode-klient + apps-nettverket. |
 | `lib/supabase.ts` | service-role-klient. |

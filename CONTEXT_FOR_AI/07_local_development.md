@@ -269,9 +269,11 @@ applikasjonen. To varianter av samme feil:
 - *«Containeren stoppet rett etter oppstart (exit code N)»* – prosessen døde og
   ble ikke startet på nytt.
 - *«Containeren krasjet og ble startet på nytt N gang(er)»* – appen er i
-  krasj-loop. `RestartPolicy: unless-stopped` starter den igjen og igjen, så
+  krasj-loop. `RestartPolicy: on-failure:N` (`SNOAT_APP_RESTART_MAX_RETRIES`,
+  standard 5) starter den igjen flere ganger før Docker gir opp, så
   `docker ps` kan vise den som `Up` i det du ser etter. `docker inspect` sitt
-  `RestartCount` er det som avslører den.
+  `RestartCount` er det som avslører den. Gir Docker opp for godt, oppdager
+  `services/helse.ts` det på sitt neste sveip.
 
 Vanligste årsak for begge: appen lytter på en hardkodet port i stedet for `$PORT`,
 eller mangler en miljøvariabel den krever ved oppstart.

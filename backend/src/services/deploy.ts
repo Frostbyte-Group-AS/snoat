@@ -19,6 +19,7 @@ import { finnStatiskErklaering } from "./static-declaration.js";
 import { pruneOldSites, publishStaticSite, removeProjectSites, siteDirFor } from "./static-site.js";
 import { invalidateHostMap } from "./analytics-ingest.js";
 import { notifyFirstDeploymentLive } from "./notify.js";
+import { clearHealthFlag } from "./helse.js";
 import { aliasHostnamesFor, passwordHashFor, publicUrlFor } from "./dev-sites.js";
 import { rm, stat } from "node:fs/promises";
 
@@ -600,6 +601,11 @@ async function runPipeline(
         duration_ms: elapsed,
       });
 
+      // En vellykket deployment er det sterkeste beviset som finnes på at
+      // prosjektet lever – rett tilbake med én gang, uten å vente på neste
+      // helsesveip (se services/helse.ts).
+      await clearHealthFlag(project);
+
       // Ruten er live. Uten dette ville analytikk-ingesten forkastet treffene
       // mot et helt nytt vertsnavn fram til den periodiske oppfriskningen kom.
       invalidateHostMap();
@@ -667,6 +673,10 @@ async function runPipeline(
       commit_hash: commitHash,
       duration_ms: elapsed,
     });
+
+    // Se kommentaren i den statiske grenen: rett container_died_at tilbake
+    // med én gang i stedet for å vente på neste helsesveip.
+    await clearHealthFlag(project);
 
     // Se kommentaren i den statiske grenen: gjør vertsnavnet kjent for ingesten
     // med én gang, i stedet for å miste de første treffene.
@@ -856,9 +866,12 @@ export async function teardownProject(project: Project, markStopped = true): Pro
   // Skrives etter at containeren faktisk er borte, ikke før: feiler
   // opprydningen, skal ikke databasen påstå at appen er stoppet.
   if (markStopped) {
+    // container_died_at nullstilles i samme kall: et prosjekt brukeren nettopp
+    // stoppet med vilje skal ikke stå igjen med et gammelt helseavvik neste
+    // gang det deployes – se services/helse.ts.
     const { error } = await supabase
       .from("projects")
-      .update({ stopped_at: new Date().toISOString() })
+      .update({ stopped_at: new Date().toISOString(), container_died_at: null })
       .eq("id", project.id);
 
     if (error) {

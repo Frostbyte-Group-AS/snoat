@@ -296,13 +296,17 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
   const isBuilding = deployment?.status === "queued" || deployment?.status === "building";
   /** Appen er slått av. Statusen ligger på prosjektet, ikke på deploymenten. */
   const isStopped = Boolean(project.stopped_at);
+  /** Helsesveipet fant at containeren er borte (`projects.container_died_at`). */
+  const isUnhealthy = Boolean(project.container_died_at);
   const devSites = project.devSites ?? [];
 
-  // En stoppet app har ingen adresse som svarer. Lenken skjules derfor, i stedet
-  // for å sende brukeren til en 502.
+  // En stoppet eller nede app har ingen adresse som svarer. Lenken skjules
+  // derfor, i stedet for å sende brukeren til en 502.
   const displayUrl =
-    deployment?.url && !isStopped ? deployment.url.replace(/^https?:\/\//, "") : null;
-  const activeUrl = deployment?.url && !isStopped ? deployment.url : null;
+    deployment?.url && !isStopped && !isUnhealthy
+      ? deployment.url.replace(/^https?:\/\//, "")
+      : null;
+  const activeUrl = deployment?.url && !isStopped && !isUnhealthy ? deployment.url : null;
 
   const deploy = useMutation({
     mutationFn: () => deployProject(project.id),
@@ -335,7 +339,11 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
             {project.name}
           </h3>
         </div>
-        <DeploymentStatusBadge status={deployment?.status ?? null} stopped={isStopped} />
+        <DeploymentStatusBadge
+          status={deployment?.status ?? null}
+          stopped={isStopped}
+          unhealthy={isUnhealthy}
+        />
       </div>
 
       {error && (
