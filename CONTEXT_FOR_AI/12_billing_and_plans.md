@@ -14,7 +14,7 @@ Free-grensene, og dashboardet skjuler kjøpsknappene.
 | --- | --- | --- | --- |
 | Pris eks. mva (Norge) | 0 | 199 kr/mnd | 799 kr/mnd |
 | Pris eks. mva (øvrige) | 0 | 19 €/mnd | 79 €/mnd |
-| Dynamiske apper samtidig | 1 | 5 | 20 |
+| Dynamiske apper samtidig | 1 | 10 | 20 |
 | RAM per app (kjørende) | 256 MB | 2 GB | 8 GB |
 | RAM under bygging | 1 GB | 4 GB | 8 GB |
 | vCPU per app | 0,5 | 2 | 4 |
@@ -242,6 +242,13 @@ Selve sperren er `assertCanDeploy()` i `services/plans.ts`:
   i databasen, fordi Docker har fasit. Statiske prosjekter er unntatt.
   **Et prosjekt som allerede kjører, slipper alltid gjennom** – uten det ville en
   Free-bruker med én app blitt låst ute fra sin egen neste versjon.
+  **Dev-sider teller som hele apper.** En dev-side er en ordinær prosjektrad med
+  `parent_project_id` satt (`services/dev-sites.ts`), og tellingen ser bare på
+  `static_output_dir` og hva Docker kjører – ikke på om raden er et miljø for en
+  app kunden alt betaler for. Det er riktig for verten, som betaler for minnet
+  uansett, men det gjør at ett produkt med et testmiljø bruker to plasser.
+  Pro-taket ble hevet til 10 i september 2026 nettopp fordi 5 ble til 2–3 reelle
+  produkter når hvert av dem skulle ha en dev-side.
 
 Feilen kaster `DeployError` med steg `plan`, som `routes/api.ts` oversetter til
 **402 Payment Required** i stedet for 409. Koden er meningsbærende: 409 sier

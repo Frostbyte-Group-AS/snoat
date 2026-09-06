@@ -80,7 +80,23 @@ export const PLAN_LIMITS: Record<SubscriptionTier, PlanLimits> = {
     analytics: false,
   },
   pro: {
-    maxRunningProjects: 5,
+    /**
+     * Hevet fra 5 til 10 den 6. september 2026.
+     *
+     * Grunnen er konkret, ikke en avrunding oppover: fem apper er det en enkelt
+     * utvikler har i drift *før* hen begynner å teste noe. Med fem
+     * kjørende apper var neste deployment sperret – og den neste deploymenten
+     * var en passordbeskyttet dev-side for en app som alt lå på kontoen.
+     *
+     * ⚠️ En dev-side er en ordinær prosjektrad med `parent_project_id` satt
+     * (`services/dev-sites.ts`, migrasjon 0013). Den kjører sin egen container
+     * og teller derfor som en hel app her. Det er riktig for verten – minnet er
+     * like ekte – men det betyr at en kunde som vil ha et testmiljø av noe hen
+     * alt betaler for, bruker to plasser på én app. Taket måtte derfor være
+     * romslig nok til at et dev-miljø ikke er et valg mot en produksjonsapp.
+     * Om dev-sider skal telle halvt, eller ha sitt eget tak, er en egen sak.
+     */
+    maxRunningProjects: 10,
     memoryMb: 2048,
     buildMemoryMb: 4096,
     cpus: 2,
@@ -350,6 +366,67 @@ export async function buildMinutesUsed(userId: string): Promise<number> {
 }
 
 /**
+ * Hvor mange plasser kontoen bruker akkurat nå.
+ *
+ * To ting teller *ikke*: statiske sider (de kjører ingen container) og rader
+ * uten kjørende container (stoppet, krasjet eller aldri deployet).
+ *
+ * ⚠️ Dev-sider teller derimot fullt ut. En dev-side er en ordinær prosjektrad
+ * med `parent_project_id` satt (`services/dev-sites.ts`), og den kjører sin egen
+ * container – så for verten er den en app som alle andre. For kunden er den et
+ * miljø for noe hen alt betaler for, og at de to synene spriker er grunnen til
+ * at Pro-taket er romslig. Skal det endres, er det her tellingen bor.
+ *
+ * Skilt ut av `assertCanDeploy` fordi regelen er verdt å teste uten å måtte
+ * stille opp både Docker og Supabase for å komme til den.
+ */
+export function countActiveApps(
+  projects: ReadonlyArray<Pick<Project, "id" | "static_output_dir">>,
+  running: ReadonlySet<string>,
+): number {
+  return projects.filter((row) => !row.static_output_dir && running.has(row.id)).length;
+}
+
+/**
+ * Feilen kunden får når apptaket er fullt – eller `null` når det er plass igjen.
+ *
+ * `>=` og ikke `>`: `active` er plassene som er brukt *før* denne appen, så en
+ * konto med like mange kjørende apper som planen tillater er full.
+ *
+ * Setningen bøyer seg selv, og det er den ene grunnen til at dette er en egen
+ * funksjon med en egen test: «tillater 1 app» mot «tillater 10 apper» er
+ * forskjellen mellom norsk og nesten-norsk, og den forskjellen har ingen
+ * typesjekk.
+ */
+export function appLimitError(entitlement: Entitlement, active: number): DeployError | null {
+  const limit = entitlement.limits.maxRunningProjects;
+  if (active < limit) return null;
+
+  const suffix = entitlement.downgraded
+    ? ` Betalingen for ${planName(entitlement.billedPlan)} har feilet, så kontoen kjører på gratisgrensene inntil den er i orden.`
+    : ` Oppgrader planen, eller stopp en app du ikke bruker.`;
+
+  return new DeployError(
+    "plan",
+    `Planen ${planName(entitlement.plan)} tillater ${limit} ` +
+      `${limit === 1 ? "app" : "apper"} samtidig, og du har ${active} som kjører.${suffix}`,
+    {
+      // To koder og ikke én med et flagg: de to tilfellene ber kunden om helt
+      // ulike ting – «oppgrader» mot «fiks kortet ditt» – og en oversetter
+      // som ser dem hver for seg skriver bedre tekst enn en som må sy sammen
+      // en setning av en betingelse.
+      code: entitlement.downgraded ? "plan.apps_limit_reached_downgraded" : "plan.apps_limit_reached",
+      params: {
+        plan: entitlement.plan,
+        billedPlan: entitlement.billedPlan,
+        limit,
+        running: active,
+      },
+    },
+  );
+}
+
+/**
  * Sperren som faktisk håndhever planen.
  *
  * Kalles fra `startDeployment`, ikke fra prosjektopprettelsen. Det er et bevisst
@@ -404,36 +481,13 @@ export async function assertCanDeploy(project: Project, entitlement: Entitlement
     return;
   }
 
-  const active = ((data ?? []) as Array<Pick<Project, "id" | "static_output_dir">>).filter(
-    (row) => !row.static_output_dir && running.has(row.id),
-  ).length;
+  const active = countActiveApps(
+    (data ?? []) as Array<Pick<Project, "id" | "static_output_dir">>,
+    running,
+  );
 
-  if (active >= limits.maxRunningProjects) {
-    const suffix = entitlement.downgraded
-      ? ` Betalingen for ${planName(entitlement.billedPlan)} har feilet, så kontoen kjører på gratisgrensene inntil den er i orden.`
-      : ` Oppgrader planen, eller stopp en app du ikke bruker.`;
-
-    throw new DeployError(
-      "plan",
-      `Planen ${planName(entitlement.plan)} tillater ${limits.maxRunningProjects} ` +
-        `${limits.maxRunningProjects === 1 ? "app" : "apper"} samtidig, og du har ${active} som kjører.${suffix}`,
-      {
-        // To koder og ikke én med et flagg: de to tilfellene ber kunden om helt
-        // ulike ting – «oppgrader» mot «fiks kortet ditt» – og en oversetter
-        // som ser dem hver for seg skriver bedre tekst enn en som må sy sammen
-        // en setning av en betingelse.
-        code: entitlement.downgraded
-          ? "plan.apps_limit_reached_downgraded"
-          : "plan.apps_limit_reached",
-        params: {
-          plan: entitlement.plan,
-          billedPlan: entitlement.billedPlan,
-          limit: limits.maxRunningProjects,
-          running: active,
-        },
-      },
-    );
-  }
+  const overLimit = appLimitError(entitlement, active);
+  if (overLimit) throw overLimit;
 }
 
 const PLAN_NAMES: Record<SubscriptionTier, string> = {

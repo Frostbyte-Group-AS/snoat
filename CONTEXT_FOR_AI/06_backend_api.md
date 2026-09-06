@@ -364,7 +364,7 @@ eller siden ulike ting.
   "downgraded": false,
   "graceEndsAt": null,
   "currentPeriodEnd": "2026-09-01T00:00:00.000Z",
-  "limits": { "maxRunningProjects": 5, "memoryMb": 1024, "cpus": 1, "buildMinutesPerMonth": 500, "queuePriority": 10 },
+  "limits": { "maxRunningProjects": 10, "memoryMb": 1024, "cpus": 1, "buildMinutesPerMonth": 500, "queuePriority": 10 },
   "usage": { "runningProjects": 2, "totalProjects": 4, "staticProjects": 1, "buildMinutesUsed": 37 },
   "plans": [{ "id": "pro", "price": 19900, "priceIncludingVat": 24875, "currency": "nok", "purchasable": true, "limits": {} }],
   "market": { "id": "no", "currency": "nok", "locale": "nb-NO", "displayVatRate": 0.25, "invoiceChannel": "ehf" },
