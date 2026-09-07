@@ -249,6 +249,7 @@
     "tab_deployments": "Deployments",
     "tab_terminal": "Terminal",
     "tab_analytics": "Statistikk",
+    "tab_errors": "Feil",
     "tab_dns": "DNS",
     "tab_env": "Miljøvariabler",
     "tab_settings": "Innstillinger",

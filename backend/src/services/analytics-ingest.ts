@@ -1,8 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import net from "node:net";
 import { config } from "../config.js";
-import { devAliasHostname } from "../lib/caddy.js";
 import { lookupCountry } from "../lib/geoip.js";
+import {
+  resolveProject,
+  startHostMapRefresh,
+} from "../lib/host-map.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
 import { parseUserAgent } from "../lib/user-agent.js";
@@ -51,87 +54,6 @@ function visitorHash(projectId: string, ip: string, userAgent: string, day: stri
     .update(ip)
     .update(userAgent)
     .digest("hex");
-}
-
-// ---------------------------------------------------------------------------
-// Vertsnavn → prosjekt
-// ---------------------------------------------------------------------------
-
-let hostMap = new Map<string, string>();
-let hostMapAt = 0;
-let refreshing: Promise<void> | null = null;
-
-async function refreshHostMap(): Promise<void> {
-  if (refreshing) return refreshing;
-
-  refreshing = (async () => {
-    const { data, error } = await supabase
-      .from("projects")
-      .select("id, name, custom_domain, parent_project_id, branch");
-
-    if (error) {
-      logger.warn({ err: error.message }, "Kunne ikke friske opp vertsnavn-kartet");
-      return;
-    }
-
-    type Row = {
-      id: string;
-      name: string;
-      custom_domain: string | null;
-      parent_project_id: string | null;
-      branch: string | null;
-    };
-
-    const rows = (data ?? []) as Row[];
-    const nameById = new Map(rows.map((row) => [row.id, row.name]));
-
-    const next = new Map<string, string>();
-    for (const row of rows) {
-      next.set(`${row.name}${config.SNOAT_APP_DOMAIN_SUFFIX}`.toLowerCase(), row.id);
-      if (row.custom_domain) next.set(row.custom_domain.toLowerCase(), row.id);
-
-      // En dev-side svarer også på `<gren>.<hovedprosjekt>`. Uten denne linja
-      // ville alle treff på den pene adressen falt utenfor kartet og blitt
-      // forkastet, og statistikken for dev-siden vært tom uansett hvor mye den
-      // ble besøkt.
-      const parentName = row.parent_project_id ? nameById.get(row.parent_project_id) : null;
-      const alias = parentName && row.branch ? devAliasHostname(parentName, row.branch) : null;
-      if (alias) next.set(alias.toLowerCase(), row.id);
-    }
-
-    hostMap = next;
-    hostMapAt = Date.now();
-  })().finally(() => {
-    refreshing = null;
-  });
-
-  return refreshing;
-}
-
-/**
- * Tømmer kartet slik at neste treff leser på nytt.
- *
- * Kalles fra deploy-pipelinen når en rute opprettes eller et eget domene
- * endres. Uten den ville de første forespørslene til et helt nytt prosjekt
- * blitt forkastet fram til den periodiske oppfriskningen rakk å kjøre.
- */
-export function invalidateHostMap(): void {
-  hostMapAt = 0;
-}
-
-function resolveProject(host: string): string | null {
-  // Caddy tar med porten på ikke-standard porter (typisk lokalt).
-  const clean = host.toLowerCase().replace(/:\d+$/, "");
-
-  const known = hostMap.get(clean);
-  if (known) return known;
-
-  // Ukjent vert kan være et prosjekt som nettopp ble deployet. Frisk opp, men
-  // ikke oftere enn hvert 10. sekund – ellers blir en portscan mot tilfeldige
-  // vertsnavn til en spørring per forespørsel.
-  if (Date.now() - hostMapAt > 10_000) void refreshHostMap();
-
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -424,7 +346,7 @@ async function flush(): Promise<void> {
 const MAX_LINE_BYTES = 64 * 1024;
 
 export function startAnalyticsIngest(): void {
-  void refreshHostMap();
+  startHostMapRefresh();
 
   const server = net.createServer((socket) => {
     let tail = "";
@@ -457,10 +379,6 @@ export function startAnalyticsIngest(): void {
   });
 
   setInterval(() => void flush(), config.SNOAT_ANALYTICS_FLUSH_MS).unref();
-
-  // Vertsnavn-kartet fanger opp slettede prosjekter og domeneendringer som
-  // ikke gikk veien om deploy-pipelinen.
-  setInterval(() => void refreshHostMap(), 60_000).unref();
 
   startPruneSweep();
 }

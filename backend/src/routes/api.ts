@@ -5,11 +5,12 @@ import { generateApiKey } from "../lib/api-keys.js";
 import { listConnections, revokeClientTokens } from "../lib/oauth.js";
 import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware/auth.js";
 import * as analytics from "../services/analytics.js";
-import { invalidateHostMap } from "../services/analytics-ingest.js";
+import { invalidateHostMap } from "../lib/host-map.js";
 import * as deploy from "../services/deploy.js";
 import * as devSites from "../services/dev-sites.js";
 import { ensureProjectRoute, type RouteStatus } from "../services/deploy.js";
 import { checkDomain } from "../services/domain-status.js";
+import * as errors from "../services/errors.js";
 import { assertSafeBranch, assertSafeRepoUrl } from "../services/git.js";
 import { entitlementFor, limitsFor } from "../services/plans.js";
 import { logger } from "../lib/logger.js";
@@ -559,6 +560,112 @@ api.get("/projects/:projectId/analytics", async (c) => {
   const range = analytics.parseRange(c.req.query("from"), c.req.query("to"), c.req.query("unit"));
 
   return c.json(await analytics.getProjectSummary(project, range));
+});
+
+/**
+ * Feilene i ett prosjekt.
+ *
+ * Ikke plangrenset, i motsetning til trafikkstatistikken. Det er et bevisst
+ * valg: en app som krasjer for brukerne sine er et problem uansett hvilken plan
+ * kunden har, og en gratis-app som feiler i stillhet er en dårligere plattform
+ * for alle. Innsamlingen koster oss uansett det samme – proxyen injiserer
+ * collectoren for hver app, og sveipet leser stderr for hver container.
+ */
+api.get("/projects/:projectId/errors", async (c) => {
+  const project = await loadOwnedProject(c, c.req.param("projectId"));
+
+  const status = c.req.query("status");
+  const parsed =
+    status === "all" || status === "open" || status === "resolved" || status === "ignored"
+      ? status
+      : "open";
+
+  return c.json({
+    errors: await errors.listForProject(project, {
+      status: parsed,
+      limit: Number(c.req.query("limit") ?? 50),
+      stacks: Number(c.req.query("stacks") ?? 1),
+    }),
+  });
+});
+
+/**
+ * Nye feil på tvers av alle prosjektene kalleren eier.
+ *
+ * Formet etter det patch-agenten trenger og ikke etter det dashboardet viser:
+ * ett kall, alle prosjekter, kun det som er nytt, med commit-hashen som innførte
+ * feilen. Alternativet – ett kall per prosjekt – ville betydd at agenten måtte
+ * liste prosjekter først og så gjette hvilke som var verdt å spørre om.
+ *
+ * Prosjektlista slås opp her og ikke i servicelaget, fordi det er her vi vet
+ * hvem som spør.
+ */
+api.get("/errors", async (c) => {
+  const userId = c.get("userId");
+
+  const { data, error } = await supabase.from("projects").select("id").eq("user_id", userId);
+  if (error) throw new Error(`Kunne ikke lese prosjekter: ${error.message}`);
+
+  const projectIds = (data ?? []).map((row) => row.id as string);
+
+  const sinceRaw = c.req.query("since");
+  const since = sinceRaw ? new Date(sinceRaw) : undefined;
+  if (since && Number.isNaN(since.getTime())) {
+    throw new HTTPException(400, {
+      message: "«since» må være et gyldig ISO-tidspunkt",
+      cause: { code: "errors.bad_since" } satisfies ErrorDetail,
+    });
+  }
+
+  return c.json({
+    errors: await errors.listRecent(projectIds, {
+      since,
+      minEvents: Number(c.req.query("minEvents") ?? 1),
+      limit: Number(c.req.query("limit") ?? 50),
+      stacks: Number(c.req.query("stacks") ?? 3),
+    }),
+  });
+});
+
+/**
+ * Lukker, gjenåpner eller demper én feilgruppe.
+ *
+ * Eierskapet håndheves i WHERE-setningen i databasen og ikke som en sjekk her:
+ * gruppe-IDen kommer utenfra, og en uuid er ikke en tilgangskontroll. Treffer
+ * oppdateringen ingenting, svarer vi 404 – enten fordi gruppa ikke finnes eller
+ * fordi den tilhører en annen konto. De to skal se like ut utenfra.
+ */
+api.patch("/errors/:groupId", async (c) => {
+  const body: { status?: unknown; prUrl?: unknown } = await c.req
+    .json<{ status?: unknown; prUrl?: unknown }>()
+    .catch(() => ({}));
+
+  const status = body.status;
+  if (status !== "open" && status !== "resolved" && status !== "ignored") {
+    throw new HTTPException(400, {
+      message: "«status» må være open, resolved eller ignored",
+      cause: { code: "errors.bad_status" } satisfies ErrorDetail,
+    });
+  }
+
+  const { data, error } = await supabase.from("projects").select("id").eq("user_id", c.get("userId"));
+  if (error) throw new Error(`Kunne ikke lese prosjekter: ${error.message}`);
+
+  const updated = await errors.setStatus(
+    c.req.param("groupId"),
+    status,
+    (data ?? []).map((row) => row.id as string),
+    typeof body.prUrl === "string" ? body.prUrl : null,
+  );
+
+  if (!updated) {
+    throw new HTTPException(404, {
+      message: "Feilgruppen finnes ikke",
+      cause: { code: "errors.not_found" } satisfies ErrorDetail,
+    });
+  }
+
+  return c.json({ error: updated });
 });
 
 /**

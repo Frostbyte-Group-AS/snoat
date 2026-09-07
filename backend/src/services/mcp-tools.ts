@@ -688,6 +688,120 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   {
+    name: "snoat_list_errors",
+    title: "Hent nye feil",
+    description:
+      "Henter feil og krasj som er observert i appene, gruppert slik at samme feil er én rad med en teller – ikke én rad per forekomst. " +
+      "Uten projectId går den på tvers av alle prosjektene kontoen eier, som er det du vil ha når du leter etter noe å rette. " +
+      "Hver gruppe har melding, fil, linjenummer, de nyeste stacktracene, hvor mange ganger den har skjedd, og hvilken commit som var utrullet da den dukket opp første gang. " +
+      "Feilene samles inn av plattformen selv: klientfeil injiseres av proxyen, serverunntak leses av containernes stderr, og krasj kommer fra helsesveipet. Det er ingenting å slå på per app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: {
+          type: "string",
+          description: "Begrens til ett prosjekt. Utelat for alle prosjektene kontoen eier.",
+        },
+        since: {
+          type: "string",
+          description:
+            "Kun feil sist sett etter dette ISO-tidspunktet. Standard er siste døgn. Gjelder ikke sammen med projectId.",
+        },
+        status: {
+          type: "string",
+          enum: ["open", "resolved", "ignored", "all"],
+          description: "Kun sammen med projectId. Standard «open».",
+        },
+        minEvents: {
+          type: "number",
+          description:
+            "Hopp over feil med færre forekomster enn dette. Nyttig for å filtrere bort engangsstøy fra nettleserutvidelser. Standard 1.",
+        },
+        limit: { type: "number", description: "Maks antall grupper. Standard 50." },
+        stacks: {
+          type: "number",
+          description: "Antall stacktraces per gruppe. Standard 3 på tvers av prosjekter, 1 for ett prosjekt.",
+        },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    async run(args, ctx) {
+      const input = z
+        .object({
+          projectId: z.string().min(1).optional(),
+          since: z.string().optional(),
+          status: z.enum(["open", "resolved", "ignored", "all"]).optional(),
+          minEvents: z.number().optional(),
+          limit: z.number().optional(),
+          stacks: z.number().optional(),
+        })
+        .parse(args);
+
+      const query = new URLSearchParams();
+      if (input.limit !== undefined) query.set("limit", String(input.limit));
+      if (input.stacks !== undefined) query.set("stacks", String(input.stacks));
+
+      if (input.projectId) {
+        if (input.status) query.set("status", input.status);
+        const suffix = query.toString() ? `?${query.toString()}` : "";
+        const data = await callOrThrow(ctx, "GET", `/projects/${input.projectId}/errors${suffix}`);
+        const count = (data as { errors?: unknown[] }).errors?.length ?? 0;
+
+        return { summary: `${count} feilgrupper i prosjektet.`, data };
+      }
+
+      if (input.since) query.set("since", input.since);
+      if (input.minEvents !== undefined) query.set("minEvents", String(input.minEvents));
+      const suffix = query.toString() ? `?${query.toString()}` : "";
+
+      const data = await callOrThrow(ctx, "GET", `/errors${suffix}`);
+      const count = (data as { errors?: unknown[] }).errors?.length ?? 0;
+
+      return {
+        summary:
+          count === 0
+            ? "Ingen nye feil i vinduet."
+            : `${count} feilgrupper er sett i vinduet, sortert etter hvor ofte de skjer.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_resolve_error",
+    title: "Lukk eller demp en feil",
+    description:
+      "Setter status på én feilgruppe. Bruk «resolved» når en fiks er laget, «ignored» for støy som aldri skal rettes, og «open» for å angre. " +
+      "Send med prUrl når det finnes en pull request for fiksen – da vil neste gjennomgang se at feilen allerede er tatt hånd om og ikke foreslå den på nytt. " +
+      "En feilgruppe som får en ny forekomst åpnes automatisk igjen, så «resolved» er en påstand om at fiksen virket, ikke en måte å skjule feilen på.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        errorId: { type: "string", description: "Feilgruppens ID, slik den kommer fra snoat_list_errors." },
+        status: { type: "string", enum: ["open", "resolved", "ignored"] },
+        prUrl: { type: "string", description: "Lenke til pull requesten som fikser feilen." },
+      },
+      required: ["errorId", "status"],
+      additionalProperties: false,
+    },
+    annotations: { idempotentHint: true },
+    async run(args, ctx) {
+      const { errorId, status, prUrl } = z
+        .object({
+          errorId: z.string().min(1),
+          status: z.enum(["open", "resolved", "ignored"]),
+          prUrl: z.string().url().optional(),
+        })
+        .parse(args);
+
+      const data = await callOrThrow(ctx, "PATCH", `/errors/${errorId}`, { status, prUrl });
+
+      return { summary: `Feilgruppen er satt til «${status}».`, data };
+    },
+  },
+
+  {
     name: "snoat_set_custom_domain",
     title: "Sett eget domene",
     description:

@@ -11,6 +11,7 @@ import { DnsSettingsTab } from "@/components/DnsSettingsTab";
 import { AccessPasswordCard, DevSitesCard } from "@/components/DevSitesCard";
 import { SiteToggle } from "@/components/SiteToggle";
 import { AnalyticsTab } from "@/components/AnalyticsTab";
+import { ErrorsTab } from "@/components/ErrorsTab";
 import {
   Accordion,
   AccordionContent,
@@ -41,13 +42,14 @@ export const Route = createFileRoute("/projects/$projectId")({
   component: ProjectDetailPage,
 });
 
-type Tab = "deployments" | "terminal" | "analytics" | "dns" | "mcp" | "env" | "settings";
+type Tab = "deployments" | "terminal" | "analytics" | "errors" | "dns" | "mcp" | "env" | "settings";
 
 /** Fanene i prosjektvisningen, i den rekkefølgen de vises. */
 const TABS: ReadonlyArray<{ id: Tab; labelKey: string }> = [
   { id: "deployments", labelKey: "project.tab_deployments" },
   { id: "terminal", labelKey: "project.tab_terminal" },
   { id: "analytics", labelKey: "project.tab_analytics" },
+  { id: "errors", labelKey: "project.tab_errors" },
   { id: "dns", labelKey: "project.tab_dns" },
   { id: "env", labelKey: "project.tab_env" },
   { id: "settings", labelKey: "project.tab_settings" },
@@ -423,6 +425,8 @@ function ProjectDetailPage() {
           )}
 
           {activeTab === "analytics" && <AnalyticsTab project={project} />}
+
+          {activeTab === "errors" && <ErrorsTab project={project} />}
 
           {activeTab === "dns" && (
             <DnsSettingsTab

@@ -63,6 +63,40 @@ const schema = z.object({
   SNOAT_ANALYTICS_ROLLUP_RETENTION_DAYS: z.coerce.number().int().positive().default(400),
 
   /**
+   * Feilsporing.
+   *
+   * Flush-vinduet er lengre enn analytikkens fem sekunder med vilje: feil kommer
+   * i klynger, og et lengre vindu betyr at en app som krasjer for hundre
+   * brukere samtidig blir én rad å skrive i stedet for tjue.
+   */
+  SNOAT_ERRORS_FLUSH_MS: z.coerce.number().int().positive().default(15_000),
+
+  /**
+   * Hvor ofte containernes stderr leses etter ufangede unntak.
+   *
+   * Ett minutt er valgt fordi det som leser dette er et menneske om morgenen
+   * eller en agent kl. 05:00 – ikke en vaktordning. Kortere intervall ville kostet
+   * ett Docker-kall per app hvert intervall uten at noen fikk vite noe tidligere.
+   */
+  SNOAT_ERRORS_STDERR_SWEEP_MS: z.coerce.number().int().positive().default(60_000),
+
+  /**
+   * Levetid for stacktraces og for lukkede grupper.
+   *
+   * En stacktrace er det mest sensitive vi lagrer – den kan inneholde hva som
+   * helst appen hadde i minnet – og har derfor kortest levetid av alt i
+   * plattformen. `EVENTS_PER_GROUP` er den harde grensen: uansett alder beholdes
+   * kun de nyeste per feilgruppe, slik at én app i krasj-løkke ikke kan fylle
+   * disken mellom to oppryddinger.
+   *
+   * Åpne feilgrupper slettes aldri. En feil ingen har rettet er fortsatt en
+   * feil, uansett hvor gammel den er.
+   */
+  SNOAT_ERRORS_EVENT_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+  SNOAT_ERRORS_EVENTS_PER_GROUP: z.coerce.number().int().positive().default(20),
+  SNOAT_ERRORS_RESOLVED_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
+
+  /**
    * Sti til MMDB-databasen for landoppslag. Valgfri – uten den fungerer alt
    * som før, men uten landstatistikk. Hentes med `scripts/fetch-geoip.mjs`.
    */

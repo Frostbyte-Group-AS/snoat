@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { logger } from "../lib/logger.js";
+import { recordError } from "./error-ingest.js";
 import { supabase } from "../lib/supabase.js";
 import type { Project } from "../types.js";
 import * as containers from "./containers.js";
@@ -140,6 +141,22 @@ export async function sweepContainerHealth(): Promise<{ diedNow: number; recover
     } else {
       for (const { project, detail } of diedNow) {
         logger.error({ project: project.name, projectId: project.id }, `Container død: ${detail}`);
+
+        // Et krasj er en feil på linje med et ufanget unntak, og hører hjemme i
+        // samme liste. Uten dette ville en app som er nede vært synlig i
+        // dashboardet, men usynlig for alt som leser feilene – inkludert
+        // patch-agenten, som dermed aldri ville sett den verste tilstanden en
+        // app kan være i.
+        //
+        // Fingerprinten blir den samme hver gang samme prosjekt dør, så
+        // gjentatte krasj blir én gruppe med høy teller og ikke en ny rad hver
+        // gang sveipet kjører.
+        recordError({
+          projectId: project.id,
+          kind: "crash",
+          message: "Containeren er borte fra Docker, men prosjektet skal kjøre",
+          stack: detail,
+        });
         void notifyContainerUnhealthy(project, detail).catch((err: unknown) => {
           logger.warn({ project: project.name, err }, "Kunne ikke sende helsevarsel");
         });

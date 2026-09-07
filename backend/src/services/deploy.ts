@@ -17,7 +17,7 @@ import {
 } from "./plans.js";
 import { finnStatiskErklaering } from "./static-declaration.js";
 import { pruneOldSites, publishStaticSite, removeProjectSites, siteDirFor } from "./static-site.js";
-import { invalidateHostMap } from "./analytics-ingest.js";
+import { invalidateHostMap } from "../lib/host-map.js";
 import { notifyFirstDeploymentLive } from "./notify.js";
 import { clearHealthFlag } from "./helse.js";
 import { aliasHostnamesFor, passwordHashFor, publicUrlFor } from "./dev-sites.js";

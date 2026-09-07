@@ -426,6 +426,54 @@ export function getProjectAnalytics(
   return request(`/api/projects/${projectId}/analytics?${query}`);
 }
 
+/** Speiler `ErrorGroup` i `backend/src/services/errors.ts`. */
+export interface ErrorGroup {
+  id: string;
+  kind: "client" | "server" | "crash" | "http";
+  message: string;
+  file: string | null;
+  line: number | null;
+  col: number | null;
+  first_seen: string;
+  last_seen: string;
+  events: number;
+  status: "open" | "resolved" | "ignored";
+  patch_pr_url: string | null;
+  stacks: Array<{
+    at: string;
+    stack: string | null;
+    url: string | null;
+    browser: string | null;
+    os: string | null;
+  }>;
+}
+
+/**
+ * Feilene i ett prosjekt.
+ *
+ * `stacks` er antall stacktraces per gruppe. Fanen ber om tre: den øverste er
+ * den nyeste, og de to under avslører om feilen har flere veier inn – som er
+ * forskjellen på én fiks og tre.
+ */
+export async function getProjectErrors(
+  projectId: string,
+  status: "open" | "resolved" | "ignored" | "all" = "open",
+): Promise<{ errors: ErrorGroup[] }> {
+  const query = new URLSearchParams({ status, stacks: "3" });
+  return request(`/api/projects/${projectId}/errors?${query}`);
+}
+
+/** Lukker, gjenåpner eller demper én feilgruppe. */
+export async function setErrorStatus(
+  errorId: string,
+  status: "open" | "resolved" | "ignored",
+): Promise<{ error: { id: string; status: string } }> {
+  return request(`/api/errors/${errorId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
 export interface ApiKeyItem {
   id: string;
   name: string;

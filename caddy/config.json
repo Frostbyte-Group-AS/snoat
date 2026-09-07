@@ -147,6 +147,17 @@
               "terminal": true
             },
             {
+              "@id": "snoat_error_endpoint",
+              "match": [{ "path": ["/__snoat/*"] }],
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [{ "dial": "backend:3000" }]
+                }
+              ],
+              "terminal": true
+            },
+            {
               "@id": "snoat_apps",
               "handle": [
                 {

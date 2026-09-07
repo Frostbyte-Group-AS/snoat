@@ -289,7 +289,14 @@ services:
   # Snoat-plattformen
   # ---------------------------------------------------------------------------
   caddy:
-    image: caddy:2.11.4-alpine
+    # Bygget lokalt, ikke hentet fra Docker Hub: feilsporingen trenger
+    # `replace_response`, som ikke er med i stock-imaget. Se caddy/Dockerfile.
+    # `image` er satt i tillegg til `build` slik at laget gjenbrukes mellom
+    # `docker compose up` og ikke bygges på nytt ved hver oppstart.
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
+    image: snoat-caddy:2.11.4
     restart: unless-stopped
     # Proxyen skal vinne over en pågående bygging. Cgroup-ene ligger som søsken
     # under system.slice, så uten dette konkurrerer Caddy med lik vekt mot

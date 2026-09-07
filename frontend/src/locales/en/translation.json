@@ -249,6 +249,7 @@
     "tab_deployments": "Deployments",
     "tab_terminal": "Terminal",
     "tab_analytics": "Analytics",
+    "tab_errors": "Errors",
     "tab_dns": "DNS",
     "tab_env": "Environment Variables",
     "tab_settings": "Settings",

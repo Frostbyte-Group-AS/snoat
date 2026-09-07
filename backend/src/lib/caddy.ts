@@ -229,7 +229,7 @@ export async function upsertAppRoute(
   return await upsertRoute(
     slug,
     hostsFor(slug, customDomain, aliasHosts),
-    [{ handler: "reverse_proxy", upstreams: [{ dial: upstream }] }],
+    injectHandlers([{ handler: "reverse_proxy", upstreams: [{ dial: upstream }] }]),
     { upstream, protected: Boolean(accessPasswordHash) },
     accessPasswordHash,
   );
@@ -259,7 +259,7 @@ export async function upsertStaticRoute(
   return await upsertRoute(
     slug,
     hostsFor(slug, customDomain, aliasHosts),
-    staticHandlers(root, spaFallback),
+    injectHandlers(staticHandlers(root, spaFallback)),
     { root, spaFallback, protected: Boolean(accessPasswordHash) },
     accessPasswordHash,
   );
@@ -309,6 +309,90 @@ function staticHandlers(root: string, spaFallback: boolean): Array<Record<string
           handle: [{ handler: "rewrite", uri: "{http.matchers.file.relative}" }],
         },
         { handle: [{ handler: "file_server" }] },
+      ],
+    },
+  ];
+}
+
+/**
+ * Stien collectoren serveres fra, og rapporterer inn til.
+ *
+ * Dobbel understrek fordi det ikke kolliderer med noe rammeverk vi hoster:
+ * Next eier `/_next`, Astro `/_astro`, Vite `/@vite`. Ruten som sender disse to
+ * til backend ligger i caddy/config.json, foran app-rutene, slik at hver eneste
+ * vert svarer på dem uten at app-ruten trenger å vite noe om det.
+ */
+export const ERROR_COLLECTOR_PATH = "/__snoat/err.js";
+
+/** Script-tagen som injiseres. `defer` slik at den aldri blokkerer opptegningen. */
+const COLLECTOR_TAG = `<script src="${ERROR_COLLECTOR_PATH}" defer></script>`;
+
+/**
+ * Handlerne som limer collectoren inn i HTML-svarene til en app.
+ *
+ * ## Hvorfor i proxyen og ikke i appen
+ *
+ * Analytikken slipper unna uten å røre svarene i det hele tatt – den leser
+ * Caddys access-logg. Klientfeil finnes ikke i den loggen: en `TypeError` i
+ * nettleseren gir ingen forespørsel, ingen statuskode, ingenting proxyen kan se.
+ * Noe må kjøre i nettleseren, og da er spørsmålet bare hvem som setter det inn.
+ *
+ * Kundens kildekode er feil svar. Da må det legges til per app, holdes
+ * oppdatert per app, og det kan brekke et bygg. Her settes det inn på vei ut av
+ * proxyen: alle apper får det, gamle deployments får det uten å bygges på nytt,
+ * og det finnes ingen versjon å holde synkronisert.
+ *
+ * ## Hvorfor formen er så omstendelig
+ *
+ * Tre ting måtte løses samtidig:
+ *
+ * 1. **Kun HTML.** Matcheren på `Accept: *text/html*` gjør at et bilde, et
+ *    API-svar eller en JS-bundle aldri går innom erstatteren. Det er en
+ *    forespørselsmatcher og ikke en svarmatcher – Caddy har ikke det siste – men
+ *    den treffer riktig i praksis: nettleseren ber om `text/html` på navigasjon
+ *    og aldri på en subressurs.
+ *
+ * 2. **Ukomprimert oppstrøms.** Next komprimerer selv som standard. Kommer
+ *    HTML-en gzippet ut av containeren, finnes det ingen `</head>` å treffe, og
+ *    injeksjonen ville stille gjort ingenting. `Accept-Encoding: identity` mot
+ *    oppstrøms slår det av – men kun for navigasjonsforespørsler, som er en
+ *    håndfull kilobyte. Bildene og bundlene komprimeres som før.
+ *
+ * 3. **Ingen bufring.** `stream: true` gjør erstatningen underveis i stedet for
+ *    å samle hele svaret i minnet først. En app som streamer et stort svar med
+ *    `Accept: text/html` skal ikke kunne spise minnet til proxyen.
+ *
+ * Erstatningen er en ren streng og ikke et regulært uttrykk, med vilje:
+ * strømmemodus krever det, og en regex mot vilkårlig kunde-HTML er en
+ * katastrofe som venter på å skje.
+ *
+ * `</head>` og ikke `<head>`: en app kan ha `<base>`- og CSP-taggene sine først,
+ * og collectoren skal ikke kunne komme foran dem. Har svaret ingen `</head>` –
+ * et fragment, en HTML-snutt fra en HTMX-endepunkt – skjer det ingenting, og det
+ * er riktig utfall.
+ */
+function injectHandlers(handle: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  return [
+    {
+      handler: "subroute",
+      routes: [
+        {
+          match: [{ header: { Accept: ["*text/html*"] } }],
+          handle: [
+            {
+              handler: "headers",
+              request: { set: { "Accept-Encoding": ["identity"] } },
+            },
+            {
+              handler: "replace_response",
+              stream: true,
+              replacements: [
+                { search: "</head>", replace: `${COLLECTOR_TAG}</head>` },
+              ],
+            },
+          ],
+        },
+        { handle },
       ],
     },
   ];

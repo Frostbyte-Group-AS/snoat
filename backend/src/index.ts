@@ -17,6 +17,8 @@ import { stripeWebhooks } from "./routes/stripe.js";
 import { tlsPermission } from "./routes/tls.js";
 import { githubWebhooks } from "./routes/webhooks.js";
 import { startAnalyticsIngest } from "./services/analytics-ingest.js";
+import { errorCollector, startErrorIngest } from "./services/error-ingest.js";
+import { startRuntimeErrorSweep } from "./services/error-runtime.js";
 import { failOrphanedDeployments, reconcileRoutes } from "./services/deploy.js";
 import { startHealthSweep } from "./services/helse.js";
 import { eierlisteAntall } from "./services/plans.js";
@@ -199,6 +201,21 @@ app.route("/internal", tlsPermission);
  */
 app.route("/github", githubSetup);
 
+/**
+ * Feilsporingens to endepunkter, montert i rota og ikke under `/api`.
+ *
+ * Grunnen er hvem som kaller dem: en nettleser som besøker en *kundeapp*, ikke
+ * dashboardet. Caddy sender `/__snoat/*` hit for hvert eneste app-vertsnavn (se
+ * caddy/config.json), og forespørselen har verken Authorization-header eller en
+ * Origin vi kan kjenne igjen – `requireAuth` ville avvist den, og CORS-listen
+ * ville aldri kunnet dekke alle kundedomenene.
+ *
+ * Det er trygt fordi endepunktene ikke leser noe: `err.js` er en statisk streng
+ * som er lik for alle, og `POST /errors` skriver kun feilrapporter til det
+ * prosjektet vertsnavnet allerede peker på. Rate-limiten står i selve ruten.
+ */
+app.route("/", errorCollector);
+
 app.onError((error, c) => {
   if (error instanceof HTTPException) {
     // `cause` bærer en `ErrorDetail` når feilen er ment for kunden. `error` er
@@ -275,6 +292,11 @@ void (async () => {
   // `soft_start` i loggkonfigurasjonen, så rekkefølgen er ikke kritisk: er vi
   // sene ut, kobler Caddy seg til når vi er oppe.
   startAnalyticsIngest();
+
+  // Feil-ingesten deler vertsnavn-kartet med analytikken, så rekkefølgen mellom
+  // de to spiller ingen rolle – den som starter først frisker det opp.
+  startErrorIngest();
+  startRuntimeErrorSweep();
 })();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
