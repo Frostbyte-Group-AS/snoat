@@ -16,7 +16,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Deployment, Project, ProjectWithLatestDeployment } from "@/lib/database.types";
-import { appDomainSuffix } from "@/lib/platform";
+import { appDomainSuffix, devSiteUrl } from "@/lib/platform";
 import { getSupabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/dashboard")({
@@ -396,31 +396,64 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
           De lå tidligere bare inne i Innstillinger på prosjektsiden, og var i
           praksis usynlige. Her står de der man ser prosjektet, med grennavnet
           som etikett – det er grenen man leter etter, ikke radnavnet
-          «prosjekt-gren». */}
+          «prosjekt-gren».
+
+          Merkelappen er delt i to: grennavnet går inn til dev-sidens egen
+          prosjektside, adressen åpner selve siden i ny fane. Uten den andre
+          halvdelen måtte man innom prosjektsiden for å finne adressen – og
+          adressen er hele grunnen til at dev-grenen finnes. */}
       {devSites.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          {devSites.map((site) => (
-            <button
-              key={site.id}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                void navigate({ to: "/projects/$projectId", params: { projectId: site.id } });
-              }}
-              title={site.name}
-              className={`inline-flex max-w-[180px] items-center gap-[6px] truncate border-2 px-[8px] py-[2px] font-mono text-[12px] transition-colors ${
-                site.stopped_at
-                  ? "border-hair text-ink/50 hover:border-line hover:text-ink"
-                  : "border-line text-ink hover:bg-sun"
-              }`}
-            >
+          {devSites.map((site) => {
+            // Adressen regnes ut av prosjektnavn + gren, ikke hentet fra siste
+            // deployment: den er den samme før og etter et bygg, og en dev-side
+            // uten fullført bygg har ingen `deployment.url` å vise.
+            const address = site.branch ? devSiteUrl(project.name, site.branch) : null;
+            // Stoppet eller død container svarer 502. Da står grenen igjen som
+            // vei inn til prosjektsiden, uten en adresse som lyver – samme
+            // regel som `displayUrl` bruker for hovedappen.
+            const isDown = Boolean(site.stopped_at) || Boolean(site.container_died_at);
+
+            return (
               <span
-                aria-hidden="true"
-                className={`h-[7px] w-[7px] shrink-0 ${site.stopped_at ? "bg-ash" : "bg-ink"}`}
-              />
-              {site.branch ?? site.name}
-            </button>
-          ))}
+                key={site.id}
+                className={`inline-flex max-w-full items-stretch border-2 font-mono text-[12px] ${
+                  isDown ? "border-hair text-ink/50" : "border-line text-ink"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void navigate({ to: "/projects/$projectId", params: { projectId: site.id } });
+                  }}
+                  title={site.name}
+                  className={`inline-flex max-w-[140px] shrink-0 items-center gap-[6px] truncate px-[8px] py-[2px] transition-colors ${
+                    isDown ? "hover:border-line hover:text-ink" : "hover:bg-sun"
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`h-[7px] w-[7px] shrink-0 ${isDown ? "bg-ash" : "bg-ink"}`}
+                  />
+                  {site.branch ?? site.name}
+                </button>
+
+                {address && !isDown && (
+                  <a
+                    href={address}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    title={t("dev_sites.open_site")}
+                    className="max-w-[220px] truncate border-l-2 border-line px-[8px] py-[2px] transition-colors hover:bg-sun"
+                  >
+                    {address.replace(/^https?:\/\//, "")}
+                  </a>
+                )}
+              </span>
+            );
+          })}
         </div>
       )}
 

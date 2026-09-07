@@ -89,6 +89,13 @@ Adressen står ved lenken i dev-gren-lista, klar til å kopieres.
 - Dashboardet henter nå dev-sidene også, og viser dem som klikkbare
   grenmerkelapper på prosjektkortet. Spørringen filtrerte dem bort før, og da
   fantes de ingen steder i oversikten.
+- Merkelappen på prosjektkortet er delt i to: grennavnet går inn til dev-sidens
+  egen prosjektside, og adressen ved siden av åpner selve dev-siden i ny fane.
+  Før måtte man innom prosjektsiden for å finne adressen – og adressen er hele
+  grunnen til at dev-grenen finnes. Den regnes ut av prosjektnavn + gren
+  (`devSiteUrl`), ikke av siste deployment, så den står der også før første
+  bygg. En stoppet eller død dev-side viser bare grenen: adressen ville svart
+  502.
 
 ---
 
