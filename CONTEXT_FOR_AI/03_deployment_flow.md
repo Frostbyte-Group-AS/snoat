@@ -434,6 +434,28 @@ Hashen leses per ruteskriving (`accessHashFor()` i `deploy.ts`), og bare når
 åpen i noen minutter er dårlig, men en dev-side som ikke kan deployes er verre.
 Skal det snus til fail closed, må `runPipeline` også kunne feile på det.
 
+#### Vakten spratt opp en dialog over dashboardet
+
+Én 401 med `WWW-Authenticate: Basic` er nok til at nettleseren tar over: den viser
+sin **egen** legitimasjonsdialog, og den navngir *appens* vertsnavn selv om
+brukeren står på `snoat.com`. Dashboardet hentet faviconet til hvert prosjektkort
+fra appens eget vertsnavn (`<url>/favicon.ico` i `ProjectFavicon`,
+`routes/dashboard.tsx`), og på en beskyttet app ble det «Sign in to
+eierbolig-admin-dev.snoat.com» rett over «Mine prosjekter», med en tom firkant der
+ikonet skulle stått.
+
+Dialogen kommer uansett hva vi ber om ressursen med: `credentials: "omit"`,
+`crossOrigin` og en `fetch` i forkant fjerner den ikke. Chrome undertrykker den
+bare for delressurser som er *cross-site*, og `snoat.com` og `<app>.snoat.com`
+har samme registrerbare domene – de er same-site. Derfor ser man dialogen i
+produksjon, men ikke når dashboardet kjøres fra `localhost`.
+
+`ProjectFavicon` ber derfor ikke om faviconet i det hele tatt når
+`access_protected` er sant, men går rett til eierens GitHub-avatar. Vakten selv
+er urørt: den som går til vertsnavnet direkte får fortsatt 401. Skal en beskyttet
+app vise sitt *ekte* favicon i oversikten, må ressursen hentes server-til-server
+gjennom vårt eget API – nettleseren kan ikke møte den 401-en.
+
 ## Varsel til drift når en app blir live
 
 Etter at ruten er skrevet og statusen satt til `success`, kaller begge

@@ -230,29 +230,46 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
+/** Eierens GitHub-avatar, eller `null` når repo-URL-en ikke gir noe eiernavn. */
+function ownerAvatarUrl(repoUrl: string): string | null {
+  const owner = repoUrl.replace(/^https?:\/\/(www\.)?github\.com\//, "").split("/")[0];
+  return owner ? `https://github.com/${owner}.png?size=64` : null;
+}
+
 function ProjectFavicon({
   url,
   repoUrl,
   name,
+  accessProtected,
 }: {
   url: string | null;
   repoUrl: string;
   name: string;
+  /** `projects.access_protected` – appen står bak passordvegg (migrasjon 0013). */
+  accessProtected: boolean;
 }) {
   const [imgSrc, setImgSrc] = useState<string | null>(() => {
-    if (url) {
+    // Faviconet hentes fra appens *eget* vertsnavn. Står appen bak
+    // passordvegg, svarer Caddy 401 med `WWW-Authenticate: Basic` (se
+    // `basicAuthHandler` i backend/src/lib/caddy.ts) – og på en 401 med den
+    // headeren spretter nettleserens egen legitimasjonsdialog opp over
+    // dashboardet, med appens vertsnavn i teksten. Den kommer uansett hva vi
+    // ber om ressursen med: `crossOrigin`, `credentials: "omit"` og en `fetch`
+    // i forkant fjerner den ikke. Eneste måten å bli kvitt dialogen er å ikke
+    // la nettleseren møte den 401-en, så for beskyttede apper hopper vi rett
+    // til eierens GitHub-avatar. Ingen ressurs på det vertsnavnet blir spurt om.
+    if (url && !accessProtected) {
       return `${url.replace(/\/$/, "")}/favicon.ico`;
     }
-    const owner = repoUrl.replace(/^https?:\/\/(www\.)?github\.com\//, "").split("/")[0];
-    return owner ? `https://github.com/${owner}.png?size=64` : null;
+    return ownerAvatarUrl(repoUrl);
   });
   const [failed, setFailed] = useState(false);
 
   const handleNextFallback = () => {
     if (url && imgSrc?.includes("/favicon.ico")) {
-      const owner = repoUrl.replace(/^https?:\/\/(www\.)?github\.com\//, "").split("/")[0];
-      if (owner) {
-        setImgSrc(`https://github.com/${owner}.png?size=64`);
+      const avatar = ownerAvatarUrl(repoUrl);
+      if (avatar) {
+        setImgSrc(avatar);
         return;
       }
     }
@@ -334,7 +351,12 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-[10px]">
-          <ProjectFavicon url={activeUrl} repoUrl={project.repo_url} name={project.name} />
+          <ProjectFavicon
+            url={activeUrl}
+            repoUrl={project.repo_url}
+            name={project.name}
+            accessProtected={Boolean(project.access_protected)}
+          />
           <h3 className="max-w-[160px] truncate font-body text-[20px] font-normal text-ink sm:max-w-[200px]">
             {project.name}
           </h3>
