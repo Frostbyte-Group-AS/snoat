@@ -27,6 +27,7 @@ Mappen inneholder:
 - `10_recent_updates_and_roadmap.md` — nylige funksjoner og sammenligning mot Vercel
 - `11_custom_domains_and_dns.md` — DNS-fanen, recordene kunden setter og det som gjenstår
 - `12_billing_and_plans.md` — planer, Stripe-integrasjon og håndheving av grenser
+- `13_articles_and_seo.md` — artikkelsamlingen på `/articles`, SEO-oppsettet og innholdsbacklogen
 
 Holder du dokumentasjonen oppdatert etter en endring, er det disse filene som
 skal endres — ikke bare koden.

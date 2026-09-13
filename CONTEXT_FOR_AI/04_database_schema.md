@@ -11,11 +11,28 @@ Håndterer utvidet brukerdata knyttet til Supabase Auth (GitHub).
   - `id` (PK, refererer `auth.users`)
   - `full_name`
   - `avatar_url`
+  - `signup_notified_at` (migrasjon 0017; satt når drift er varslet om registreringen)
   - `created_at`
 
 Raden opprettes automatisk av triggeren `on_auth_user_created` på `auth.users`,
 som plukker `full_name`/`name`/`user_name` og `avatar_url` ut av GitHub-profilen
 GoTrue lagrer i `raw_user_meta_data`.
+
+`signup_notified_at` (migrasjon 0017) er kvitteringen på at drift har fått
+e-post om at brukeren registrerte seg – og samtidig låsen som gjør varselet
+idempotent. Registreringen skjer i GoTrue, som frontend snakker med direkte, så
+backend har ingen hendelse å henge varselet på; `services/signups.ts` sveiper
+derfor etter rader der feltet er NULL, krysser dem av med et betinget UPDATE
+(`... where signup_notified_at is null returning id`) og sender e-posten
+etterpå. Uten feltet ville hvert sveip varslet om de samme brukerne på nytt,
+hvert femte minutt, for alltid – samme problem `projects.container_died_at`
+løser for helsesveipet.
+
+Rader som fantes da migrasjonen kjørte er backfilt til `now()`, én gang, inne i
+en guard som sjekker om kolonnen er ny. Migrasjonene kjøres på nytt ved hver
+oppstart, så en fri UPDATE i den fila ville krysset av brukere som ennå ikke var
+varslet. En partiell indeks (`where signup_notified_at is null`) holder sveipets
+spørring konstant; i praksis er indeksen tom.
 
 ## projects
 Hvert repository som er koblet til plattformen.

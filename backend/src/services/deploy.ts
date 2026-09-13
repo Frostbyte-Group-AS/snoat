@@ -18,7 +18,7 @@ import {
 import { finnStatiskErklaering } from "./static-declaration.js";
 import { pruneOldSites, publishStaticSite, removeProjectSites, siteDirFor } from "./static-site.js";
 import { invalidateHostMap } from "../lib/host-map.js";
-import { notifyFirstDeploymentLive } from "./notify.js";
+import { notifyDeploymentFailed, notifyFirstDeploymentLive } from "./notify.js";
 import { clearHealthFlag } from "./helse.js";
 import { aliasHostnamesFor, passwordHashFor, publicUrlFor } from "./dev-sites.js";
 import { rm, stat } from "node:fs/promises";
@@ -703,6 +703,19 @@ async function runPipeline(
     // uten dem ville et repo som feiler etter 25 minutter vært gratis å kjøre om
     // og om igjen.
     await setStatus(deployment.id, "failed", { duration_ms: elapsed });
+
+    // Varsler drift om at bygget feilet. Etter `setStatus` med vilje: varselet
+    // leser raden tilbake for å få `branch`, `commit_hash` og varighet, som er
+    // det som skiller «samme feil igjen» fra en ny feil.
+    //
+    // `void` og ikke `await`, av samme grunn som i suksess-grenene: et varsel
+    // som henger skal ikke holde byggeplassen okkupert. `notify.ts` kaster
+    // ingenting selv, men `.catch()` står her fordi en avvisning fra en promise
+    // ingen venter på er en unhandled rejection – og Node avslutter prosessen
+    // på dem.
+    void notifyDeploymentFailed(project, deployment, { step, message }).catch((err: unknown) => {
+      logger.warn({ project: project.name, err }, "Kunne ikke sende varsel om feilet bygg");
+    });
 
     logger.error({ project: project.name, deployment: deployment.id, step, seconds, err: error }, "Deployment feilet");
   } finally {

@@ -4,6 +4,37 @@ Denne filen dokumenterer nye funksjonaliteter og forbedringer som er innført i 
 
 ---
 
+## 0g. Varsler drift faktisk trenger: feilet bygg og ny registrering
+
+Resend-infrastrukturen i `services/notify.ts` sendte e-post ved to hendelser:
+første gang en app ble live, og når helsesveipet fant en container som var borte.
+Det som manglet var de to en plattformeier ser etter i innboksen: at et bygg
+feilet, og at noen registrerte seg.
+
+**Bygget feilet.** Catch-blokka i `runPipeline()` kaller
+`notifyDeploymentFailed()` etter at statusen er satt til `failed`. E-posten bærer
+prosjekt, gren, commit, steg, varighet, eier, lenke til byggeloggen – og årsaken,
+som allerede *er* diagnosen fra `services/build-diagnosis.ts` når en signatur
+traff. Her varsles hver gang, i motsetning til «app live»: et feilet bygg er en
+hendelse, og nummer to er ofte den som viser at forrige rettelse ikke virket.
+`failOrphanedDeployments()` varsler ikke – de byggene døde av en
+backend-restart, ikke av koden.
+
+**Ny registrering.** Vanskeligere, fordi backend ikke er i flyten: frontend
+snakker med GoTrue direkte. Løsningen er et sveip (`services/signups.ts`, hvert
+`SNOAT_SIGNUP_SWEEP_MS`, standard 5 min) over `profiles`, med
+`signup_notified_at` (migrasjon 0017, additiv) som både kvittering og lås – et
+betinget UPDATE før utsending, slik at samme registrering aldri varsles to
+ganger. Forkastet: GoTrue-webhook (finnes ikke i `gotrue:v2.193.1`; Auth Hooks
+har ingen «bruker opprettet», og before-user-created ligger i registreringens
+kritiske sti), Postgres-trigger med `pg_net` (ny extension, nytt endepunkt, tapt
+kall uten spor) og Realtime (hører bare det som skjer mens det er koblet opp).
+
+**Ingen ny infrastruktur.** Samme Resend-nøkkel, samme mottakerliste
+(`SNOAT_NOTIFY_TO`, standard `daniel@frostbytes.no`), samme regel som før: uten
+Resend-konfigurasjon sendes ingenting, plattformen starter og kjører som før, og
+sveipet starter ikke i det hele tatt. Ingen varsel kan velte det det varsler om.
+
 ## 0f. Containerhelse: en app som er død skal ikke stå som Live
 
 `eierfullstack` sto som `success`/Live i produksjon i dagevis mens containeren

@@ -207,11 +207,13 @@ SMTP_ADMIN_EMAIL=${preserved("SMTP_ADMIN_EMAIL", "")}
 SMTP_SENDER_NAME=${preserved("SMTP_SENDER_NAME", "Snoat")}
 SMTP_MAX_FREQUENCY=${preserved("SMTP_MAX_FREQUENCY", "60s")}
 
-# Interne varsler til drift (ny app live på plattformen). Bruker samme
-# RESEND_API_KEY som SMTP over, men Resend sitt HTTP-API i stedet for SMTP.
-# Står SNOAT_NOTIFY_TO tom, sendes ingenting – varselet blir en linje i loggen.
+# Interne varsler til drift: ny app live, feilet bygg, ny registrering og
+# containerhelse. Bruker samme RESEND_API_KEY som SMTP over, men Resend sitt
+# HTTP-API i stedet for SMTP. Står SNOAT_NOTIFY_TO tom, sendes ingenting –
+# varselet blir en linje i loggen, og signup-sveipet starter ikke i det hele
+# tatt (services/signups.ts).
 SNOAT_NOTIFY_FROM=${preserved("SNOAT_NOTIFY_FROM", `Snoat <varsel@${domain}>`)}
-SNOAT_NOTIFY_TO=${preserved("SNOAT_NOTIFY_TO", "")}
+SNOAT_NOTIFY_TO=${preserved("SNOAT_NOTIFY_TO", "daniel@frostbytes.no")}
 
 # GitHub OAuth – fyll inn fra https://github.com/settings/developers
 # Homepage URL:               ${siteUrl}

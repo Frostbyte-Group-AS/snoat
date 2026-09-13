@@ -7,7 +7,8 @@
     "login": "Logg inn",
     "register": "Registrer deg",
     "mcp": "AI-tilkobling",
-    "why": "Hvorfor Snoat"
+    "why": "Hvorfor Snoat",
+    "articles": "Artikler"
   },
   "hero": {
     "title": "Webapp-hosting på 1 klikk på norsk infrastruktur.",
@@ -98,6 +99,13 @@
     "vision": "Webapp-hosting på 1 klikk på norsk infrastruktur. Bygget og driftet i Norge av Frostbyte Group AS.",
     "col_platform": "Plattform",
     "col_account": "Konto"
+  },
+  "articles": {
+    "title": "Artikler",
+    "lead": "Veiledninger og sammenligninger om europeisk hosting, GDPR, datasuverenitet og utrulling av moderne webapper. Skrevet på norsk og engelsk – språket står på hvert kort.",
+    "filter_all": "Alle",
+    "count_one": "{{count}} artikkel",
+    "count_other": "{{count}} artikler"
   },
   "login": {
     "title_signin": "Logg inn",

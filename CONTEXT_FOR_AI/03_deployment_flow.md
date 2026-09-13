@@ -456,7 +456,14 @@ er urørt: den som går til vertsnavnet direkte får fortsatt 401. Skal en besky
 app vise sitt *ekte* favicon i oversikten, må ressursen hentes server-til-server
 gjennom vårt eget API – nettleseren kan ikke møte den 401-en.
 
-## Varsel til drift når en app blir live
+## Varsler til drift
+
+Fire hendelser gir e-post til `SNOAT_NOTIFY_TO` over Resend sitt HTTP-API, alle
+gjennom `services/notify.ts`: en ny app er live, et bygg feilet, en ny bruker har
+registrert seg, og en app svarer ikke / svarer igjen (den siste hører til
+containerhelse, lenger ned i dette dokumentet).
+
+### Ny app live (første vellykkede deployment)
 
 Etter at ruten er skrevet og statusen satt til `success`, kaller begge
 suksess-grenene `notifyFirstDeploymentLive()` i `services/notify.ts`. Den sender
@@ -479,16 +486,85 @@ Kallet er `void`, ikke `await`: et varsel som henger skal ikke holde en
 byggeplass okkupert. Ingenting i `notify.ts` kaster – et varsel som feiler er en
 tapt e-post, og skal aldri bli en tapt deploy.
 
-**Konfigurasjon.** `RESEND_API_KEY` (samme nøkkel som GoTrue bruker over SMTP),
-`SNOAT_NOTIFY_FROM` og `SNOAT_NOTIFY_TO` (komma-separert). Mangler nøkkelen
-*eller* mottakerlisten, sendes ingenting og varselet blir en `debug`-linje i
-loggen. Begge de nye nøklene ligger i `scripts/bootstrap-env.mjs` – variabler som
-ikke står i den malen slettes fra `.env` ved neste deploy.
+### Bygget feilet
+
+Catch-blokka i `runPipeline()` kaller `notifyDeploymentFailed()` rett etter at
+statusen er satt til `failed`. E-posten inneholder prosjekt, gren, commit, repo,
+eier, hvilket steg som feilet, varighet – og *årsaken*, som er den samme teksten
+kunden ser i loggvinduet: `DeployError.message` bærer allerede diagnosen fra
+`services/build-diagnosis.ts` når en signatur traff (tittel, sted og råd), og den
+generelle meldingen når ingen gjorde det. Nederst står lenken til prosjektet i
+dashboardet, der byggeloggen ligger.
+
+**Her varsles hver gang, i motsetning til varselet over.** «Appen er live» er
+sant hele tiden etterpå, og et varsel per push ville druknet det ene som betydde
+noe. Et feilet bygg er en hendelse med et tidspunkt, og nummer to er ikke mindre
+interessant enn nummer én – det er ofte den som viser at forrige rettelse ikke
+virket. `commit`-linjen er det som skiller «samme feil på nytt» fra en ny feil,
+og er derfor med i e-posten. Blir det for støyende for et prosjekt som feiler ved
+hver push, er det mottakerlista som skrus av, ikke logikken.
+
+Raden leses tilbake fra basen før e-posten settes sammen. Grunnen er at
+`commitHash` og `branch` er lokale variabler inne i try-blokka og ikke finnes i
+catch – og at pipelinen allerede har skrevet dem til deployment-raden underveis.
+Uten det oppslaget ville varselet manglet nettopp commiten.
+
+`failOrphanedDeployments()` setter også rader til `failed`, ved oppstart, **uten
+å varsle**. De byggene døde fordi backend restartet, ikke fordi noe var galt med
+koden, og en plattform-oppdatering skal ikke sende en bunke e-poster om bygg
+ingen lenger venter på.
+
+### Ny bruker har registrert seg
+
+Dette varselet kan ikke utløses fra en hendelse i backend, for det finnes ingen:
+frontend snakker med GoTrue direkte (`supabase.auth.signUp`, og
+`/auth/v1/callback` for GitHub-innlogging), og backend ser aldri forespørselen –
+samme situasjon som med opprettelsen av et prosjekt.
+
+`services/signups.ts` løser det med et periodisk sveip, samme mønster som
+containerhelse: hvert `SNOAT_SIGNUP_SWEEP_MS` (standard 5 min) leses `profiles`
+– raden triggeren `on_auth_user_created` oppretter for hver nye bruker – etter
+rader der `signup_notified_at` er NULL (migrasjon 0017). Radene krysses av med et
+**betinget** UPDATE (`... where signup_notified_at is null returning id`) *før*
+e-posten sendes, slik at to overlappende sveip ikke kan varsle samme
+registrering to ganger. E-posten inneholder adresse, navn, innloggingsmetode
+(`email`/`github`), om adressen er bekreftet, tidspunkt og hvor mange brukere
+plattformen har totalt.
+
+Rekkefølgen – kryss av, så send – er et valg om hvilken feil vi vil ha: dør
+prosessen mellom de to, taper vi ett varsel. Motsatt vei ville en feil i
+avkryssingen gitt samme e-post hvert femte minutt til noen grep inn. Samme
+avveining som `container_died_at`, der basen også rettes før varselet sendes.
+
+Forkastede alternativer, med begrunnelsen i `services/signups.ts`: **GoTrue-
+webhook** (den gamle `GOTRUE_WEBHOOK_URL` finnes ikke i `supabase/gotrue:v2.193.1`,
+og Auth Hooks har ingen «bruker opprettet»-hook – den nærmeste, before-user-
+created, kjører før raden finnes og ligger i registreringens kritiske sti),
+**Postgres-trigger med `pg_net`** (ny extension, nytt endepunkt, ny hemmelighet
+– og et tapt kall er tapt uten spor) og **Realtime-abonnement** (hører bare det
+som skjer mens det er koblet opp; en registrering under en restart ville aldri
+blitt varslet).
+
+Sveipet starter **ikke** uten Resend-konfigurasjon. Slås varsling på senere,
+sender første sveip derfor etterslepet: én e-post per bruker som registrerte seg
+i mellomtiden. Brukere som fantes da migrasjon 0017 kjørte er backfilt til
+`now()` og varsles aldri.
+
+### Konfigurasjon
+
+`RESEND_API_KEY` (samme nøkkel som GoTrue bruker over SMTP), `SNOAT_NOTIFY_FROM`
+og `SNOAT_NOTIFY_TO` (komma-separert; standard `daniel@frostbytes.no` fra
+`scripts/bootstrap-env.mjs`). Mangler nøkkelen *eller* mottakerlisten, sendes
+ingenting, varselet blir en `debug`-linje i loggen, og signup-sveipet starter
+ikke. Alle nøklene ligger i `scripts/bootstrap-env.mjs` – variabler som ikke står
+i den malen slettes fra `.env` ved neste deploy. `SNOAT_SIGNUP_SWEEP_MS` styrer
+intervallet på signup-sveipet.
 
 ## Feilhåndtering
 
 Hvert steg kaster `DeployError` med et stegnavn. Pipelinen fanger alt, skriver
-feilmeldingen inn i byggeloggen, setter status `failed` og rydder
+feilmeldingen inn i byggeloggen, setter status `failed`, varsler drift
+(`notifyDeploymentFailed()`, se «Varsler til drift» over) og rydder
 arbeidsområdet. Brukeren ser hvilket steg som feilet og hvorfor, i loggvinduet.
 
 **Byggefeil oversettes til noe brukeren kan handle på.** Et mislykket

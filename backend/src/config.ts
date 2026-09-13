@@ -241,6 +241,23 @@ const schema = z.object({
   SNOAT_HEALTH_CHECK_INTERVAL_MS: z.coerce.number().int().positive().default(2 * 60 * 1000),
 
   /**
+   * Hvor ofte sveipet i `services/signups.ts` ser etter nye registreringer å
+   * varsle drift om.
+   *
+   * Registreringen skjer i GoTrue, som frontend snakker med direkte – backend
+   * er ikke i flyten, og har derfor ingen hendelse å henge varselet på. Sveipet
+   * er den eneste veien, og fem minutter er valgt fordi mottakeren er et
+   * menneske som leser e-post: at en signup dukker opp i innboksen fire
+   * minutter senere enn den skjedde er ikke noe noen merker, mens et sveip hvert
+   * tiende sekund ville vært et databasekall i minuttet for en hendelse som
+   * skjer noen ganger i uka.
+   *
+   * Sveipet starter ikke i det hele tatt uten Resend-konfigurasjon; se
+   * `startSignupSweep()`.
+   */
+  SNOAT_SIGNUP_SWEEP_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
+
+  /**
    * Hvor lenge den forrige containeren får på seg å fullføre forespørsler den
    * holder på, etter at Caddy har flyttet ny trafikk til den nye versjonen
    * (SIGTERM → SIGKILL). Gjør den siste delen av en rullerende utrulling myk.

@@ -77,7 +77,8 @@ Docker-nettverkene er delt i to:
 | `services/billing.ts` | Skriver abonnementstilstand fra Stripe-objekter. Idempotenslåsen for webhooks. |
 | `services/suspension.ts` | Timesveip som stopper apper over gratisgrensen når nådefristen er ute. Av som standard. |
 | `services/helse.ts` | Periodisk sveip (standard 2 min) som sammenligner det basen påstår kjører mot det Docker faktisk har, og retter `projects.container_died_at` ved avvik. Se `03_deployment_flow.md`. |
-| `services/notify.ts` | Utgående drifts-e-post over Resend: første deployment live, container nede/tilbake. |
+| `services/notify.ts` | Utgående drifts-e-post over Resend: første deployment live, feilet bygg, ny registrering, container nede/tilbake. |
+| `services/signups.ts` | Periodisk sveip (standard 5 min) som varsler drift om nye brukere. Finnes fordi registreringen skjer i GoTrue, som frontend snakker med direkte – backend har ingen hendelse å varsle på. Idempotent via `profiles.signup_notified_at`. Se `03_deployment_flow.md`. |
 | `lib/stripe.ts` | Lat Stripe-klient, plangjenkjenning og signaturverifisering. |
 | `lib/docker.ts` | Delt Dockerode-klient + apps-nettverket. |
 | `lib/supabase.ts` | service-role-klient. |

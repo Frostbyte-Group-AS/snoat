@@ -7,7 +7,8 @@
     "login": "Sign in",
     "register": "Sign up",
     "mcp": "AI connection",
-    "why": "Why Snoat"
+    "why": "Why Snoat",
+    "articles": "Articles"
   },
   "hero": {
     "title": "1-click web app hosting on European infrastructure.",
@@ -98,6 +99,13 @@
     "vision": "1-click web app hosting on European infrastructure. Built and operated by Frostbyte Group AS.",
     "col_platform": "Platform",
     "col_account": "Account"
+  },
+  "articles": {
+    "title": "Articles",
+    "lead": "Guides and comparisons on European hosting, GDPR, data sovereignty and deploying modern web apps. Written in Norwegian and English — each card says which.",
+    "filter_all": "All",
+    "count_one": "{{count}} article",
+    "count_other": "{{count}} articles"
   },
   "login": {
     "title_signin": "Log in",
@@ -356,7 +364,7 @@
     "plan_pro": "Pro",
     "plan_business": "Business",
     "plan_owner": "Owner account",
-    "owner_body": "This account has no limits: unlimited apps, dev sites, build minutes, build memory and runtime memory \u2014 and builds that go first in the queue.",
+    "owner_body": "This account has no limits: unlimited apps, dev sites, build minutes, build memory and runtime memory — and builds that go first in the queue.",
     "no_limit": "No limit",
     "per_month": "/ mo excl. VAT",
     "free_price": "Free",

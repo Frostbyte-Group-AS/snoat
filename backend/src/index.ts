@@ -21,6 +21,7 @@ import { errorCollector, startErrorIngest } from "./services/error-ingest.js";
 import { startRuntimeErrorSweep } from "./services/error-runtime.js";
 import { failOrphanedDeployments, reconcileRoutes } from "./services/deploy.js";
 import { startHealthSweep } from "./services/helse.js";
+import { startSignupSweep } from "./services/signups.js";
 import { eierlisteAntall } from "./services/plans.js";
 import { startSuspensionSweep } from "./services/suspension.js";
 import type { ErrorDetail } from "./types.js";
@@ -287,6 +288,12 @@ void (async () => {
   // container en time senere, oppdager ingenting det uten dette periodiske
   // sveipet – se services/helse.ts for hele hendelsen som gjorde det nødvendig.
   startHealthSweep();
+
+  // Nye registreringer skjer i GoTrue, som frontend snakker med direkte –
+  // backend er aldri i den flyten og har ingen hendelse å varsle på. Sveipet er
+  // den eneste veien; se services/signups.ts for de forkastede alternativene.
+  // Starter ikke uten Resend-konfigurasjon.
+  startSignupSweep();
 
   // Caddy kobler seg til denne lytteren for å strømme access-loggen. Den har
   // `soft_start` i loggkonfigurasjonen, så rekkefølgen er ikke kritisk: er vi
