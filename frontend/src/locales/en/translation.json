@@ -612,7 +612,7 @@
     "locked": "Password protected",
     "open": "Open",
     "password": "Password for the dev site",
-    "password_hint": "At least 8 characters. The browser asks for it the first time the site is opened — the username is “snoat”.",
+    "password_hint": "At least 8 characters. Visitors get a password page — just the password, no username.",
     "create": "Create dev site",
     "creating": "Creating …",
     "heading_none": "No dev branch yet",
@@ -629,7 +629,7 @@
     "state_open": "This app is open to anyone with the address.",
     "password": "Password",
     "new_password": "New password",
-    "username_note": "At least 8 characters. The username is always “snoat” — it is the app that is protected, not an account.",
+    "password_note": "At least 8 characters. Visitors get a password page and only type the password. A new password signs out everyone who was in with the old one.",
     "save": "Save password",
     "saving": "Saving …",
     "remove": "Remove the password"

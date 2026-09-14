@@ -337,7 +337,7 @@ export async function upsertAppRoute(
   slug: string,
   customDomain: string | null,
   upstream: string,
-  access: string | AccessGuard | null = null,
+  access: AccessGuard | null = null,
   aliasHosts: string[] = [],
 ): Promise<string> {
   return await upsertRoute(
@@ -367,7 +367,7 @@ export async function upsertStaticRoute(
   customDomain: string | null,
   root: string,
   spaFallback: boolean,
-  access: string | AccessGuard | null = null,
+  access: AccessGuard | null = null,
   aliasHosts: string[] = [],
 ): Promise<string> {
   return await upsertRoute(
@@ -513,37 +513,79 @@ function injectHandlers(handle: Array<Record<string, unknown>>): Array<Record<st
 }
 
 /**
- * Brukernavnet på en passordbeskyttet app.
+ * Passordvakten foran en beskyttet app.
  *
- * Basic auth krever et brukernavn, men det finnes ingen brukere her – det er
- * *appen* som er beskyttet, ikke en konto. Ett fast navn er da mer ærlig enn å
- * late som det betyr noe, og det er én ting mindre å formidle til den som skal
- * inn. Nettleseren husker paret uansett.
+ * Erstatter den gamle `http_basic`-vakten. Den ga nettleserens egen
+ * legitimasjonsdialog, med et brukernavnfelt («snoat») ingen trengte, og den
+ * spratt opp over dashboardet (se `03_deployment_flow.md`). Nå tegner Snoat
+ * en egen passordside, og adgangen er en signert, vertsbundet cookie.
+ *
+ * Alt går til `routes/access-gate.ts` på den interne porten
+ * `SNOAT_ACCESS_CHECK_PORT`. Den er bare publisert på `snoat`-nettverket, der
+ * appene ikke står (de er på `snoat_apps`), så headerne Caddy setter her kan
+ * stoles på: ingen klient og ingen app kan snakke med porten direkte. Det er
+ * derfor prosjekt-ID-en og passordversjonen kommer fra ruten og ikke fra et
+ * oppslag på vertsnavnet. En helt ny forhåndsvisning er beskyttet fra første
+ * forespørsel, uten å vente på at vertsnavn-kartet friskes opp.
+ *
+ * Headerne er `set`, ikke `add`: det Caddy setter overskriver alltid det en
+ * klient sendte med samme navn.
  */
-export const ACCESS_USERNAME = "snoat";
+export const ACCESS_GATE_PATH = "/_snoat/adgang";
 
-/**
- * Caddy-handleren som krever passord før forespørselen slipper videre.
- *
- * `http_basic` sammenligner mot en bcrypt-hash Caddy selv verifiserer. Passordet
- * forlater derfor aldri Caddy, og backend er ikke i veien for en enkelt
- * forespørsel til appen – hadde vi brukt `forward_auth`, ville hver visning av
- * dev-siden vært avhengig av at backend svarer.
- *
- * `hash_cache` er ikke pynt: bcrypt med cost 12 er ~250 ms med vilje, og uten
- * cachen betaler hver enkelt forespørsel – også hvert bilde og hver JS-fil på
- * siden – den prisen på nytt.
- */
-function basicAuthHandler(hash: string): Record<string, unknown> {
+/** Stien sjekken får på den interne porten. Klienten ser den aldri. */
+export const ACCESS_CHECK_PATH = "/_snoat/sjekk";
+
+/** Headerne ruten gir med til adgangssjekken og passordsiden. */
+export const ACCESS_HEADERS = {
+  project: "X-Snoat-Prosjekt",
+  version: "X-Snoat-Adgang-Versjon",
+  host: "X-Snoat-Vert",
+  uri: "X-Snoat-Uri",
+  clientIp: "X-Snoat-Klient-Ip",
+} as const;
+
+export function accessGateUpstream(): string {
+  return `backend:${config.SNOAT_ACCESS_CHECK_PORT}`;
+}
+
+function gateProxy(guard: AccessGuard): Record<string, unknown> {
   return {
-    handler: "authentication",
-    providers: {
-      http_basic: {
-        hash: { algorithm: "bcrypt" },
-        hash_cache: {},
-        accounts: [{ username: ACCESS_USERNAME, password: hash }],
+    handler: "reverse_proxy",
+    upstreams: [{ dial: accessGateUpstream() }],
+    headers: {
+      request: {
+        set: {
+          [ACCESS_HEADERS.project]: [guard.projectId],
+          [ACCESS_HEADERS.version]: [guard.version],
+          [ACCESS_HEADERS.host]: ["{http.request.host}"],
+          [ACCESS_HEADERS.uri]: ["{http.request.orig_uri}"],
+          [ACCESS_HEADERS.clientIp]: ["{http.request.client_ip}"],
+        },
       },
     },
+  };
+}
+
+/**
+ * Sjekken foran hver forespørsel til appen: Caddys `forward_auth`, skrevet ut
+ * i JSON.
+ *
+ * - `rewrite` gjelder bare kopien som sendes til sjekken, ikke forespørselen
+ *   appen får etterpå. `method: GET` gjør at Caddy ikke sender med bodyen, så
+ *   en POST til appen har bodyen sin i behold når den slippes videre.
+ * - `handle_response` med tomme `routes` på et 2xx: ingen handler skriver noe,
+ *   så Caddy går videre til neste handler i kjeden, altså appen.
+ * - Alt annet enn 2xx (sjekken svarer 401 med passordsiden) står som svaret
+ *   klienten får. Ingen `WWW-Authenticate`, så ingen nettleserdialog.
+ *
+ * Svarer ikke sjekken (backend nede), gir Caddy 502. Vakten feiler lukket.
+ */
+function gateCheck(guard: AccessGuard): Record<string, unknown> {
+  return {
+    ...gateProxy(guard),
+    rewrite: { method: "GET", uri: ACCESS_CHECK_PATH },
+    handle_response: [{ match: { status_code: [2] }, routes: [] }],
   };
 }
 
@@ -560,40 +602,32 @@ export interface ShareToken {
 }
 
 /**
- * Vakten foran en beskyttet app: passord-hashen, og delelenkene som slipper
- * forbi den til de utløper. Utløpte tokener skal ikke sendes hit – sveipet i
+ * Vakten foran en beskyttet app: hvilket prosjekt, hvilken versjon av passordet
+ * (`accessVersion()` i `lib/access-cookie.ts`), og delelenkene som slipper
+ * forbi til de utløper. Utløpte tokener skal ikke sendes hit – sveipet i
  * `services/dev-sites.ts` skriver ruten på nytt uten dem.
+ *
+ * Selve hashen står ikke lenger i Caddy. Bare backend leser den, ved innlogging.
  */
 export interface AccessGuard {
-  hash: string;
+  projectId: string;
+  version: string;
   shareTokens: ShareToken[];
-}
-
-/** Bakoverkompatibelt: en ren hash er en vakt uten delelenker. */
-export function toGuard(access: string | AccessGuard | null | undefined): AccessGuard | null {
-  if (!access) return null;
-  return typeof access === "string" ? { hash: access, shareTokens: [] } : access;
 }
 
 /** Bare tegn som er trygge både i et regulært uttrykk og i en informasjonskapsel. */
 const SAFE_TOKEN = /^[A-Za-z0-9_-]{16,128}$/;
 
 /**
- * Handler-kjeden for en beskyttet app.
+ * Handler-kjeden for en beskyttet app: alltid én `subroute`, med rutene i denne
+ * rekkefølgen:
  *
- * Uten delelenker: passordvakten først, så appen – som før.
- *
- * Med delelenker blir det en `subroute` med tre slags ruter, i denne rekkefølgen:
- *
- * 1. `?snoat_tilgang=<token>` i URL-en: setter informasjonskapselen og serverer
- *    siden. Ingen omdirigering – lenken virker på første forsøk, også når den
- *    åpnes i en forhåndsvisning som ikke følger 302.
- * 2. Informasjonskapselen med et gyldig token: serverer uten passord. Det er
- *    denne som gjør at bildene, JS-filene og de andre sidene virker etterpå.
- * 3. Alt annet: passordvakten som før.
- *
- * Tokenet sammenlignes i Caddy, ikke i backend: en `forward_auth` ville gjort
- * hver forespørsel til dev-siden avhengig av at backend svarer.
+ * 1. `/_snoat/adgang`: passordsiden og innloggingen. Bare på beskyttede apper.
+ *    En åpen app sender stien rett til appen som alt annet.
+ * 2. Per aktiv delelenke: `?snoat_tilgang=<token>` i URL-en setter
+ *    informasjonskapselen og serverer siden, og informasjonskapselen med et
+ *    gyldig token serverer uten passord. Tokenet sammenlignes i Caddy.
+ * 3. Alt annet: adgangssjekken, så appen.
  *
  * Eksportert og ren slik at testene kan lese formen uten en Caddy.
  */
@@ -608,9 +642,16 @@ export function guardedHandlers(
     (share) => SAFE_TOKEN.test(share.token) && share.expiresAt.getTime() > now.getTime(),
   );
 
-  if (active.length === 0) return [basicAuthHandler(guard.hash), ...handle];
+  const routes: Array<Record<string, unknown>> = [
+    {
+      match: [{ path: [ACCESS_GATE_PATH] }],
+      // Skjemaet er et passord og en sti. Caddy avviser alt over 16 KiB før det
+      // når backend; `routes/access-gate.ts` har sitt eget, strengere tak.
+      handle: [{ handler: "request_body", max_size: 16 * 1024 }, gateProxy(guard)],
+      terminal: true,
+    },
+  ];
 
-  const routes: Array<Record<string, unknown>> = [];
   for (const share of active) {
     const maxAge = Math.max(1, Math.floor((share.expiresAt.getTime() - now.getTime()) / 1000));
     routes.push({
@@ -642,7 +683,8 @@ export function guardedHandlers(
       terminal: true,
     });
   }
-  routes.push({ handle: [basicAuthHandler(guard.hash), ...handle] });
+
+  routes.push({ handle: [gateCheck(guard), ...handle] });
 
   return [{ handler: "subroute", routes }];
 }
@@ -652,14 +694,14 @@ async function upsertRoute(
   hosts: string[],
   handle: Array<Record<string, unknown>>,
   logContext: Record<string, unknown>,
-  access: string | AccessGuard | null = null,
+  access: AccessGuard | null = null,
 ): Promise<string> {
   const hostname = hosts[0] ?? appHostname(slug);
 
-  // Vakten står *først*: en 401 skal komme før reverse_proxy har åpnet en
-  // forbindelse til appen, og før file_server har lest en fil fra disk. Med
-  // delelenker blir den en subroute – se `guardedHandlers()`.
-  const handlers = guardedHandlers(toGuard(access), handle);
+  // Vakten står *først*: passordsiden skal komme før reverse_proxy har åpnet en
+  // forbindelse til appen, og før file_server har lest en fil fra disk. Se
+  // `guardedHandlers()`.
+  const handlers = guardedHandlers(access, handle);
 
   const route: CaddyRoute = {
     "@id": routeId(slug),
@@ -786,8 +828,8 @@ export async function restoreAppRoute(slug: string, customDomain: string | null,
  * Alle handlerne i en rute, også de som ligger inne i en `subroute`.
  *
  * ⚠️ Leserne under så tidligere bare på `handle[0]`, og det var feil så snart
- * appen var passordbeskyttet: `upsertRoute()` setter basic-auth-vakten *først*,
- * så `handle[0]` er `authentication` og ikke `reverse_proxy`. Begge leserne
+ * appen var passordbeskyttet: `upsertRoute()` setter passordvakten *først*,
+ * så `handle[0]` var vakten og ikke appens `reverse_proxy`. Begge leserne
  * svarte da `null` på en rute som var helt i orden, og
  * `runPipeline()` konkluderte med «Caddy peker på ingenting etter byttet» og
  * rullet tilbake en container som kjørte. Siden hver dev-side er beskyttet fra
@@ -808,24 +850,49 @@ function* allHandlers(
   }
 }
 
+/** `dial` på en `reverse_proxy`-handler, eller null. */
+function proxyDial(handler: Record<string, unknown>): string | null {
+  if (handler.handler !== "reverse_proxy") return null;
+
+  const upstreams = handler.upstreams;
+  if (!Array.isArray(upstreams)) return null;
+
+  const dial = (upstreams[0] as { dial?: unknown } | undefined)?.dial;
+  return typeof dial === "string" ? dial : null;
+}
+
+/**
+ * Upstreamen ruten sender appens trafikk til.
+ *
+ * ⚠️ Passordvakten er selv en `reverse_proxy` (til adgangssjekken), og den står
+ * først. Uten unntaket under ville en beskyttet app svart med vaktens adresse,
+ * og `refreshRoute()` eller en rollback ville skrevet `backend:3101` inn som
+ * appens upstream.
+ */
 export function routeUpstream(route: CaddyRoute | null): string | null {
+  const gate = accessGateUpstream();
+
   for (const handler of allHandlers(route?.handle)) {
-    if (handler.handler !== "reverse_proxy") continue;
-
-    const upstreams = handler.upstreams;
-    if (!Array.isArray(upstreams)) continue;
-
-    const dial = (upstreams[0] as { dial?: unknown } | undefined)?.dial;
-    if (typeof dial === "string") return dial;
+    const dial = proxyDial(handler);
+    if (dial && dial !== gate) return dial;
   }
 
   return null;
 }
 
-/** Sant når ruten krever passord. Leses tilbake fra Caddy, ikke fra databasen. */
+/**
+ * Sant når ruten krever adgang. Leses tilbake fra Caddy, ikke fra databasen.
+ *
+ * Kjenner igjen begge formene: den nye (en `reverse_proxy` til adgangssjekken)
+ * og den gamle `authentication`-handleren med `http_basic`, som står i Caddy
+ * fram til `reconcileRoutes()` har skrevet rutene på nytt etter en oppgradering.
+ */
 export function routeIsProtected(route: CaddyRoute | null): boolean {
+  const gate = accessGateUpstream();
+
   for (const handler of allHandlers(route?.handle)) {
     if (handler.handler === "authentication") return true;
+    if (proxyDial(handler) === gate) return true;
   }
 
   return false;

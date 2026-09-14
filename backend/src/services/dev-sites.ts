@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
+import { accessVersion } from "../lib/access-cookie.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
 import * as caddy from "../lib/caddy.js";
@@ -192,25 +193,25 @@ export async function refreshRoute(project: Project): Promise<void> {
     const existing = await caddy.getAppRoute(project.name);
     if (!existing) return;
 
-    const hash = project.access_protected ? await accessGuardFor(project.id) : null;
+    const guard = project.access_protected ? await accessGuardFor(project.id) : null;
     const aliases = await aliasHostnamesFor(project);
 
     // ⚠️ `routeUpstream()`/`routeRoot()` så tidligere bare på `handle[0]`, som
-    // er basic-auth-vakten på en beskyttet app. Begge svarte da null, ingen av
+    // er passordvakten på en beskyttet app. Begge svarte da null, ingen av
     // grenene ble tatt, og «fjern passord» skrev aldri noe til Caddy: appen ble
     // stående låst mens dashboardet sa at den var åpen.
     const upstream = caddy.routeUpstream(existing);
     const root = caddy.routeRoot(existing);
 
     if (upstream) {
-      await caddy.upsertAppRoute(project.name, project.custom_domain, upstream, hash, aliases);
+      await caddy.upsertAppRoute(project.name, project.custom_domain, upstream, guard, aliases);
     } else if (root) {
       await caddy.upsertStaticRoute(
         project.name,
         project.custom_domain,
         root,
         project.static_spa_fallback,
-        hash,
+        guard,
         aliases,
       );
     }
@@ -226,15 +227,13 @@ export async function refreshRoute(project: Project): Promise<void> {
 }
 
 /**
- * Hashen for et prosjekt, eller null om appen er åpen.
+ * bcrypt-hashen for et prosjekt, eller null om den mangler eller ikke kunne
+ * leses.
  *
- * Ligger her og ikke i `deploy.ts` fordi den er det eneste stedet i koden som
- * leser `project_access`. Feiler oppslaget, svarer vi null – og det er et
- * bevisst valg om hvilken feil som er minst ille: en dev-side som er åpen i noen
- * minutter er dårlig, men en dev-side som ikke kan deployes er verre, og
- * alternativet ville vært å velte bygget på en databasefeil.
- *
- * ⚠️ Skal dette snus (fail closed), må `runPipeline` også kunne feile på det.
+ * Ligger her fordi dette er det eneste stedet i koden som leser
+ * `project_access`. Brukes av innloggingen på passordsiden
+ * (`routes/access-gate.ts`) og av `accessGuardFor()`, som gjør en null om til
+ * en vakt ingen kommer forbi – ikke til en åpen app.
  */
 export async function passwordHashFor(projectId: string): Promise<string | null> {
   const { data, error } = await supabase
@@ -350,16 +349,27 @@ export interface ShareLink {
 }
 
 /**
- * Passordvakten for et prosjekt: hashen og de aktive delelenkene, eller null om
- * appen er åpen. Erstatter `passwordHashFor()` overalt en rute skrives, slik at
- * en ny deployment aldri mister delelenkene.
+ * Passordvakten for et prosjekt: prosjekt-ID, passordversjonen og de aktive
+ * delelenkene. Kalles overalt en rute skrives for et prosjekt med
+ * `access_protected`, slik at en ny deployment aldri mister vakten eller
+ * delelenkene.
  *
- * Feiler oppslaget av delelenkene, svarer vi med hashen alene: da virker
- * passordet som før, og lenkene kommer tilbake ved neste skriving av ruten.
+ * Feiler alltid **lukket**: finnes ingen hash (raden mangler, eller oppslaget
+ * feilet), får ruten likevel vakten, med en versjon ingen innlogging kan matche
+ * (`accessVersion(null)`). Appen er da stengt til passordet settes på nytt eller
+ * ruten skrives igjen – aldri åpen. Det går an nå som vakten ikke trenger hashen
+ * i Caddy: en manglende hash velter ikke lenger deploymenten.
+ *
+ * Feiler oppslaget av delelenkene, svarer vi uten dem: da virker passordet som
+ * før, og lenkene kommer tilbake ved neste skriving av ruten.
  */
-export async function accessGuardFor(projectId: string): Promise<caddy.AccessGuard | null> {
+export async function accessGuardFor(projectId: string): Promise<caddy.AccessGuard> {
   const hash = await passwordHashFor(projectId);
-  if (!hash) return null;
+  const version = accessVersion(hash);
+  if (!hash) {
+    logger.warn({ projectId }, "Beskyttet prosjekt uten lesbar passord-hash – vakten står, men ingen kommer inn");
+    return { projectId, version, shareTokens: [] };
+  }
 
   const { data, error } = await supabase
     .from("project_share_links")
@@ -369,11 +379,12 @@ export async function accessGuardFor(projectId: string): Promise<caddy.AccessGua
 
   if (error) {
     logger.warn({ projectId, err: error }, "Kunne ikke lese delelenkene");
-    return { hash, shareTokens: [] };
+    return { projectId, version, shareTokens: [] };
   }
 
   return {
-    hash,
+    projectId,
+    version,
     shareTokens: ((data ?? []) as Array<{ token: string; expires_at: string }>).map((row) => ({
       token: row.token,
       expiresAt: new Date(row.expires_at),

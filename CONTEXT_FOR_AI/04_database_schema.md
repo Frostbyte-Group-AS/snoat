@@ -369,7 +369,7 @@ datakatalog – endrer du `POSTGRES_PASSWORD` eller `JWT_SECRET` må du kjøre
 | Kolonne | Type | Notat |
 | --- | --- | --- |
 | `project_id` | uuid PK → projects | Cascade ved sletting av prosjektet. |
-| `password_hash` | text | bcrypt, cost 12. Caddy verifiserer selv. |
+| `password_hash` | text | bcrypt, cost 12. Verifiseres av backend ved innlogging på passordsiden (`routes/access-gate.ts`); Caddy ser bare et fingeravtrykk. |
 | `updated_at` | timestamptz | |
 
 **RLS er på, og det finnes ingen policy.** Det er ikke en forglemmelse: for

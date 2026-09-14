@@ -341,15 +341,15 @@ async function warnOnRepeatedFailedCommit(
 }
 
 /**
- * Passord-hashen ruten skal skrives med, eller null når appen er åpen.
+ * Passordvakten ruten skal skrives med, eller null når appen er åpen.
  *
  * Oppslaget gjøres per ruteskriving og ikke én gang per pipeline, fordi det er
  * få skrivinger og kunden kan ha endret passordet mens bygget kjørte. Det koster
  * én spørring, og bare for prosjekter som faktisk er beskyttet – `access_protected`
  * står på `projects` nettopp for at det vanlige tilfellet ikke skal koste noe.
  *
- * Svarer med hele vakten (hash + aktive delelenker, migrasjon 0023), slik at en
- * ny deployment ikke stille fjerner delelenkene fra ruten.
+ * Svarer med hele vakten (prosjekt, passordversjon og aktive delelenker), slik
+ * at en ny deployment ikke stille fjerner delelenkene fra ruten.
  */
 async function accessHashFor(project: Project): Promise<caddy.AccessGuard | null> {
   return project.access_protected ? await accessGuardFor(project.id) : null;

@@ -255,7 +255,7 @@ export function AccessPasswordCard({ project }: { project: Project }) {
             className="field-ink h-[46px] px-[14px] font-mono text-[14px] outline-none"
           />
           <span className="font-body text-[14px] font-light text-ink/70">
-            {t("access.username_note")}
+            {t("access.password_note")}
           </span>
         </label>
 
