@@ -252,6 +252,11 @@ CADDY_ADMIN_URL=${preserved("CADDY_ADMIN_URL", "http://caddy:2019")}
 SNOAT_APPS_NETWORK=${preserved("SNOAT_APPS_NETWORK", "snoat_apps")}
 SNOAT_FRONTEND_ORIGIN=${frontendOrigin}
 LOG_LEVEL=${preserved("LOG_LEVEL", "info")}
+# Eierkontoer uten plangrenser (backend/src/services/plans.ts, EIER_LIMITS).
+# Tom = ingen eierkontoer, aldri alle. Settes for hånd på serveren; linja her
+# finnes for at preserved() skal bevare verdien – 2026-09-08 sto den bare i
+# .env på VPS-en, og neste deploy skrev den stille ut igjen.
+SNOAT_OWNER_ACCOUNTS=${preserved("SNOAT_OWNER_ACCOUNTS", "")}
 
 # --- Frontend (Vite baker disse inn ved build) ------------------------------
 VITE_SUPABASE_URL=${apiUrl}
