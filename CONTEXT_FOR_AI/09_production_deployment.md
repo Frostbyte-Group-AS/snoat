@@ -173,6 +173,12 @@ nøkkelen mangler helt. Konsekvensen:
 - **Legger du til en ny hemmelighet, blir den tom i produksjon.** Den har aldri
   eksistert der, så `preserved` gir fallbacken – typisk `""`. `RESEND_API_KEY` og
   `SMTP_ADMIN_EMAIL` sto tomme til de ble satt manuelt.
+- **Setter du en variabel for hånd på VPS-en uten å legge den i malen, er den
+  borte etter neste deploy.** Skriptet skriver `.env` fra malen og sletter nøkler
+  det ikke kjenner – med en advarsel i deploy-loggen som er lett å overse.
+  `SNOAT_OWNER_ACCOUNTS` gikk slik tapt mellom 8. og 20. september 2026, og
+  eierkontoen traff byggeminutt-taket igjen. Regelen: en ny nøkkel legges i
+  `bootstrap-env.mjs` *og* settes på serveren, i den rekkefølgen.
 
 Nye eller endrede verdier må derfor settes **på serveren**, én gang:
 
