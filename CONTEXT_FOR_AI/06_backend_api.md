@@ -155,6 +155,25 @@ deployment – og fra samme øyeblikk er det den nye grenen webhooken lytter på
 `envVars` **erstatter hele settet**. Hent prosjektet først og send med alle
 nøklene som skal bestå.
 
+For enkeltendringer finnes `setEnvVars` (objekt nøkkel → verdi) og
+`unsetEnvVars` (liste med nøkler). De flettes på serveren mot verdiene i basen,
+og nøkler som ikke er nevnt røres ikke:
+
+```json
+{ "setEnvVars": { "AI_FALLBACK_TO_GEMINI": "false" }, "unsetEnvVars": ["GAMMEL_NOKKEL"] }
+```
+
+Svaret får da i tillegg `envChanges: { added, changed, removed, missing }`.
+`envVars` og `setEnvVars`/`unsetEnvVars` i samme kall gir 400 – det ene
+erstatter, det andre fletter, og det finnes ingen fornuftig tolkning av begge.
+Det samme gjelder en nøkkel som står i både `set` og `unset`. Nøkler må følge
+skallregelen `[A-Za-z_][A-Za-z0-9_]*`.
+
+Flettingen finnes for MCP. Der kommer verdiene maskert tilbake, så en
+assistent som ville endre én variabel via `envVars` hadde bare to valg: la være,
+eller overskrive alle hemmelighetene med maskeringsteksten. Logikken ligger i
+`backend/src/lib/env-vars.ts` med tester ved siden av.
+
 ### `DELETE /api/projects/:projectId`
 
 Sletter prosjektet **og rydder opp etter det**: containere og Caddy-rute først,

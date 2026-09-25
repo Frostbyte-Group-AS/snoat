@@ -417,7 +417,8 @@ export const MCP_TOOLS: McpTool[] = [
     title: "Oppdater prosjekt",
     description:
       "Endrer gren, byggekommando, miljøvariabler eller statiske innstillinger. " +
-      "Merk at envVars erstatter hele settet – hent prosjektet først og send med alle nøklene som skal bestå. " +
+      "Merk at envVars erstatter hele settet, og at verdiene du ser er maskerte – sendes de tilbake, blir hemmelighetene " +
+      "overskrevet med maskeringsteksten. Skal du endre, legge til eller fjerne enkelte variabler, bruk snoat_set_env_vars. " +
       "Endringen får effekt ved neste deployment.",
     inputSchema: {
       type: "object",
@@ -432,7 +433,8 @@ export const MCP_TOOLS: McpTool[] = [
         buildCommand: { type: "string", description: "Ny byggekommando." },
         envVars: {
           type: "object",
-          description: "Hele settet med miljøvariabler. Erstatter det som ligger der.",
+          description:
+            "Hele settet med miljøvariabler. Erstatter det som ligger der. Bruk snoat_set_env_vars for enkeltendringer.",
           additionalProperties: { type: "string" },
         },
         staticOutputDir: { type: "string", description: "Ny mappe for statiske filer, f.eks. «out»." },
@@ -468,6 +470,72 @@ export const MCP_TOOLS: McpTool[] = [
 
       return {
         summary: `Prosjektet er oppdatert. Endringen gjelder fra neste deployment – kall snoat_trigger_deployment for å ta den i bruk nå.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_set_env_vars",
+    title: "Sett eller fjern miljøvariabler",
+    description:
+      "Setter, endrer eller fjerner enkelte miljøvariabler på et prosjekt eller en dev-gren, uten å røre de andre. " +
+      "Flettingen skjer på serveren mot de ekte verdiene, så du trenger ikke kjenne de eksisterende. " +
+      "En tom streng er en tom verdi; bruk unset for å fjerne nøkkelen. " +
+      "Endringen får effekt ved neste deployment.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Prosjektets eller dev-grenens ID." },
+        set: {
+          type: "object",
+          description: "Nøkler som skal settes, med ny verdi. Finnes nøkkelen, overskrives verdien.",
+          additionalProperties: { type: "string" },
+        },
+        unset: {
+          type: "array",
+          items: { type: "string" },
+          description: "Nøkler som skal fjernes helt.",
+        },
+      },
+      required: ["projectId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    async run(args, ctx) {
+      const { projectId, set, unset } = z
+        .object({
+          projectId: z.string().min(1),
+          set: z.record(z.string()).optional(),
+          unset: z.array(z.string()).optional(),
+        })
+        .parse(args);
+
+      if (Object.keys(set ?? {}).length === 0 && (unset ?? []).length === 0) {
+        throw new Error("Ingenting å endre: oppgi minst én nøkkel i set eller unset.");
+      }
+
+      const data = (await callOrThrow(ctx, "PATCH", `/projects/${projectId}`, {
+        ...(set ? { setEnvVars: set } : {}),
+        ...(unset ? { unsetEnvVars: unset } : {}),
+      })) as {
+        envChanges?: { added: string[]; changed: string[]; removed: string[]; missing: string[] };
+      };
+
+      const changes = data.envChanges;
+      const parts = changes
+        ? [
+            changes.added.length ? `lagt til ${changes.added.join(", ")}` : "",
+            changes.changed.length ? `endret ${changes.changed.join(", ")}` : "",
+            changes.removed.length ? `fjernet ${changes.removed.join(", ")}` : "",
+            changes.missing.length ? `fantes ikke fra før: ${changes.missing.join(", ")}` : "",
+          ].filter(Boolean)
+        : [];
+
+      return {
+        summary:
+          `${parts.length ? `Miljøvariabler: ${parts.join("; ")}.` : "Ingen endring – verdiene var allerede slik."} ` +
+          `Andre nøkler er urørt. Endringen gjelder fra neste deployment – kall snoat_trigger_deployment for å ta den i bruk nå.`,
         data,
       };
     },

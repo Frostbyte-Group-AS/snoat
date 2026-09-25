@@ -118,7 +118,7 @@ Tabellene ligger i `supabase/migrations/0011_mcp_connector.sql`, som `db-migrate
 }
 ```
 
-Uten dette ville ett `snoat_list_projects` sendt databasepassord og API-nøkler for alle prosjektene på kontoen ut av huset, uten at kunden ba om annet enn en oversikt. `snoat_update_project` kan sette nye verdier uten å ha sett de gamle.
+Uten dette ville ett `snoat_list_projects` sendt databasepassord og API-nøkler for alle prosjektene på kontoen ut av huset, uten at kunden ba om annet enn en oversikt. `snoat_set_env_vars` kan sette, endre og fjerne enkeltvariabler uten å ha sett de gamle – flettingen skjer på serveren. `snoat_update_project` sitt `envVars` erstatter derimot hele settet, og skal ikke brukes til enkeltendringer: de maskerte verdiene ville blitt skrevet tilbake som ekte verdier.
 
 Byggelogger klippes til de siste 20 000 tegnene og kjøres gjennom `redactCredentials()`.
 
@@ -141,7 +141,8 @@ Byggelogger klippes til de siste 20 000 tegnene og kjøres gjennom `redactCreden
 | `snoat_list_dev_sites` | lesende | Dev-grenene til et prosjekt: gren, adresse og om de er passordbeskyttet. |
 | `snoat_list_github_repos` | lesende | Tilkoblede GitHub-kontoer og repoene Snoat kan klone, med installasjons-ID per repo. |
 | `snoat_create_project` | skrivende | Nytt prosjekt fra en GitHub-repo. Bygger ikke automatisk. |
-| `snoat_update_project` | skrivende | Byggekommando, miljøvariabler, statiske innstillinger, GitHub-installasjon. |
+| `snoat_update_project` | skrivende | Byggekommando, miljøvariabler (hele settet), statiske innstillinger, GitHub-installasjon. |
+| `snoat_set_env_vars` | skrivende | Setter, endrer eller fjerner enkelte miljøvariabler uten å røre resten. |
 | `snoat_connect_github` | skrivende | Registrerer en GitHub App-installasjon på kontoen. |
 | `snoat_trigger_deployment` | skrivende | Legger et bygg i kø. |
 | `snoat_set_custom_domain` | skrivende | Kobler eller fjerner eget domene. |

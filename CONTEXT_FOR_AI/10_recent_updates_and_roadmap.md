@@ -4,6 +4,18 @@ Denne filen dokumenterer nye funksjonaliteter og forbedringer som er innført i 
 
 ---
 
+## 0h. Miljøvariabler kan endres én og én over MCP
+
+`snoat_update_project` tok bare hele settet med miljøvariabler, mens
+`snoat_get_project` returnerer verdiene maskert. En assistent som skulle endre
+én variabel kunne derfor ikke gjøre det uten å skrive maskeringsteksten tilbake
+over alle hemmelighetene – det skjedde nesten med Loopia-legitimasjonen på
+`osia-dev`. Nytt verktøy `snoat_set_env_vars` og feltene
+`setEnvVars`/`unsetEnvVars` på `PATCH /api/projects/:id` fletter på serveren.
+Se `06_backend_api.md`.
+
+---
+
 ## 0g. Varsler drift faktisk trenger: feilet bygg og ny registrering
 
 Resend-infrastrukturen i `services/notify.ts` sendte e-post ved to hendelser:

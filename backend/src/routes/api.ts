@@ -14,6 +14,7 @@ import * as errors from "../services/errors.js";
 import { assertSafeBranch, assertSafeRepoUrl } from "../services/git.js";
 import { entitlementFor, limitsFor } from "../services/plans.js";
 import { logger } from "../lib/logger.js";
+import { EnvVarError, mergeEnvVars, type EnvVarMergeResult } from "../lib/env-vars.js";
 import { DeployError, type Deployment, type ErrorDetail } from "../types.js";
 import { billing } from "./billing.js";
 import { githubApi } from "./github.js";
@@ -751,12 +752,22 @@ api.patch("/projects/:projectId", async (c) => {
     branch?: unknown;
     buildCommand?: unknown;
     envVars?: unknown;
+    setEnvVars?: unknown;
+    unsetEnvVars?: unknown;
     staticOutputDir?: unknown;
     staticSpaFallback?: unknown;
     githubInstallationId?: unknown;
   }>().catch(() => null);
 
   if (!body) throw new HTTPException(400, { message: "Kroppen må være gyldig JSON" });
+
+  const fletter = body.setEnvVars !== undefined || body.unsetEnvVars !== undefined;
+  if (fletter && body.envVars !== undefined) {
+    throw new HTTPException(400, {
+      message:
+        "Send enten «envVars» (erstatter hele settet) eller «setEnvVars»/«unsetEnvVars» (fletter), ikke begge.",
+    });
+  }
 
   const updates: Record<string, any> = {};
 
@@ -786,6 +797,24 @@ api.patch("/projects/:projectId", async (c) => {
   if (body.envVars !== undefined && typeof body.envVars === "object" && !Array.isArray(body.envVars)) {
     updates.env_vars = body.envVars;
   }
+
+  // Fletting skjer mot verdiene i basen, ikke mot det klienten har sett. Det er
+  // hele poenget: en MCP-klient får bare maskerte verdier, og kan derfor aldri
+  // sende et komplett sett tilbake uten å ødelegge hemmelighetene.
+  let envChanges: Omit<EnvVarMergeResult, "envVars"> | undefined;
+  if (fletter) {
+    try {
+      const { envVars, ...changes } = mergeEnvVars(project.env_vars, {
+        set: body.setEnvVars,
+        unset: body.unsetEnvVars,
+      });
+      updates.env_vars = envVars;
+      envChanges = changes;
+    } catch (error) {
+      if (error instanceof EnvVarError) throw new HTTPException(400, { message: error.message });
+      throw error;
+    }
+  }
   if (body.staticOutputDir !== undefined) {
     updates.static_output_dir = typeof body.staticOutputDir === "string" && body.staticOutputDir.trim()
       ? body.staticOutputDir.trim()
@@ -806,7 +835,11 @@ api.patch("/projects/:projectId", async (c) => {
     .select("*")
     .single();
 
-  return c.json({ project: data });
+  if (error) {
+    throw new HTTPException(500, { message: `Kunne ikke oppdatere prosjektet: ${error.message}` });
+  }
+
+  return c.json(envChanges ? { project: data, envChanges } : { project: data });
 });
 
 /**
