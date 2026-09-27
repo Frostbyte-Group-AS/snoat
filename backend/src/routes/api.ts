@@ -757,6 +757,7 @@ api.patch("/projects/:projectId", async (c) => {
     staticOutputDir?: unknown;
     staticSpaFallback?: unknown;
     githubInstallationId?: unknown;
+    repoUrl?: unknown;
   }>().catch(() => null);
 
   if (!body) throw new HTTPException(400, { message: "Kroppen må være gyldig JSON" });
@@ -780,6 +781,20 @@ api.patch("/projects/:projectId", async (c) => {
       c.get("userId"),
       body.githubInstallationId,
     );
+  }
+
+  // Et repo som er flyttet til en annen konto eller har fått nytt navn, skal
+  // kunne følges uten å slette prosjektet (og miste domene, historikk og
+  // miljøvariabler). Webhooken gjør det selv når den ser en push fra det nye
+  // navnet; dette er den manuelle veien. Samme URL-sjekk som ved opprettelse.
+  if (body.repoUrl !== undefined) {
+    const repoUrl = typeof body.repoUrl === "string" ? body.repoUrl.trim() : "";
+    try {
+      assertSafeRepoUrl(repoUrl);
+    } catch {
+      throw new HTTPException(400, { message: `Ugyldig repository-URL: «${repoUrl}»` });
+    }
+    updates.repo_url = repoUrl;
   }
 
   // Grenen er konfigurasjon som skal kunne endres, ikke et valg som låses ved

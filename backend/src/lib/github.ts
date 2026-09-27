@@ -1,6 +1,7 @@
 import { createHmac, createSign, timingSafeEqual } from "node:crypto";
 import { config } from "../config.js";
 import { logger } from "./logger.js";
+import { repoIdentity } from "./repo-move.js";
 
 /**
  * Klient mot GitHub som en GitHub App.
@@ -400,6 +401,12 @@ export interface GithubPushPayload {
   /** `true` når pushen slettet grenen. Da finnes det ingen kode å bygge. */
   deleted?: boolean;
   repository?: {
+    /**
+     * GitHubs faste ID for repoet. Den endres ikke når repoet flyttes til en
+     * annen konto eller får nytt navn – i motsetning til `full_name`. Det er
+     * den som lar webhooken kjenne igjen et prosjekt med gammel `repo_url`.
+     */
+    id?: number;
     full_name?: string;
     clone_url?: string;
     default_branch?: string;
@@ -407,6 +414,44 @@ export interface GithubPushPayload {
   /** Installasjonen eventet kom gjennom. Finnes på App-webhooks. */
   installation?: { id?: number };
   pusher?: { name?: string };
+}
+
+/**
+ * Feltene vi bruker fra et `repository`-event (`renamed`, `transferred`).
+ * `changes` bærer det gamle navnet eller den gamle eieren.
+ */
+export interface GithubRepositoryPayload {
+  action?: string;
+  repository?: GithubPushPayload["repository"];
+  installation?: { id?: number };
+  changes?: {
+    repository?: { name?: { from?: string } };
+    owner?: { from?: { user?: { login?: string }; organization?: { login?: string } } };
+  };
+}
+
+/**
+ * GitHubs ID for repoet bak `owner/repo`, eller `null` hvis installasjonen
+ * ikke rekker det.
+ *
+ * Et flyttet eller omdøpt repo svarer fortsatt på det gamle navnet: GitHub gir
+ * 301 til det nye, og `fetch` følger omdirigeringen innenfor api.github.com
+ * med Authorization-headeren i behold. Da får vi den samme `id` som pushen
+ * oppgir – og det er beviset på at en gammel `repo_url` peker på dette repoet,
+ * ikke på et annet repo med samme navn under en annen konto.
+ */
+export async function repositoryId(installationId: number, repo: string): Promise<number | null> {
+  const identity = repoIdentity(repo);
+  if (!identity) return null;
+
+  const token = await installationToken(installationId);
+  try {
+    const data = await githubFetch<{ id?: number }>(`/repos/${identity}`, token);
+    return typeof data.id === "number" ? data.id : null;
+  } catch (error) {
+    if (error instanceof GithubError && (error.status === 404 || error.status === 403)) return null;
+    throw error;
+  }
 }
 
 /** Er webhook-secreten satt? Uten den kan vi ikke verifisere signaturer. */
@@ -448,52 +493,4 @@ export function branchFromRef(ref: string | undefined): string | null {
   return ref.slice(BRANCH_REF_PREFIX.length) || null;
 }
 
-/**
- * Verten må være github.com.
- *
- * Uten sjekken kunne en webhook for `github.com/eier/app` trigget en deployment
- * av `gitlab.com/eier/app` – samme `owner/repo`, helt annen kode. Vi snakker kun
- * med api.github.com, så GitHub Enterprise-verter hører ikke hjemme her.
- */
-function isGithubHost(host: string): boolean {
-  const name = host.split("@").pop()!.split(":")[0]!.toLowerCase();
-  return name === "github.com" || name === "www.github.com";
-}
-
-/**
- * Normaliserer et repository til `owner/repo` med små bokstaver.
- *
- * Godtar både en klone-URL og `full_name` fra en webhook-payload, og det er
- * hele poenget: `projects.repo_url` skrives like ofte av et menneske som av
- * repo-velgeren, så den finnes i alle varianter – med og uten `.git`, med og
- * uten skråstrek til slutt, med `/tree/main` hengende på, med vilkårlig store
- * bokstaver. Webhooken kjenner bare `full_name`. Denne normalformen er det som
- * lar de to møtes.
- *
- * Returnerer `null` for verdier vi ikke kjenner igjen. Da matcher vi ingenting,
- * i stedet for å gjette og deploye feil prosjekt.
- */
-export function repoIdentity(value: string): string | null {
-  // Query og fragment først: «…/app?tab=readme» skal ikke bli en del av navnet.
-  let rest = value.trim().split(/[?#]/)[0]!;
-
-  const schemeEnd = rest.indexOf("://");
-  if (schemeEnd !== -1) {
-    const hostAndPath = rest.slice(schemeEnd + 3);
-    const pathStart = hostAndPath.indexOf("/");
-    if (pathStart === -1) return null;
-    if (!isGithubHost(hostAndPath.slice(0, pathStart))) return null;
-    rest = hostAndPath.slice(pathStart + 1);
-  }
-
-  const segments = rest
-    .replace(/\/+$/, "")
-    .replace(/\.git$/i, "")
-    .split("/")
-    .filter(Boolean);
-
-  const [owner, repo] = segments;
-  if (!owner || !repo) return null;
-
-  return `${owner}/${repo}`.toLowerCase();
-}
+export { repoIdentity };

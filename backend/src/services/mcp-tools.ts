@@ -416,7 +416,9 @@ export const MCP_TOOLS: McpTool[] = [
     name: "snoat_update_project",
     title: "Oppdater prosjekt",
     description:
-      "Endrer gren, byggekommando, miljøvariabler eller statiske innstillinger. " +
+      "Endrer repo-URL, gren, byggekommando, miljøvariabler eller statiske innstillinger. " +
+      "repoUrl brukes når repoet er flyttet til en annen konto eller har fått nytt navn; tilgangen sjekkes mot " +
+      "GitHub, og installasjonen som rekker repoet settes samtidig. " +
       "Merk at envVars erstatter hele settet, og at verdiene du ser er maskerte – sendes de tilbake, blir hemmelighetene " +
       "overskrevet med maskeringsteksten. Skal du endre, legge til eller fjerne enkelte variabler, bruk snoat_set_env_vars. " +
       "Endringen får effekt ved neste deployment.",
@@ -424,6 +426,11 @@ export const MCP_TOOLS: McpTool[] = [
       type: "object",
       properties: {
         projectId: { type: "string", description: "Prosjektets ID." },
+        repoUrl: {
+          type: "string",
+          description:
+            "Ny URL til GitHub-repositoryet, f.eks. https://github.com/ny-eier/repo. For et repo som er flyttet eller omdøpt.",
+        },
         branch: {
           type: ["string", "null"],
           description:
@@ -453,6 +460,7 @@ export const MCP_TOOLS: McpTool[] = [
       const { projectId, ...updates } = z
         .object({
           projectId: z.string().min(1),
+          repoUrl: z.string().min(1).optional(),
           branch: z.string().nullable().optional(),
           buildCommand: z.string().optional(),
           envVars: z.record(z.string()).optional(),
@@ -466,10 +474,24 @@ export const MCP_TOOLS: McpTool[] = [
         throw new Error("Ingenting å oppdatere: oppgi minst ett felt utover projectId.");
       }
 
+      // Ny repo-URL: tilgangen avgjøres før raden skrives, som ved opprettelse,
+      // og installasjonen som faktisk rekker repoet følger med – med mindre
+      // kalleren eksplisitt ba om null (klone uten token).
+      let note = "";
+      if (updates.repoUrl !== undefined) {
+        const access = await resolveRepoAccess(ctx, updates.repoUrl, {
+          explicitInstallationId: updates.githubInstallationId ?? undefined,
+        });
+        if (updates.githubInstallationId !== null && access.installationId !== null) {
+          updates.githubInstallationId = access.installationId;
+        }
+        note = ` ${access.note}`;
+      }
+
       const data = await callOrThrow(ctx, "PATCH", `/projects/${projectId}`, record(updates));
 
       return {
-        summary: `Prosjektet er oppdatert. Endringen gjelder fra neste deployment – kall snoat_trigger_deployment for å ta den i bruk nå.`,
+        summary: `Prosjektet er oppdatert.${note} Endringen gjelder fra neste deployment – kall snoat_trigger_deployment for å ta den i bruk nå.`,
         data,
       };
     },

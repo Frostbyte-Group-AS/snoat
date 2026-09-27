@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import * as github from "../lib/github.js";
+import { moveCandidates, previousFullName } from "../lib/repo-move.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
 import * as deploy from "../services/deploy.js";
@@ -108,6 +109,164 @@ async function projectsForRepository(fullName: string): Promise<Project[]> {
   return ((data ?? []) as Project[]).filter((project) => github.repoIdentity(project.repo_url) === wanted);
 }
 
+// --- Flyttede og omdøpte repoer ------------------------------------------------
+
+/**
+ * Kanonisk `repo_url` for et repo på github.com. Skrives bare når vi flytter
+ * et prosjekt til et nytt navn; ellers står brukerens egen skrivemåte urørt.
+ */
+function canonicalRepoUrl(fullName: string): string {
+  return `https://github.com/${fullName}.git`;
+}
+
+/**
+ * Har prosjektets eier koblet til installasjonen? Samme regel som
+ * `verifiedInstallationId()` i `routes/api.ts`: et prosjekt skal aldri få et
+ * token fra en installasjon en annen Snoat-bruker har koblet til.
+ */
+async function ownerHasInstallation(userId: string, installationId: number): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("github_installations")
+    .select("installation_id")
+    .eq("user_id", userId)
+    .eq("installation_id", installationId)
+    .maybeSingle();
+  if (error) throw new Error(`Databasefeil: ${error.message}`);
+  return Boolean(data);
+}
+
+/**
+ * Peker prosjektet om til repoets nye navn.
+ *
+ * Compare-and-set på `repo_url`: har noen endret den i mellomtiden, lar vi
+ * raden være. Installasjonen byttes bare hvis eieren har koblet den til –
+ * ellers beholdes den gamle, og loggen sier hvorfor.
+ */
+async function relinkProject(
+  project: Project,
+  fullName: string,
+  installationId: number | undefined,
+  reason: string,
+  log: typeof logger,
+): Promise<Project | null> {
+  const updates: Record<string, unknown> = { repo_url: canonicalRepoUrl(fullName) };
+
+  if (installationId && installationId !== project.github_installation_id) {
+    if (await ownerHasInstallation(project.user_id, installationId)) {
+      updates.github_installation_id = installationId;
+    } else {
+      log.warn(
+        { project: project.name, installation: installationId },
+        "Repoet er flyttet, men eieren har ikke koblet til den nye installasjonen – beholder den gamle",
+      );
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("projects")
+    .update(updates)
+    .eq("id", project.id)
+    .eq("repo_url", project.repo_url)
+    .select("*")
+    .maybeSingle();
+
+  if (error) throw new Error(`Databasefeil: ${error.message}`);
+  if (!data) return null;
+
+  log.warn(
+    {
+      project: project.name,
+      from: project.repo_url,
+      to: updates.repo_url,
+      installation: updates.github_installation_id ?? project.github_installation_id,
+      reason,
+    },
+    "Prosjektet er pekt om til repoets nye navn",
+  );
+  return data as Project;
+}
+
+/**
+ * Prosjekter som peker på dette repoet under et GAMMELT navn.
+ *
+ * Brukes når en push ikke matcher noen prosjekter. Etter en overføring til en
+ * annen konto (f.eks. `Frostbyte-Group-AS/osia` → `osia-as/osia`) står den
+ * gamle URL-en igjen i `projects.repo_url`, og uten dette ble hver push stille
+ * ignorert – mens manuelle deployer fortsatt virket, fordi kloningen følger
+ * GitHubs omdirigering. Feilen var altså usynlig til noen lurte på hvorfor
+ * ingenting ble rullet ut.
+ *
+ * Kandidatene er prosjekter med samme reponavn under en annen eier. Hver av dem
+ * slås opp hos GitHub, og bare de som gir den samme `repository.id` som pushen
+ * pekes om. Et annet repo som bare heter det samme, har en annen ID og røres
+ * ikke. Et repo som både er flyttet og omdøpt, fanges ikke her – det tar
+ * `repository`-eventet under.
+ */
+async function projectsForMovedRepository(
+  payload: github.GithubPushPayload,
+  log: typeof logger,
+): Promise<Project[]> {
+  const fullName = payload.repository?.full_name;
+  const repoId = payload.repository?.id;
+  const installationId = payload.installation?.id;
+  const wanted = fullName ? github.repoIdentity(fullName) : null;
+  if (!fullName || !wanted || typeof repoId !== "number" || !installationId) return [];
+
+  const repoName = wanted.split("/")[1]!;
+  const { data, error } = await supabase.from("projects").select("*").ilike("repo_url", `%/${repoName}%`);
+  if (error) throw new Error(`Databasefeil: ${error.message}`);
+
+  const candidates = moveCandidates((data ?? []) as Project[], fullName);
+  if (candidates.length === 0) return [];
+
+  const relinked: Project[] = [];
+  for (const project of candidates) {
+    let sameRepo = false;
+    try {
+      sameRepo = (await github.repositoryId(installationId, project.repo_url)) === repoId;
+    } catch (error) {
+      log.warn({ err: error, project: project.name }, "Kunne ikke slå opp kandidatens repo hos GitHub");
+    }
+    if (!sameRepo) continue;
+
+    const updated = await relinkProject(project, fullName, installationId, "push fra nytt navn", log);
+    if (updated) relinked.push(updated);
+  }
+  return relinked;
+}
+
+/**
+ * `repository`-eventet: `renamed` og `transferred`. Pekes om med én gang, så
+ * neste push treffer direkte. Kommer eventet ikke (App-en abonnerer ikke på
+ * det, eller leveringen feilet), tar `projectsForMovedRepository()` det ved
+ * første push i stedet.
+ */
+async function handleRepositoryEvent(body: Buffer, contentType: string | undefined, log: typeof logger) {
+  const payload = parsePayload(body, contentType) as unknown as github.GithubRepositoryPayload;
+  const fullName = payload.repository?.full_name;
+  const oldFullName = previousFullName(payload);
+  if (!fullName || !oldFullName) {
+    return { received: true, ignored: true, message: `Ignorerer repository.${payload.action ?? "ukjent"}` };
+  }
+
+  const projects = await projectsForRepository(oldFullName);
+  const relinked: string[] = [];
+  for (const project of projects) {
+    const updated = await relinkProject(project, fullName, payload.installation?.id, `repository.${payload.action}`, log);
+    if (updated) relinked.push(updated.name);
+  }
+
+  return {
+    received: true,
+    repository: fullName,
+    from: oldFullName,
+    relinked,
+    message: relinked.length
+      ? `${relinked.length} prosjekt(er) pekt om fra ${oldFullName} til ${fullName}`
+      : `Ingen prosjekter pekte på ${oldFullName}`,
+  };
+}
+
 type TriggerStatus = "deploying" | "already_building" | "failed";
 
 interface TriggerResult {
@@ -156,6 +315,15 @@ githubWebhooks.post(
       return c.json({ received: true, message: "pong" });
     }
 
+    if (event === "repository") {
+      try {
+        return c.json(await handleRepositoryEvent(body, c.req.header("content-type"), log));
+      } catch (error) {
+        log.error({ err: error }, "Kunne ikke behandle repository-eventet");
+        return c.json({ error: "Kunne ikke behandle eventet" }, 500);
+      }
+    }
+
     if (event !== "push") {
       // App-en får alle eventene installasjonen abonnerer på. Resten er ikke en
       // feil – de er bare ikke vårt bord ennå.
@@ -193,7 +361,13 @@ githubWebhooks.post(
     // én databasespørring også for pusher vi ender med å ignorere; alternativet
     // var å låse hele plattformen til repoets default branch.
     try {
-      const projects = await projectsForRepository(fullName);
+      let projects = await projectsForRepository(fullName);
+
+      // Ingen treff kan bety at repoet er flyttet eller omdøpt, og at
+      // prosjektet fortsatt har det gamle navnet. Se projectsForMovedRepository().
+      if (projects.length === 0) {
+        projects = await projectsForMovedRepository(payload, log);
+      }
 
       if (projects.length === 0) {
         // Helt normalt: App-en ser alle repoene i installasjonen, også de som
