@@ -5,11 +5,13 @@ import { isOauthAccessToken, touchToken, verifyAccessToken } from "../lib/oauth.
 import { mcpResourceUrl, publicApiUrl } from "../lib/public-url.js";
 import {
   MCP_INSTRUCTIONS,
+  MCP_INSTRUCTIONS_EIER,
   MCP_TOOLS,
   MCP_TOOLS_BY_NAME,
   type McpToolContext,
 } from "../services/mcp-tools.js";
 import { api } from "./api.js";
+import { erEierkonto } from "../services/plans.js";
 
 /**
  * MCP-endepunktet – én URL kunden limer inn i Claude.
@@ -209,16 +211,17 @@ async function handleRequest(
         // dem oppgitt vil kalle `resources/list` og få en feil tilbake.
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: SERVER_NAME, title: "Snoat", version: SERVER_VERSION },
-        instructions: MCP_INSTRUCTIONS,
+        instructions: (await erEierkonto(caller.userId)) ? `${MCP_INSTRUCTIONS} ${MCP_INSTRUCTIONS_EIER}` : MCP_INSTRUCTIONS,
       });
     }
 
     case "ping":
       return result(id, {});
 
-    case "tools/list":
+    case "tools/list": {
+      const eier = await erEierkonto(caller.userId);
       return result(id, {
-        tools: MCP_TOOLS.map((tool) => ({
+        tools: MCP_TOOLS.filter((tool) => !tool.ownerOnly || eier).map((tool) => ({
           name: tool.name,
           title: tool.title,
           description: tool.description,
@@ -226,6 +229,7 @@ async function handleRequest(
           annotations: { title: tool.title, ...tool.annotations },
         })),
       });
+    }
 
     case "tools/call": {
       const name = message.params?.name;
@@ -236,7 +240,8 @@ async function handleRequest(
 
       const tool = MCP_TOOLS_BY_NAME.get(name);
 
-      if (!tool) {
+      // Et eierverktøy finnes ikke for andre: samme svar som et ukjent navn.
+      if (!tool || (tool.ownerOnly && !(await erEierkonto(caller.userId)))) {
         return failure(id, METHOD_NOT_FOUND, `Ukjent verktøy: ${name}`);
       }
 

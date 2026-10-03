@@ -4,10 +4,21 @@ set -euo pipefail
 # Snoat Production Deploy Script
 # Deployer kode fra lokalt arbeidsområde til VPS og starter plattformen på nytt.
 
-# Snoat-plattformen kjører på den konsoliderte serveren på 38.87.117.167.
-DEFAULT_VPS_IP="38.87.117.167"
+# Snoat-plattformen kjører i VM-en `snoat` (10.10.10.10) på Proxmox-verten
+# 88.99.100.186 (Hetzner, fra 2026-10-04). VM-en har ingen offentlig IP – SSH går
+# med hopp gjennom verten, og verten videresender 80/443 til VM-en.
+#
+# Den gamle serveren 38.87.117.167 (LuxVPS) kjører fortsatt parallelt til DNS er
+# flyttet. Deploy dit med:
+#   SNOAT_VPS_IP=38.87.117.167 SNOAT_SSH_JUMP= SNOAT_PUBLIC_IP=38.87.117.167 ./scripts/deploy.sh
+DEFAULT_VPS_IP="10.10.10.10"
 VPS_IP="${SNOAT_VPS_IP:-$DEFAULT_VPS_IP}"
 VPS_USER="${SNOAT_VPS_USER:-root}"
+# Tom streng = ingen hopp (`SNOAT_SSH_JUMP=` for gammel server).
+SSH_JUMP="${SNOAT_SSH_JUMP-root@88.99.100.186}"
+# IP-en domenet skal treffe. Verifiseringen går hit med --resolve, slik at den
+# tester serveren vi nettopp deployet til – også før DNS er flyttet.
+PUBLIC_IP="${SNOAT_PUBLIC_IP:-88.99.100.186}"
 TARGET_DIR="/opt/snoat"
 SNOAT_DOMAIN="${SNOAT_DOMAIN:-snoat.com}"
 LOG_FILE="/tmp/snoat-deploy.log"
@@ -30,6 +41,9 @@ elif [[ -f "$HOME/.ssh/id_ed25519" ]]; then
   SSH_OPTS+=(-i "$HOME/.ssh/id_ed25519")
 elif [[ -f "$HOME/.ssh/id_rsa" ]]; then
   SSH_OPTS+=(-i "$HOME/.ssh/id_rsa")
+fi
+if [[ -n "$SSH_JUMP" ]]; then
+  SSH_OPTS+=(-J "$SSH_JUMP")
 fi
 
 # Tøm loggfilen
@@ -140,8 +154,13 @@ EOF
 run_step 45 "Setter ressurstak for bygging..." \
   ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_IP}" 'bash -s' <<'EOF'
     set -euo pipefail
-    systemctl set-property docker.service CPUQuota=250% CPUWeight=20 MemoryHigh=6G
-    systemctl set-property containerd.service CPUQuota=250% CPUWeight=20
+    # Regnet ut fra maskinen: 80 % av kjernene og 75 % av minnet til bygging.
+    # De faste tallene (250 % / 6G) var for den gamle boksen med 4 kjerner og
+    # 16 GB, og ville kvalt byggingen på en større maskin.
+    cpu_quota=$(( $(nproc) * 80 ))
+    mem_high=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 3 / 4 / 1024 ))
+    systemctl set-property docker.service CPUQuota=${cpu_quota}% CPUWeight=20 MemoryHigh=${mem_high}M
+    systemctl set-property containerd.service CPUQuota=${cpu_quota}% CPUWeight=20
 EOF
 
 # 3. Bygger Docker-containere på VPS
@@ -163,7 +182,8 @@ run_step 85 "Restarter proxy og API..." \
 # faktiske konfigurasjonen og sammenligner med det vi mener å ha deployet.
 verify_production() {
   local settings
-  settings=$(curl -fsS --retry 3 --retry-delay 2 "https://api.${SNOAT_DOMAIN}/auth/v1/settings")
+  settings=$(curl -fsS --retry 3 --retry-delay 2 \
+    --resolve "api.${SNOAT_DOMAIN}:443:${PUBLIC_IP}" "https://api.${SNOAT_DOMAIN}/auth/v1/settings")
   echo "$settings"
 
   if echo "$settings" | grep -q '"mailer_autoconfirm":true'; then

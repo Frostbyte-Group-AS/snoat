@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""
+Avstemmer Snoat-VPS-ene på Proxmox-verten. Kjøres som root av snoat-vps-avstem.service.
+
+Modellen er den samme som Kubernetes «system-reserved» og Incus' myke minnegrenser:
+
+  * Poolen `snoat-vps` har én innstilling, `ram-reservert-mb=N` i kommentaren. Det er RAM
+    som alltid skal være igjen til resten av verten (Snoat-VM-en, Proxmox selv, kjernen).
+  * Alle LXC-containere ligger under foreldre-cgroupen /sys/fs/cgroup/lxc. Den får
+    memory.max = MemTotal - reservert. Til sammen kan VPS-ene aldri ta mer, men hver enkelt
+    kan bruke alt som er ledig innenfor taket. Treffer de taket, er det kjernen i
+    VPS-gruppen som tar tilbake minne (sidebuffer først, OOM innenfor gruppen sist) – resten
+    av verten merker ingenting.
+  * memory.high brukes ikke. Uten swap blir en gruppe over high strupet i stedet for å få OOM,
+    og prosessene i den henger (målt 2026-10-04). Taket er memory.max alene; sidebuffer
+    tas uansett tilbake ved taket.
+  * En VPS kan ha `snoat-ram-min-mb=N` i beskrivelsen. Det blir memory.low: minnet den
+    beholder når andre VPS-er presser. Summen settes også på forelderen, ellers virker ikke
+    beskyttelsen (cgroup v2 fordeler den hierarkisk).
+  * SSH: tcp 22000+(vmid-2000) på vertens offentlige IP videresendes til VPS-ens port 22.
+
+Snoat-backend skriver bare via Proxmox-API-et (poolkommentar, beskrivelse); det er denne
+tjenesten som oversetter til cgroups og iptables, fordi API-tokenet ikke er root.
+"""
+import json, os, re, subprocess, sys, time
+
+POOL = "snoat-vps"
+CG = "/sys/fs/cgroup/lxc"
+WAN = "enp4s0"
+CHAIN = "SNOAT_VPS_SSH"
+SSH_BASE = 22000
+VMID_BASE = 2000
+DEFAULT_RESERVERT_MB = 57344
+MIN_RESERVERT_MB = 8192
+STATUS = "/run/snoat-vps/status.json"
+
+
+def sh(*args, check=True):
+    return subprocess.run(args, check=check, capture_output=True, text=True).stdout
+
+
+def mem_total_mb():
+    for line in open("/proc/meminfo"):
+        if line.startswith("MemTotal:"):
+            return int(line.split()[1]) // 1024
+    raise RuntimeError("fant ikke MemTotal")
+
+
+def pool():
+    try:
+        data = json.loads(sh("pvesh", "get", "/pools", "--poolid", POOL, "--output-format", "json"))
+        p = data[0] if isinstance(data, list) else data
+    except Exception:
+        p = json.loads(sh("pvesh", "get", f"/pools/{POOL}", "--output-format", "json"))
+    m = re.search(r"ram-reservert-mb=(\d+)", p.get("comment") or "")
+    reservert = int(m.group(1)) if m else DEFAULT_RESERVERT_MB
+    members = [x for x in p.get("members", []) if x.get("type") == "lxc"]
+    return max(reservert, MIN_RESERVERT_MB), members
+
+
+def write(path, value):
+    try:
+        with open(path) as f:
+            if f.read().strip() == str(value):
+                return
+    except FileNotFoundError:
+        pass
+    with open(path, "w") as f:
+        f.write(str(value))
+
+
+def ct_config(vmid):
+    return json.loads(sh("pvesh", "get", f"/nodes/{os.uname().nodename}/lxc/{vmid}/config", "--output-format", "json"))
+
+
+def avstem_minne(reservert, members, total):
+    tak = max(total - reservert, 1024)
+    os.makedirs(CG, exist_ok=True)
+    write(f"{CG}/memory.max", tak * 2**20)
+    # memory.high brukes ikke: uten swap strupes en gruppe over high i stedet for å få
+    # OOM, og prosessene henger. Målt 2026-10-04. Taket er memory.max alene.
+    write(f"{CG}/memory.high", "max")
+    sum_low = 0
+    for m in members:
+        vmid = m["vmid"]
+        try:
+            desc = ct_config(vmid).get("description") or ""
+        except Exception:
+            continue
+        mm = re.search(r"snoat-ram-min-mb=(\d+)", desc)
+        low = int(mm.group(1)) if mm else 0
+        if os.path.isdir(f"{CG}/{vmid}"):
+            write(f"{CG}/{vmid}/memory.low", low * 2**20)
+            sum_low += low
+    write(f"{CG}/memory.low", sum_low * 2**20)
+    return tak, sum_low
+
+
+def avstem_ssh(members):
+    onsket = []
+    for m in members:
+        vmid = int(m["vmid"])
+        if vmid < VMID_BASE or vmid >= VMID_BASE + 1000:
+            continue
+        try:
+            net0 = ct_config(vmid).get("net0", "")
+        except Exception:
+            continue
+        ip = re.search(r"ip=([\d.]+)/", net0)
+        if ip:
+            onsket.append((SSH_BASE + vmid - VMID_BASE, ip.group(1)))
+    regler = [f"-A {CHAIN} -i {WAN} -p tcp -m tcp --dport {port} -j DNAT --to-destination {ip}:22"
+              for port, ip in sorted(onsket)]
+    if sh("iptables", "-t", "nat", "-S", CHAIN, check=False) == "":
+        sh("iptables", "-t", "nat", "-N", CHAIN)
+    if subprocess.run(["iptables", "-t", "nat", "-C", "PREROUTING", "-i", WAN, "-j", CHAIN]).returncode != 0:
+        sh("iptables", "-t", "nat", "-A", "PREROUTING", "-i", WAN, "-j", CHAIN)
+    naa = [l for l in sh("iptables", "-t", "nat", "-S", CHAIN).splitlines() if l.startswith("-A ")]
+    if naa != regler:
+        sh("iptables", "-t", "nat", "-F", CHAIN)
+        for port, ip in sorted(onsket):
+            sh("iptables", "-t", "nat", "-A", CHAIN, "-i", WAN, "-p", "tcp", "-m", "tcp",
+               "--dport", str(port), "-j", "DNAT", "--to-destination", f"{ip}:22")
+    return [{"port": p, "ip": i} for p, i in sorted(onsket)]
+
+
+def en_runde():
+    total = mem_total_mb()
+    reservert, members = pool()
+    tak, sum_low = avstem_minne(reservert, members, total)
+    ssh = avstem_ssh(members)
+    os.makedirs(os.path.dirname(STATUS), exist_ok=True)
+    bruk = int(open(f"{CG}/memory.current").read()) // 2**20 if os.path.exists(f"{CG}/memory.current") else 0
+    with open(STATUS + ".tmp", "w") as f:
+        json.dump({"tid": int(time.time()), "total_mb": total, "reservert_mb": reservert, "tak_mb": tak,
+                   "garantert_sum_mb": sum_low, "i_bruk_mb": bruk, "ssh": ssh}, f)
+    os.replace(STATUS + ".tmp", STATUS)
+
+
+if __name__ == "__main__":
+    once = "--en-gang" in sys.argv
+    while True:
+        try:
+            en_runde()
+        except Exception as e:
+            print(f"avstemming feilet: {e}", file=sys.stderr, flush=True)
+        if once:
+            break
+        time.sleep(15)

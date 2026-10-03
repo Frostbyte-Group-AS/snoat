@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase.js";
 import { generateApiKey } from "../lib/api-keys.js";
 import { listConnections, revokeClientTokens } from "../lib/oauth.js";
 import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware/auth.js";
+import { vpsApi } from "./vps.js";
 import * as analytics from "../services/analytics.js";
 import { invalidateHostMap } from "../lib/host-map.js";
 import * as deploy from "../services/deploy.js";
@@ -33,6 +34,9 @@ api.route("/github", githubApi);
  * `/api` i `index.ts`, akkurat som GitHub-webhooken.
  */
 api.route("/billing", billing);
+
+/** VPS-er på Proxmox. Kun eierkontoen – sjekken ligger i `routes/vps.ts`. */
+api.route("/vps", vpsApi);
 
 /**
  * Bekrefter at en GitHub-installasjon faktisk tilhører kalleren.

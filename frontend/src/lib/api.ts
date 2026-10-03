@@ -563,3 +563,76 @@ export function denyOauthRequest(sealedRequest: string): Promise<{ redirect_to: 
   return publicPost("/oauth/deny", { request: sealedRequest });
 }
 
+
+// --- VPS-er (kun eierkontoen) -------------------------------------------------
+
+/**
+ * En VPS: en LXC-container på Proxmox-verten. Se `backend/src/services/vps.ts`
+ * for minnemodellen – kort sagt deler alle VPS-ene ett tak, og en VPS uten eget
+ * tak kan bruke alt ledig minne innenfor det.
+ */
+export interface Vps {
+  vmid: number;
+  name: string;
+  status: string;
+  ip: string | null;
+  ssh: { host: string; port: number; command: string } | null;
+  cores: number | null;
+  memoryMaxMb: number | null;
+  memoryMinMb: number;
+  memoryUsedMb: number | null;
+  diskGb: number | null;
+  diskUsedGb: number | null;
+  uptimeS: number | null;
+}
+
+export interface VpsRamPool {
+  totalMb: number;
+  reservertMb: number;
+  takMb: number;
+  iBrukMb: number;
+  garantertMb: number;
+  ledigITaketMb: number;
+}
+
+export interface NewVps {
+  name: string;
+  template?: string;
+  cores?: number;
+  diskGb?: number;
+  memoryMaxMb?: number;
+  memoryMinMb?: number;
+  sshPublicKeys?: string[];
+}
+
+/** Om kontoen ser VPS-fanen. Svarer alltid, også for vanlige kontoer. */
+export function getVpsAccess(): Promise<{ eier: boolean; konfigurert: boolean }> {
+  return request("/api/vps/tilgang");
+}
+
+export function listVps(): Promise<{ vps: Vps[]; ram: VpsRamPool; templates: string[] }> {
+  return request("/api/vps");
+}
+
+export function createVps(input: NewVps): Promise<{ vps: Vps }> {
+  return request("/api/vps", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function vpsPower(vmid: number, action: "start" | "shutdown" | "stop" | "reboot"): Promise<{ vps: Vps }> {
+  return request(`/api/vps/${vmid}/${action}`, { method: "POST" });
+}
+
+export function updateVps(
+  vmid: number,
+  change: { cores?: number; memoryMaxMb?: number; memoryMinMb?: number },
+): Promise<{ vps: Vps }> {
+  return request(`/api/vps/${vmid}`, { method: "PATCH", body: JSON.stringify(change) });
+}
+
+export function deleteVps(vmid: number, confirmName: string): Promise<{ deleted: boolean }> {
+  return request(`/api/vps/${vmid}`, { method: "DELETE", body: JSON.stringify({ confirmName }) });
+}
+
+export function setVpsReservedRam(reservertMb: number): Promise<{ ram: VpsRamPool }> {
+  return request("/api/vps/ram", { method: "PATCH", body: JSON.stringify({ reservertMb }) });
+}

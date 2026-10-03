@@ -412,6 +412,21 @@ services:
       # `EIER_LIMITS` i backend/src/services/plans.ts.
       SNOAT_OWNER_ACCOUNTS: ${SNOAT_OWNER_ACCOUNTS:-}
 
+      # Ekstra vertsnavn per app mens DNS peker et annet sted (config.ts).
+      SNOAT_EXTRA_APP_DOMAIN_SUFFIXES: ${SNOAT_EXTRA_APP_DOMAIN_SUFFIXES:-}
+      SNOAT_ACME_EMAIL: ${SNOAT_ACME_EMAIL:-}
+
+      # VPS-er på Proxmox – kun eierkontoen. Tomme = av. Se CONTEXT_FOR_AI/14_vps.md.
+      SNOAT_PROXMOX_URL: ${SNOAT_PROXMOX_URL:-}
+      SNOAT_PROXMOX_NODE: ${SNOAT_PROXMOX_NODE:-pve}
+      SNOAT_PROXMOX_TLS_NAME: ${SNOAT_PROXMOX_TLS_NAME:-pve}
+      SNOAT_PROXMOX_TOKEN_ID: ${SNOAT_PROXMOX_TOKEN_ID:-}
+      SNOAT_PROXMOX_TOKEN_SECRET: ${SNOAT_PROXMOX_TOKEN_SECRET:-}
+      SNOAT_PROXMOX_CA_PEM_B64: ${SNOAT_PROXMOX_CA_PEM_B64:-}
+      SNOAT_PROXMOX_POOL: ${SNOAT_PROXMOX_POOL:-snoat-vps}
+      SNOAT_VPS_PUBLIC_HOST: ${SNOAT_VPS_PUBLIC_HOST:-}
+      SNOAT_VPS_DEFAULT_SSH_KEYS_B64: ${SNOAT_VPS_DEFAULT_SSH_KEYS_B64:-}
+
       # Resend – varsler til drift. Valgfri: uten RESEND_API_KEY *eller*
       # SNOAT_NOTIFY_TO sendes ingenting, og varslene blir en linje i loggen.
       # Avsenderdomenet må være verifisert i Resend.
@@ -444,7 +459,7 @@ services:
         VITE_SUPABASE_ANON_KEY: ${ANON_KEY}
         VITE_SNOAT_API_URL: ${VITE_SNOAT_API_URL:-${VITE_SUPABASE_URL}}
         VITE_SNOAT_APP_DOMAIN_SUFFIX: ${VITE_SNOAT_APP_DOMAIN_SUFFIX:-${SNOAT_APP_DOMAIN_SUFFIX:-.snoat.com}}
-        VITE_SNOAT_SERVER_IP: ${VITE_SNOAT_SERVER_IP:-${SNOAT_SERVER_IP:-38.87.117.167}}
+        VITE_SNOAT_SERVER_IP: ${VITE_SNOAT_SERVER_IP:-${SNOAT_SERVER_IP:-88.99.100.186}}
     restart: unless-stopped
     depends_on:
       - kong

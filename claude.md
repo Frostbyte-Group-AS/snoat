@@ -28,6 +28,7 @@ Mappen inneholder:
 - `11_custom_domains_and_dns.md` — DNS-fanen, recordene kunden setter og det som gjenstår
 - `12_billing_and_plans.md` — planer, Stripe-integrasjon og håndheving av grenser
 - `13_articles_and_seo.md` — artikkelsamlingen på `/articles`, SEO-oppsettet og innholdsbacklogen
+- `14_vps.md` — VPS-er på Proxmox for eierkontoen, minnemodellen og RAM-taket
 
 Holder du dokumentasjonen oppdatert etter en endring, er det disse filene som
 skal endres — ikke bare koden.

@@ -51,6 +51,12 @@ export interface McpTool {
     idempotentHint?: boolean;
   };
   run(args: unknown, ctx: McpToolContext): Promise<McpToolResult>;
+  /**
+   * Bare for eierkontoen (`SNOAT_OWNER_ACCOUNTS`). Skjules i `tools/list` og
+   * avvises i `tools/call` for alle andre – i tillegg til at REST-endepunktet
+   * bak sier 403. For en vanlig kunde finnes verktøyet ikke.
+   */
+  ownerOnly?: boolean;
 }
 
 // --- Maskering -------------------------------------------------------------
@@ -1152,6 +1158,194 @@ export const MCP_TOOLS: McpTool[] = [
       return { summary: `Prosjektet «${actualName}» er slettet permanent.` };
     },
   },
+
+  // --- VPS-er (kun eierkontoen) ---------------------------------------------
+
+  {
+    name: "snoat_vps_list",
+    title: "List VPS-er",
+    description:
+      "Lister VPS-ene (LXC-containere på Proxmox) med status, IP, SSH-kommando, RAM og disk, og viser RAM-poolen: " +
+      "hvor mye av vertens RAM som er reservert for resten av serveren, og taket alle VPS-ene til sammen kan bruke.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    ownerOnly: true,
+    async run(_args, ctx) {
+      const data = (await callOrThrow(ctx, "GET", "/vps")) as { vps: unknown[]; ram: { takMb: number; iBrukMb: number } };
+      return {
+        summary: `${data.vps.length} VPS-er. VPS-ene bruker ${data.ram.iBrukMb} MB av et felles tak på ${data.ram.takMb} MB.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_vps_create",
+    title: "Lag VPS",
+    description:
+      "Lager og starter en ny VPS (Debian/Ubuntu i en LXC-container med Docker-støtte). Tar typisk 20–60 sekunder. " +
+      "Uten memoryMaxMb kan VPS-en bruke alt ledig minne innenfor det felles VPS-taket; memoryMinMb er minnet den " +
+      "beholder når andre VPS-er presser. Standardnøklene til eieren legges alltid inn; sshPublicKeys legger til flere. " +
+      "Svaret inneholder SSH-kommandoen.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Vertsnavn: små bokstaver, tall og bindestrek, 2–40 tegn." },
+        template: { type: "string", enum: ["debian-12", "debian-13", "ubuntu-24.04"], description: "Standard: debian-12." },
+        cores: { type: "integer", minimum: 1, maximum: 12, description: "CPU-kjerner. Standard: 2." },
+        diskGb: { type: "integer", minimum: 4, maximum: 300, description: "Disk i GB. Standard: 20." },
+        memoryMaxMb: { type: "integer", minimum: 256, description: "Eget RAM-tak. Utelat for å bare følge det felles taket." },
+        memoryMinMb: { type: "integer", minimum: 0, description: "Garantert RAM. Standard: 0." },
+        sshPublicKeys: { type: "array", items: { type: "string" }, description: "Ekstra offentlige SSH-nøkler." },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    ownerOnly: true,
+    async run(args, ctx) {
+      const data = (await callOrThrow(ctx, "POST", "/vps", args)) as {
+        vps: { name: string; vmid: number; ip: string; ssh?: { command: string } | null };
+      };
+      return {
+        summary: `VPS-en «${data.vps.name}» (ID ${data.vps.vmid}, ${data.vps.ip}) kjører.${data.vps.ssh ? ` Logg inn med: ${data.vps.ssh.command}` : ""}`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_vps_power",
+    title: "Start, stopp eller restart VPS",
+    description:
+      "Strømhandling på en VPS: start, shutdown (pen nedstengning), stop (hard, som å trekke ut strømmen) eller reboot.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        vmid: { type: "integer", description: "VPS-ens ID fra snoat_vps_list." },
+        action: { type: "string", enum: ["start", "shutdown", "stop", "reboot"] },
+      },
+      required: ["vmid", "action"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+    ownerOnly: true,
+    async run(args, ctx) {
+      const { vmid, action } = z
+        .object({ vmid: z.number().int().positive(), action: z.enum(["start", "shutdown", "stop", "reboot"]) })
+        .parse(args);
+      const data = (await callOrThrow(ctx, "POST", `/vps/${vmid}/${action}`)) as { vps: { name: string; status: string } };
+      return { summary: `«${data.vps.name}» er nå ${data.vps.status}.`, data };
+    },
+  },
+
+  {
+    name: "snoat_vps_update",
+    title: "Endre VPS-ressurser",
+    description:
+      "Endrer CPU-kjerner, eget RAM-tak (memoryMaxMb) eller garantert RAM (memoryMinMb) på en VPS. Trer i kraft uten omstart.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        vmid: { type: "integer" },
+        cores: { type: "integer", minimum: 1, maximum: 12 },
+        memoryMaxMb: { type: "integer", minimum: 256 },
+        memoryMinMb: { type: "integer", minimum: 0 },
+      },
+      required: ["vmid"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, idempotentHint: true },
+    ownerOnly: true,
+    async run(args, ctx) {
+      const { vmid, ...endring } = z
+        .object({
+          vmid: z.number().int().positive(),
+          cores: z.number().int().optional(),
+          memoryMaxMb: z.number().int().optional(),
+          memoryMinMb: z.number().int().optional(),
+        })
+        .parse(args);
+      const data = (await callOrThrow(ctx, "PATCH", `/vps/${vmid}`, endring)) as { vps: { name: string } };
+      return { summary: `«${data.vps.name}» er oppdatert.`, data };
+    },
+  },
+
+  {
+    name: "snoat_vps_delete",
+    title: "Slett VPS",
+    description:
+      "SLETTER en VPS permanent, med disk. Kan ikke angres. Krever at confirmName stemmer med VPS-ens navn og at " +
+      "confirmPermanentDeletion er true. Spør alltid brukeren eksplisitt først.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        vmid: { type: "integer" },
+        confirmName: { type: "string", description: "VPS-ens navn, stavet nøyaktig." },
+        confirmPermanentDeletion: { type: "boolean", description: "Må være true." },
+      },
+      required: ["vmid", "confirmName", "confirmPermanentDeletion"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+    ownerOnly: true,
+    async run(args, ctx) {
+      const { vmid, confirmName, confirmPermanentDeletion } = z
+        .object({ vmid: z.number().int().positive(), confirmName: z.string().min(1), confirmPermanentDeletion: z.boolean() })
+        .parse(args);
+      if (!confirmPermanentDeletion) {
+        throw new Error("Slettingen er avbrutt: confirmPermanentDeletion må settes eksplisitt til true.");
+      }
+      await callOrThrow(ctx, "DELETE", `/vps/${vmid}`, { confirmName });
+      return { summary: `VPS-en «${confirmName}» er slettet permanent.` };
+    },
+  },
+
+  {
+    name: "snoat_vps_get_ram_pool",
+    title: "Vis RAM-poolen for VPS-er",
+    description:
+      "Viser vertens totale RAM, hvor mye som er reservert for resten av serveren (Snoat-plattformen, Proxmox), taket " +
+      "alle VPS-ene til sammen kan bruke, og hvor mye de bruker nå.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    ownerOnly: true,
+    async run(_args, ctx) {
+      const data = (await callOrThrow(ctx, "GET", "/vps/ram")) as {
+        ram: { totalMb: number; reservertMb: number; takMb: number; iBrukMb: number };
+      };
+      const { totalMb, reservertMb, takMb, iBrukMb } = data.ram;
+      return {
+        summary: `Verten har ${totalMb} MB. ${reservertMb} MB er reservert for resten av serveren, så VPS-ene kan til sammen bruke ${takMb} MB (i bruk nå: ${iBrukMb} MB).`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_vps_set_ram_pool",
+    title: "Endre RAM reservert for resten av serveren",
+    description:
+      "Setter hvor mye RAM (MB) som alltid skal være igjen til resten av serveren. VPS-ene får til sammen bruke " +
+      "verts-RAM minus dette, og hver VPS kan bruke alt ledig minne innenfor taket. Avvises hvis taket ville blitt " +
+      "lavere enn det VPS-ene allerede bruker. Trer i kraft innen 15 sekunder.",
+    inputSchema: {
+      type: "object",
+      properties: { reservertMb: { type: "integer", minimum: 8192, description: "F.eks. 57344 for 56 GB." } },
+      required: ["reservertMb"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, idempotentHint: true },
+    ownerOnly: true,
+    async run(args, ctx) {
+      const { reservertMb } = z.object({ reservertMb: z.number().int() }).parse(args);
+      const data = (await callOrThrow(ctx, "PATCH", "/vps/ram", { reservertMb })) as { ram: { takMb: number } };
+      return {
+        summary: `${reservertMb} MB er nå reservert for resten av serveren. VPS-ene kan til sammen bruke ${data.ram.takMb} MB.`,
+        data,
+      };
+    },
+  },
 ];
 
 export const MCP_TOOLS_BY_NAME = new Map(MCP_TOOLS.map((tool) => [tool.name, tool]));
@@ -1169,3 +1363,7 @@ export const MCP_INSTRUCTIONS = [
   "snoat_trigger_deployment legger bygget i kø og svarer med én gang – bygget tar typisk noen minutter, så hent status eller logg etterpå framfor å anta at det er ferdig.",
   "Spør brukeren før du stopper eller sletter noe.",
 ].join(" ");
+
+/** Tillegg for eierkontoen, som også ser VPS-verktøyene. */
+export const MCP_INSTRUCTIONS_EIER =
+  "VPS-verktøyene (snoat_vps_*) lager LXC-containere på Proxmox. Alle VPS-er deler ett RAM-tak (verts-RAM minus det som er reservert for resten av serveren); en VPS uten eget tak kan bruke alt ledig minne innenfor det.";

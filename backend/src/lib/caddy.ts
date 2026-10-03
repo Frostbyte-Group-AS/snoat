@@ -20,6 +20,33 @@ const routeId = (slug: string) => `snoat_app_${slug}`;
 export const appHostname = (slug: string) => `${slug}${config.SNOAT_APP_DOMAIN_SUFFIX}`;
 
 /**
+ * `SNOAT_EXTRA_APP_DOMAIN_SUFFIXES` som liste, normalisert til å starte med punktum.
+ *
+ * Eksportert og ren slik at testene kan bevise at tomme ledd forsvinner: en tom
+ * streng i lista ville gjort `slugFromHostname()` villig til å godta hva som helst.
+ */
+export function parseSuffixes(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(",")
+        .map((suffix) => suffix.trim().toLowerCase())
+        .filter((suffix) => suffix !== "" && suffix !== ".")
+        .map((suffix) => (suffix.startsWith(".") ? suffix : `.${suffix}`)),
+    ),
+  ];
+}
+
+export const extraAppDomainSuffixes = parseSuffixes(config.SNOAT_EXTRA_APP_DOMAIN_SUFFIXES);
+
+/**
+ * Vertsnavnene appen svarer på i tillegg til `appHostname()`, ett per ekstra
+ * suffiks – f.eks. `osia.88-99-100-186.sslip.io` mens DNS for `snoat.com` ennå
+ * peker på en annen server.
+ */
+export const extraAppHostnames = (slug: string) => extraAppDomainSuffixes.map((suffix) => `${slug}${suffix}`);
+
+/**
  * Full URL til appen. `http` lokalt, `https` i produksjon – slik Caddy kjører.
  *
  * Speiler `projectUrl()` i frontend (`lib/platform.ts`) med vilje: de to må gi
@@ -111,16 +138,21 @@ export function devAliasParts(
  * nøyaktig ett Snoat-appdomene, slik at kallet aldri kan slå opp på noe annet
  * enn en prosjekt-slug.
  */
-export function slugFromHostname(hostname: string): string | null {
-  const suffix = config.SNOAT_APP_DOMAIN_SUFFIX;
+export function slugFromHostname(
+  hostname: string,
+  suffixes: readonly string[] = [config.SNOAT_APP_DOMAIN_SUFFIX, ...extraAppDomainSuffixes],
+): string | null {
+  for (const suffix of suffixes) {
+    if (!suffix || !hostname.endsWith(suffix)) continue;
 
-  if (!hostname.endsWith(suffix)) return null;
+    const slug = hostname.slice(0, -suffix.length);
 
-  const slug = hostname.slice(0, -suffix.length);
+    // Én etikett, samme form som `projects.name`. Et navn med punktum i seg er et
+    // dypere subdomene vi ikke ruter, og skal ikke gi sertifikat.
+    if (/^[a-z0-9-]+$/.test(slug)) return slug;
+  }
 
-  // Én etikett, samme form som `projects.name`. Et navn med punktum i seg er et
-  // dypere subdomene vi ikke ruter, og skal ikke gi sertifikat.
-  return /^[a-z0-9-]+$/.test(slug) ? slug : null;
+  return null;
 }
 
 /**
@@ -202,6 +234,41 @@ function isUnknownObject(error: unknown): boolean {
   return error instanceof CaddyError && /unknown object ID/i.test(error.message);
 }
 
+/**
+ * Legger inn en egen TLS-policy for `SNOAT_EXTRA_APP_DOMAIN_SUFFIXES`.
+ *
+ * Navnene under suffiksene hentes on-demand som alle andre appdomener, men fra
+ * `SNOAT_EXTRA_APP_DOMAIN_ACME_CA` (ZeroSSL) i stedet for Let's Encrypt – se
+ * config.ts for hvorfor. Policyen må stå *foran* catch-all-policyen
+ * `{ on_demand: true }` i `caddy/config.json`, ellers vinner den. `PUT` mot
+ * indeks 0 setter inn uten å røre resten.
+ *
+ * Den ligger ikke i config.json fordi suffikset er per server (det inneholder
+ * IP-en). Som apprutene lever den bare i Caddys minne, og legges inn igjen hver
+ * gang backend starter – samme rekkefølgeregel som for rutene: restartes Caddy
+ * alene, restart backend etterpå.
+ */
+export async function ensureExtraSuffixTlsPolicy(): Promise<"lagt_inn" | "finnes" | "av"> {
+  if (extraAppDomainSuffixes.length === 0 || !config.SNOAT_ACME_EMAIL) return "av";
+
+  const subjects = extraAppDomainSuffixes.map((suffix) => `*${suffix}`);
+  const policies = (await (await request("GET", "/config/apps/tls/automation/policies")).json()) as Array<{
+    subjects?: string[];
+  }> | null;
+
+  const finnes = (policies ?? []).some(
+    (policy) => policy.subjects && subjects.every((subject) => policy.subjects?.includes(subject)),
+  );
+  if (finnes) return "finnes";
+
+  await request("PUT", "/config/apps/tls/automation/policies/0", {
+    subjects,
+    on_demand: true,
+    issuers: [{ module: "acme", ca: config.SNOAT_EXTRA_APP_DOMAIN_ACME_CA, email: config.SNOAT_ACME_EMAIL }],
+  });
+  return "lagt_inn";
+}
+
 /** Sjekker at admin-API-et svarer. Brukes av /health. */
 export async function ping(): Promise<void> {
   await request("GET", "/config/apps/http/servers/snoat/listen");
@@ -273,7 +340,7 @@ export async function upsertStaticRoute(
  * `example.com` selv – derfor må begge stå oppført.
  */
 function hostsFor(slug: string, customDomain: string | null, aliasHosts: string[] = []): string[] {
-  const hosts = [appHostname(slug), ...aliasHosts];
+  const hosts = [appHostname(slug), ...extraAppHostnames(slug), ...aliasHosts];
   if (customDomain) hosts.push(customDomain, `*.${customDomain}`);
   return [...new Set(hosts)];
 }
