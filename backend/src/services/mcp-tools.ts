@@ -1192,10 +1192,10 @@ export const MCP_TOOLS: McpTool[] = [
       properties: {
         name: { type: "string", description: "Vertsnavn: små bokstaver, tall og bindestrek, 2–40 tegn." },
         template: { type: "string", enum: ["debian-12", "debian-13", "ubuntu-24.04"], description: "Standard: debian-12." },
-        cores: { type: "integer", minimum: 1, maximum: 12, description: "CPU-kjerner. Standard: 2." },
-        diskGb: { type: "integer", minimum: 4, maximum: 300, description: "Disk i GB. Standard: 20." },
+        cores: { type: "integer", minimum: 1, description: "CPU-kjerner (tråder den kan bruke). Standard: 2. Maks: vertens tråder." },
+        diskGb: { type: "integer", minimum: 4, maximum: 300, description: "Disk i GB. Standard: 20. Se snoat_vps_resources for hvor mye som er ledig." },
         memoryMaxMb: { type: "integer", minimum: 256, description: "Eget RAM-tak. Utelat for å bare følge det felles taket." },
-        memoryMinMb: { type: "integer", minimum: 0, description: "Garantert RAM. Standard: 0." },
+        memoryMinMb: { type: "integer", minimum: 0, description: "Garantert RAM. Standard: 0. Summen av garantiene kan ikke passere det felles taket." },
         sshPublicKeys: { type: "array", items: { type: "string" }, description: "Ekstra offentlige SSH-nøkler." },
       },
       required: ["name"],
@@ -1298,6 +1298,35 @@ export const MCP_TOOLS: McpTool[] = [
       }
       await callOrThrow(ctx, "DELETE", `/vps/${vmid}`, { confirmName });
       return { summary: `VPS-en «${confirmName}» er slettet permanent.` };
+    },
+  },
+
+  {
+    name: "snoat_vps_resources",
+    title: "Vis ledige ressurser for VPS-er",
+    description:
+      "Viser hva serveren har ledig før du lager eller endrer en VPS: CPU-tråder og belastning, RAM-poolen " +
+      "(tak, i bruk, garantert) og disk, og grensene snoat_vps_create godtar (maks disk, maks garantert RAM).",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+    ownerOnly: true,
+    async run(_args, ctx) {
+      const data = (await callOrThrow(ctx, "GET", "/vps/ressurser")) as {
+        ressurser: {
+          cpu: { traader: number; bruktProsent: number; tildeltVps: number };
+          ram: { takMb: number; iBrukMb: number; garantertMb: number };
+          disk: { ledigGb: number; maksNyGb: number };
+          grenser: { maksGarantertMb: number };
+        };
+      };
+      const { cpu, ram, disk, grenser } = data.ressurser;
+      return {
+        summary:
+          `CPU: ${cpu.traader} tråder, ${cpu.bruktProsent} % i bruk, ${cpu.tildeltVps} tildelt VPS-er (deles, ikke reservert). ` +
+          `RAM: felles tak ${ram.takMb} MB, ${ram.iBrukMb} MB i bruk, ${ram.garantertMb} MB garantert (kan garantere ${grenser.maksGarantertMb} MB til). ` +
+          `Disk: ${disk.ledigGb} GB ledig, en ny VPS kan få opptil ${disk.maksNyGb} GB.`,
+        data,
+      };
     },
   },
 

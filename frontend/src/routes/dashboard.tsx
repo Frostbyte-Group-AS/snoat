@@ -6,10 +6,13 @@ import { BranchPicker } from "@/components/BranchPicker";
 import { DashboardNav } from "@/components/DashboardNav";
 
 import { DeploymentStatusBadge } from "@/components/DeploymentStatusBadge";
+import { NewVpsForm } from "@/components/NewVpsForm";
+import { VpsOverview } from "@/components/VpsOverview";
 import { useDeploymentsRealtime } from "@/hooks/useDeploymentsRealtime";
 import {
   deployProject,
   getGithubStatus,
+  getVpsAccess,
   listGithubRepos,
   type GithubRepo,
   type GithubStatus,
@@ -80,6 +83,15 @@ function DashboardPage() {
   });
 
   useDeploymentsRealtime(Boolean(user));
+
+  // Eierkontoen kan også lage VPS-er fra «Nytt prosjekt». Backend håndhever
+  // grensen; dette styrer bare om valget og VPS-kortene vises.
+  const vpsAccess = useQuery({
+    queryKey: ["vps-access"],
+    queryFn: getVpsAccess,
+    enabled: Boolean(user),
+  });
+  const vpsEnabled = Boolean(vpsAccess.data?.eier && vpsAccess.data.konfigurert);
 
   const [creating, setCreating] = useState(false);
   const [githubNotice, setGithubNotice] = useState<string | null>(null);
@@ -198,9 +210,17 @@ function DashboardPage() {
             ))}
           </div>
         )}
+
+        <VpsOverview enabled={vpsEnabled} />
       </main>
 
-      {creating && <NewProjectDialog userId={user.id} onClose={() => setCreating(false)} />}
+      {creating && (
+        <NewProjectDialog
+          userId={user.id}
+          vpsEnabled={vpsEnabled}
+          onClose={() => setCreating(false)}
+        />
+      )}
     </div>
   );
 }
@@ -668,9 +688,18 @@ function RepoPicker({
   );
 }
 
-function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => void }) {
+function NewProjectDialog({
+  userId,
+  vpsEnabled,
+  onClose,
+}: {
+  userId: string;
+  vpsEnabled: boolean;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [kind, setKind] = useState<"app" | "vps">("app");
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("");
   const [repoDefaultBranch, setRepoDefaultBranch] = useState<string | null>(null);
@@ -744,142 +773,182 @@ function NewProjectDialog({ userId, onClose }: { userId: string; onClose: () => 
       onClick={onClose}
     >
       <div
-        className="ink-card-lg anim-pop w-full max-w-[560px] px-[30px] py-[32px]"
+        className={`ink-card-lg anim-pop max-h-[calc(100dvh-40px)] w-full overflow-y-auto px-[30px] py-[32px] ${
+          kind === "vps" ? "max-w-[680px]" : "max-w-[560px]"
+        }`}
         onClick={(event) => event.stopPropagation()}
       >
         <h2 id="new-project-title" className="font-display text-[28px] font-bold text-ink">
           {t("dashboard.new_project_modal.title")}
         </h2>
         <span className="swoosh anim-draw mt-[6px]" aria-hidden="true" />
-        <p className="mt-[14px] font-body text-[16px] font-light leading-[1.5] text-ink">
-          {t("dashboard.new_project_modal.desc")}
-        </p>
 
-        <form onSubmit={handleSubmit} className="mt-[24px] flex flex-col gap-[16px]">
-          <div className="flex flex-col gap-[8px]">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="font-body text-[15px] font-normal text-ink">
-                {t("dashboard.new_project_modal.github_repo")}
-              </span>
-              {status.data?.configured && (
+        {/* Bare eierkontoen ser valget. For alle andre er «Nytt prosjekt» det
+            det alltid har vært: en app fra et GitHub-repo. */}
+        {vpsEnabled && (
+          <div role="radiogroup" className="mt-[18px] grid grid-cols-2 border-2 border-line">
+            {(["app", "vps"] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={kind === k}
+                onClick={() => setKind(k)}
+                className={`flex flex-col gap-[2px] px-[16px] py-[12px] text-left text-ink transition-colors first:border-r-2 first:border-line ${
+                  kind === k ? "bg-sun" : "hover:bg-sun-soft"
+                }`}
+              >
+                <span className="font-display text-[16px] font-bold">
+                  {t(`dashboard.new_project_modal.kind_${k}`)}
+                </span>
+                <span className="font-body text-[13px] font-light">
+                  {t(`dashboard.new_project_modal.kind_${k}_hint`)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {kind === "vps" ? (
+          <div className="mt-[22px]">
+            <p className="mb-[22px] font-body text-[16px] font-light leading-[1.5] text-ink">
+              {t("dashboard.new_project_modal.vps_desc")}
+            </p>
+            <NewVpsForm onDone={onClose} onCancel={onClose} />
+          </div>
+        ) : (
+          <>
+            <p className="mt-[14px] font-body text-[16px] font-light leading-[1.5] text-ink">
+              {t("dashboard.new_project_modal.desc")}
+            </p>
+
+            <form onSubmit={handleSubmit} className="mt-[24px] flex flex-col gap-[16px]">
+              <div className="flex flex-col gap-[8px]">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-body text-[15px] font-normal text-ink">
+                    {t("dashboard.new_project_modal.github_repo")}
+                  </span>
+                  {status.data?.configured && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPasteUrl(!pasteUrl);
+                        setRepoUrl("");
+                        setInstallationId(null);
+                        setRepoDefaultBranch(null);
+                        setBranch("");
+                      }}
+                      className="font-body text-[15px] font-normal text-ink underline underline-offset-[4px] hover:decoration-sun hover:decoration-[3px]"
+                    >
+                      {pasteUrl
+                        ? t("dashboard.new_project_modal.choose_list")
+                        : t("dashboard.new_project_modal.paste_url")}
+                    </button>
+                  )}
+                </div>
+
+                {showPicker ? (
+                  <RepoPicker
+                    status={status.data}
+                    repos={filtered}
+                    isLoading={repos.isLoading}
+                    error={repos.error}
+                    search={search}
+                    onSearch={setSearch}
+                    selectedUrl={repoUrl}
+                    onSelect={selectRepo}
+                  />
+                ) : (
+                  <input
+                    type="url"
+                    required
+                    value={repoUrl}
+                    onChange={(event) => {
+                      setRepoUrl(event.target.value);
+                      setInstallationId(null);
+                      setRepoDefaultBranch(null);
+                    }}
+                    placeholder="https://github.com/brukernavn/repo"
+                    className="field-ink h-[46px] px-[14px] font-mono text-[14px] outline-none placeholder:text-ink/40"
+                  />
+                )}
+
+                {!installationId && repoUrl && (
+                  <span className="font-body text-[14px] font-light text-ink/70">
+                    {t("dashboard.new_project_modal.public_repo_note")}
+                  </span>
+                )}
+              </div>
+
+              {/* Grenvalget er meningsløst uten et repo å hente grener fra, så det
+                  dukker opp først når repoet er valgt. */}
+              {repoUrl.trim() && (
+                <BranchPicker
+                  repo={repoUrl}
+                  value={branch}
+                  onChange={setBranch}
+                  defaultBranch={repoDefaultBranch}
+                />
+              )}
+
+              <label className="flex flex-col gap-[8px]">
+                <span className="font-body text-[15px] font-normal text-ink">
+                  {t("dashboard.new_project_modal.project_name")}
+                </span>
+                <input
+                  type="text"
+                  required
+                  value={effectiveName}
+                  onChange={(event) => {
+                    setNameTouched(true);
+                    // Normaliseres ved hvert tastetrykk, ikke ved innsending. Da ser
+                    // kunden vertsnavnet sitt bli til mens hen skriver, i stedet for
+                    // at feltet ser greit ut og forslaget under sier noe annet.
+                    setName(normalizeNameInput(event.target.value));
+                  }}
+                  pattern="[a-z0-9][a-z0-9-]{0,62}"
+                  title="Små bokstaver, tall og bindestrek."
+                  placeholder="min-app"
+                  className="field-ink h-[46px] px-[14px] font-mono text-[14px] outline-none placeholder:text-ink/40"
+                />
+                <span className="font-body text-[14px] font-light text-ink/70">
+                  {t("dashboard.new_project_modal.subdomain_preview", {
+                    name: effectiveName || "<navn>",
+                    suffix: appDomainSuffix,
+                  })}
+                </span>
+              </label>
+
+              {create.isError && (
+                <p
+                  role="alert"
+                  className="border-2 border-error px-[14px] py-[10px] font-body text-[15px] text-error"
+                >
+                  {create.error.message}
+                </p>
+              )}
+
+              <div className="mt-[8px] flex justify-end gap-[12px]">
                 <button
                   type="button"
-                  onClick={() => {
-                    setPasteUrl(!pasteUrl);
-                    setRepoUrl("");
-                    setInstallationId(null);
-                    setRepoDefaultBranch(null);
-                    setBranch("");
-                  }}
-                  className="font-body text-[15px] font-normal text-ink underline underline-offset-[4px] hover:decoration-sun hover:decoration-[3px]"
+                  onClick={onClose}
+                  className="btn-outline h-[46px] px-[20px] font-display text-[15px]"
                 >
-                  {pasteUrl
-                    ? t("dashboard.new_project_modal.choose_list")
-                    : t("dashboard.new_project_modal.paste_url")}
+                  {t("dashboard.new_project_modal.cancel")}
                 </button>
-              )}
-            </div>
-
-            {showPicker ? (
-              <RepoPicker
-                status={status.data}
-                repos={filtered}
-                isLoading={repos.isLoading}
-                error={repos.error}
-                search={search}
-                onSearch={setSearch}
-                selectedUrl={repoUrl}
-                onSelect={selectRepo}
-              />
-            ) : (
-              <input
-                type="url"
-                required
-                value={repoUrl}
-                onChange={(event) => {
-                  setRepoUrl(event.target.value);
-                  setInstallationId(null);
-                  setRepoDefaultBranch(null);
-                }}
-                placeholder="https://github.com/brukernavn/repo"
-                className="field-ink h-[46px] px-[14px] font-mono text-[14px] outline-none placeholder:text-ink/40"
-              />
-            )}
-
-            {!installationId && repoUrl && (
-              <span className="font-body text-[14px] font-light text-ink/70">
-                {t("dashboard.new_project_modal.public_repo_note")}
-              </span>
-            )}
-          </div>
-
-          {/* Grenvalget er meningsløst uten et repo å hente grener fra, så det
-              dukker opp først når repoet er valgt. */}
-          {repoUrl.trim() && (
-            <BranchPicker
-              repo={repoUrl}
-              value={branch}
-              onChange={setBranch}
-              defaultBranch={repoDefaultBranch}
-            />
-          )}
-
-          <label className="flex flex-col gap-[8px]">
-            <span className="font-body text-[15px] font-normal text-ink">
-              {t("dashboard.new_project_modal.project_name")}
-            </span>
-            <input
-              type="text"
-              required
-              value={effectiveName}
-              onChange={(event) => {
-                setNameTouched(true);
-                // Normaliseres ved hvert tastetrykk, ikke ved innsending. Da ser
-                // kunden vertsnavnet sitt bli til mens hen skriver, i stedet for
-                // at feltet ser greit ut og forslaget under sier noe annet.
-                setName(normalizeNameInput(event.target.value));
-              }}
-              pattern="[a-z0-9][a-z0-9-]{0,62}"
-              title="Små bokstaver, tall og bindestrek."
-              placeholder="min-app"
-              className="field-ink h-[46px] px-[14px] font-mono text-[14px] outline-none placeholder:text-ink/40"
-            />
-            <span className="font-body text-[14px] font-light text-ink/70">
-              {t("dashboard.new_project_modal.subdomain_preview", {
-                name: effectiveName || "<navn>",
-                suffix: appDomainSuffix,
-              })}
-            </span>
-          </label>
-
-          {create.isError && (
-            <p
-              role="alert"
-              className="border-2 border-error px-[14px] py-[10px] font-body text-[15px] text-error"
-            >
-              {create.error.message}
-            </p>
-          )}
-
-          <div className="mt-[8px] flex justify-end gap-[12px]">
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn-outline h-[46px] px-[20px] font-display text-[15px]"
-            >
-              {t("dashboard.new_project_modal.cancel")}
-            </button>
-            <button
-              type="submit"
-              disabled={create.isPending}
-              className="btn-ink h-[46px] px-[24px] font-display text-[15px]"
-            >
-              {create.isPending
-                ? t("dashboard.new_project_modal.creating")
-                : t("dashboard.new_project_modal.create")}
-            </button>
-          </div>
-        </form>
+                <button
+                  type="submit"
+                  disabled={create.isPending}
+                  className="btn-ink h-[46px] px-[24px] font-display text-[15px]"
+                >
+                  {create.isPending
+                    ? t("dashboard.new_project_modal.creating")
+                    : t("dashboard.new_project_modal.create")}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
       </div>
     </div>
   );

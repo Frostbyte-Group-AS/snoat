@@ -96,6 +96,17 @@ mistet prosessen sin og merkes `failed` med en forklaring i loggen. Uten den bli
 raden stående for alltid, og dashboardet teller opp på en build som døde. Begge
 mekanismene forutsetter **én** backend-instans, akkurat som `inFlight`.
 
+**Byggfart (målt 2026-10-04 på Proxmox-VM-en, OSIA).** To flagg betyr mest:
+
+- `--cache-key snoat-<project.id>`. Uten den nøkler Nixpacks cache-monteringene
+  (npm-cachen, `.next/cache`, `node_modules/.cache`) på arbeidsmappen, som er ny
+  for hvert bygg. Cachen ble aldri gjenbrukt, og BuildKit samlet én foreldreløs
+  kopi per bygg. Nøkkelen er per prosjekt, så prosjekter deler aldri cache.
+- `--docker-output type=image,compression=zstd,compression-level=1`
+  (`SNOAT_BUILD_DOCKER_OUTPUT`). Docker 29 lagrer images i containerd og
+  gzip-komprimerer hvert nye lag på én kjerne ved eksport. Eksportsteget for
+  OSIA gikk fra 109 s til 35 s.
+
 **4. Image build.** `nixpacks build <dir> --name snoat/<slug>` med `--env` per
 miljøvariabel og `--build-cmd` hvis prosjektet har en override. Nixpacks
 detekterer rammeverket selv – brukeren trenger ingen Dockerfile. `PORT` injiseres

@@ -108,3 +108,22 @@ describe("ekstra domenesuffikser", () => {
     assert.equal(caddy.slugFromHostname(".88-99-100-186.sslip.io"), null);
   });
 });
+
+describe("grenser for ny VPS", () => {
+  it("disk: ledig minus marginen, og aldri over taket", () => {
+    assert.equal(vps.maksNyDiskGb(379), 300);
+    assert.equal(vps.maksNyDiskGb(200), 200 - vps.DISK_MARGIN_GB);
+    assert.equal(vps.maksNyDiskGb(30), 0);
+  });
+
+  it("disk: plass som er lovet til andre VPS-er, men ikke brukt, trekkes fra", () => {
+    assert.equal(vps.maksNyDiskGb(379, 100), 379 - 100 - vps.DISK_MARGIN_GB);
+    assert.equal(vps.maksNyDiskGb(100, 100), 0);
+  });
+
+  it("garantert RAM kan ikke passere det felles taket", () => {
+    assert.equal(vps.ledigForGaranti(200_000, 0), 200_000);
+    assert.equal(vps.ledigForGaranti(200_000, 150_000), 50_000);
+    assert.equal(vps.ledigForGaranti(100_000, 150_000), 0);
+  });
+});

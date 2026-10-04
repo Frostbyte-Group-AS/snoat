@@ -303,6 +303,8 @@ SNOAT_DEFAULT_NODE_VERSION=${preserved("SNOAT_DEFAULT_NODE_VERSION", "22")}
 # Samtidige builds på hele verten, og heap-tak per build (MB).
 SNOAT_MAX_CONCURRENT_BUILDS=${preserved("SNOAT_MAX_CONCURRENT_BUILDS", "1")}
 SNOAT_BUILD_NODE_MEMORY_MB=${preserved("SNOAT_BUILD_NODE_MEMORY_MB", "8192")}
+# Eksport av image: zstd er ~3x raskere enn gzip på containerd-lageret. «none» = nixpacks' standard.
+SNOAT_BUILD_DOCKER_OUTPUT=${preserved("SNOAT_BUILD_DOCKER_OUTPUT", "type=image,compression=zstd,compression-level=1")}
 # Statiske sider serveres fra disk uten container (03_deployment_flow.md).
 SNOAT_SITES_DIR=${preserved("SNOAT_SITES_DIR", "/srv/sites")}
 # --- Stripe: abonnement og betaling ------------------------------------------

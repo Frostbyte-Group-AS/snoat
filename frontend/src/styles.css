@@ -1041,3 +1041,72 @@
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Glidebryter (`ink-range`) – brukt i «Ny VPS».
+
+   Samme uttrykk som `ink-switch`: firkantet, 2 px strek, gult for det valgte.
+   Sporet fylles med gult opp til tommelen via `--fill`, som komponenten setter
+   (WebKit har ingen egen «progress»-del; Firefox har `::-moz-range-progress`).
+   --------------------------------------------------------------------------- */
+@layer components {
+  .ink-range {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 26px;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .ink-range::-webkit-slider-runnable-track {
+    box-sizing: border-box;
+    height: 12px;
+    border: 2px solid var(--color-line);
+    background: linear-gradient(
+      to right,
+      var(--color-sun) var(--fill, 0%),
+      var(--color-paper) var(--fill, 0%)
+    );
+  }
+
+  .ink-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    margin-top: -7px;
+    border: 2px solid var(--color-ink);
+    border-radius: 0;
+    background: var(--color-ink);
+    transition: transform var(--dur-fast) var(--ease-snoat);
+  }
+
+  .ink-range::-moz-range-track {
+    height: 8px;
+    border: 2px solid var(--color-line);
+    background: var(--color-paper);
+  }
+
+  .ink-range::-moz-range-progress {
+    height: 8px;
+    background: var(--color-sun);
+  }
+
+  .ink-range::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--color-ink);
+    border-radius: 0;
+    background: var(--color-ink);
+  }
+
+  .ink-range:hover::-webkit-slider-thumb,
+  .ink-range:focus-visible::-webkit-slider-thumb {
+    transform: scale(1.1);
+  }
+
+  .ink-range:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 4px;
+  }
+}
