@@ -6,6 +6,14 @@ andre er Snoat et Vercel-alternativ og ingenting mer: `/api/vps/*` svarer 403,
 `snoat_vps_*` finnes ikke i MCP (skjult i `tools/list`, avvist i `tools/call`),
 og dashboardet viser ikke fanen. Grensen sitter i backend.
 
+**Hvor eieren lager en VPS:** «Nytt prosjekt» på dashboardet har et valg
+*Nettside / app* | *VPS* (bare for eierkontoen). VPS-valget åpner
+`components/NewVpsForm.tsx`: OS, ferdige størrelser (Liten/Middels/Stor) eller
+egendefinert med glidebrytere for CPU, garantert RAM, eget RAM-tak og disk, og
+målere som viser hva som er ledig. Samme skjema står under Innstillinger →
+VPS-er. VPS-ene vises også som kort under prosjektene på dashboardet
+(`components/VpsOverview.tsx`).
+
 ## Hvor ting bor
 
 | Hva | Hvor |
@@ -84,6 +92,19 @@ Reservasjonen må dekke Snoat-VM-en (48 GB) pluss Proxmox og kjernen (noen GB).
 | `PATCH /:vmid` `{cores?, memoryMaxMb?, memoryMinMb?}` | `snoat_vps_update` |
 | `DELETE /:vmid` `{confirmName}` | `snoat_vps_delete` (krever også `confirmPermanentDeletion`) |
 | `GET /ram`, `PATCH /ram {reservertMb}` | `snoat_vps_get_ram_pool`, `snoat_vps_set_ram_pool` |
+| `GET /ressurser` → CPU, RAM-pool, disk og grenser for en ny VPS | `snoat_vps_resources` |
+
+**Grenser som håndheves i `createVps`** (menyen viser dem, men backend er
+kontrollen – MCP går rett hit):
+
+- **CPU:** høyst vertens tråder (12). Kjerner er et tak, ikke en reservasjon –
+  VPS-ene deler CPU-en.
+- **Garantert RAM:** summen av alle garantier kan ikke passere det felles taket
+  (`vps.ram_guarantee_exceeded`). Gjelder også `PATCH /:vmid`.
+- **Disk:** ledig plass på `local` minus det andre VPS-er er lovet men ikke har
+  skrevet ennå (diskene er tynne filer), minus 50 GB holdt av til Snoat-VM-en,
+  høyst 300 GB (`vps.disk_full`). Snoat-VM-ens egen disk er også tynn (250 GB
+  maks), så marginen er et kompromiss, ikke en garanti.
 
 Maler: `debian-12`, `debian-13`, `ubuntu-24.04`. Må være lastet ned på verten
 (`pveam download local <mal>`). Nøklene i `SNOAT_VPS_DEFAULT_SSH_KEYS_B64` legges

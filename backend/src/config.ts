@@ -314,6 +314,18 @@ const schema = z.object({
   SNOAT_BUILD_NODE_MEMORY_MB: z.coerce.number().int().positive().default(8192),
 
   /**
+   * Sendes til `nixpacks build --docker-output`, som blir `docker build --output`.
+   *
+   * Docker 29 lagrer images i containerd, og da gzip-komprimeres hvert nytt lag
+   * når bygget eksporteres – på én kjerne. Målt 2026-10-04 på Proxmox-VM-en
+   * (OSIA, 2,4 GB node_modules): 102 s eksport med gzip, 34 s med zstd nivå 1.
+   * Imaget brukes bare lokalt, så komprimeringen gir ingenting tilbake.
+   *
+   * `none` lar nixpacks velge selv (gzip).
+   */
+  SNOAT_BUILD_DOCKER_OUTPUT: z.string().default("type=image,compression=zstd,compression-level=1"),
+
+  /**
    * Node-versjonen prosjekter bygges med når repoet ikke oppgir en selv.
    *
    * Nixpacks faller tilbake på Node 18, som er ute av vedlikehold og ikke kan

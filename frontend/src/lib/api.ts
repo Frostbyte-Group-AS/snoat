@@ -605,6 +605,19 @@ export interface NewVps {
   sshPublicKeys?: string[];
 }
 
+/** Hva serveren har ledig, og grensene «Ny VPS» må holde seg innenfor. */
+export interface VpsResources {
+  cpu: { traader: number; kjerner: number | null; modell: string | null; bruktProsent: number; tildeltVps: number };
+  ram: VpsRamPool;
+  disk: { totalGb: number; ledigGb: number; tildeltVpsGb: number; tildeltUbruktGb: number; reservertGb: number; maksNyGb: number };
+  standardSshNokkel: boolean;
+  grenser: { maksKjerner: number; minDiskGb: number; maksDiskGb: number; minRamMb: number; maksGarantertMb: number };
+}
+
+export function getVpsResources(): Promise<{ ressurser: VpsResources; templates: string[] }> {
+  return request("/api/vps/ressurser");
+}
+
 /** Om kontoen ser VPS-fanen. Svarer alltid, også for vanlige kontoer. */
 export function getVpsAccess(): Promise<{ eier: boolean; konfigurert: boolean }> {
   return request("/api/vps/tilgang");

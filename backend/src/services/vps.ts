@@ -72,6 +72,30 @@ export type VpsTemplate = keyof typeof VPS_TEMPLATES;
 export const MIN_RESERVERT_MB = 8192;
 const STANDARD_RESERVERT_MB = 57344;
 
+export const MIN_DISK_GB = 4;
+export const MAKS_DISK_GB = 300;
+export const MIN_RAM_MB = 256;
+/**
+ * Disk som aldri deles ut til VPS-er. Lagringen `local` deles med Snoat-VM-ens
+ * egen disk, som er tynnprovisjonert og vokser etter hvert som byggene fyller den.
+ * Uten en margin kan en stor VPS ta plassen Snoat trenger til neste bygg.
+ */
+export const DISK_MARGIN_GB = 50;
+
+export interface VpsRessurser {
+  cpu: { traader: number; kjerner: number | null; modell: string | null; bruktProsent: number; tildeltVps: number };
+  ram: RamPool;
+  /**
+   * `ledigGb` er det lagringen melder. VPS-diskene er tynne filer som vokser, så
+   * `maksNyGb` trekker også fra det som er lovet bort men ikke brukt ennå
+   * (`tildeltUbruktGb`), og marginen (`reservertGb`).
+   */
+  disk: { totalGb: number; ledigGb: number; tildeltVpsGb: number; tildeltUbruktGb: number; reservertGb: number; maksNyGb: number };
+  /** Om eierens standardnøkler er satt, så en VPS kan lages uten å lime inn en nøkkel. */
+  standardSshNokkel: boolean;
+  grenser: { maksKjerner: number; minDiskGb: number; maksDiskGb: number; minRamMb: number; maksGarantertMb: number };
+}
+
 // --- Rene hjelpere (testes i vps.test.ts) -----------------------------------
 
 export function parseReservert(comment: string | null | undefined): number {
@@ -114,6 +138,25 @@ export function ledigIp(brukt: ReadonlySet<string>, subnet: string, forste: numb
 export function sshPortFor(vmid: number, vmidBase: number, portBase: number): number | null {
   const offset = vmid - vmidBase;
   return offset >= 0 && offset < 1000 ? portBase + offset : null;
+}
+
+/**
+ * Største disk en ny VPS kan få: ledig plass minus det andre VPS-er er lovet men
+ * ikke har fylt ennå, minus marginen, og aldri over taket.
+ */
+export function maksNyDiskGb(ledigGb: number, tildeltUbruktGb = 0): number {
+  return Math.max(Math.min(Math.floor(ledigGb - tildeltUbruktGb - DISK_MARGIN_GB), MAKS_DISK_GB), 0);
+}
+
+/** GB som er tildelt VPS-ene men ikke skrevet ennå (tynne disker). */
+function tildeltUbrukt(medlemmer: PoolMember[]): number {
+  const bytes = medlemmer.reduce((sum, m) => sum + Math.max((m.maxdisk ?? 0) - (m.disk ?? 0), 0), 0);
+  return Math.ceil(bytes / 2 ** 30);
+}
+
+/** Hvor mye mer RAM som kan garanteres før garantiene til sammen passerer taket. */
+export function ledigForGaranti(takMb: number, garantertMb: number): number {
+  return Math.max(takMb - garantertMb, 0);
 }
 
 /** Ett DNS-label, som også er gyldig som Proxmox-hostname. */
@@ -350,9 +393,28 @@ export async function getVps(vmid: number): Promise<Vps> {
   return tilVps(member, cfg);
 }
 
+interface NodeStatus {
+  cpu?: number;
+  cpuinfo?: { cpus?: number; cores?: number; sockets?: number; model?: string };
+  memory: { total: number; used: number };
+}
+
+const nodeStatus = () => pve<NodeStatus>("GET", `/nodes/${node()}/status`);
+
 async function vertsRamMb(): Promise<{ totalMb: number; bruktMb: number }> {
-  const status = await pve<{ memory: { total: number; used: number } }>("GET", `/nodes/${node()}/status`);
+  const status = await nodeStatus();
   return { totalMb: Math.floor(status.memory.total / 2 ** 20), bruktMb: Math.floor(status.memory.used / 2 ** 20) };
+}
+
+/** Tråder verten har. Faller tilbake på 12 (dagens vert) hvis Proxmox ikke sier det. */
+const traaderFra = (status: NodeStatus) => status.cpuinfo?.cpus ?? 12;
+
+async function lagringStatus(): Promise<{ totalGb: number; ledigGb: number }> {
+  const s = await pve<{ total: number; avail: number }>(
+    "GET",
+    `/nodes/${node()}/storage/${encodeURIComponent(config.SNOAT_VPS_STORAGE)}/status`,
+  );
+  return { totalGb: Math.floor(s.total / 2 ** 30), ledigGb: Math.floor(s.avail / 2 ** 30) };
 }
 
 export async function getRamPool(): Promise<RamPool> {
@@ -365,6 +427,49 @@ export async function getRamPool(): Promise<RamPool> {
     await Promise.all(lxc.map(async (m) => parseMinRam((await lxcConfig(m.vmid)).description)))
   ).reduce((a, b) => a + b, 0);
   return { totalMb: vert.totalMb, reservertMb, takMb, iBrukMb, garantertMb, ledigITaketMb: Math.max(takMb - iBrukMb, 0) };
+}
+
+/**
+ * Det «Ny VPS»-menyen trenger for å vise hva som er ledig: CPU, RAM-poolen, disk
+ * og grensene skjemaet skal holde seg innenfor. Samme grenser håndheves i
+ * `createVps`, så menyen er en forhåndsvisning og ikke selve kontrollen.
+ */
+export async function getRessurser(): Promise<VpsRessurser> {
+  const [ram, status, lagring, rader] = await Promise.all([
+    getRamPool(),
+    nodeStatus(),
+    lagringStatus(),
+    medlemmerMedConfig(),
+  ]);
+  const traader = traaderFra(status);
+  const kjerner = status.cpuinfo?.cores && status.cpuinfo.sockets ? status.cpuinfo.cores * status.cpuinfo.sockets : null;
+  const ubruktGb = tildeltUbrukt(rader.map(({ member }) => member));
+  const maksNyGb = maksNyDiskGb(lagring.ledigGb, ubruktGb);
+  return {
+    cpu: {
+      traader,
+      kjerner,
+      modell: status.cpuinfo?.model ?? null,
+      bruktProsent: Math.round((status.cpu ?? 0) * 100),
+      tildeltVps: rader.reduce((sum, { cfg, member }) => sum + (cfg.cores ?? member.maxcpu ?? 0), 0),
+    },
+    ram,
+    disk: {
+      ...lagring,
+      tildeltVpsGb: Math.round(rader.reduce((sum, { member }) => sum + (member.maxdisk ?? 0), 0) / 2 ** 30),
+      tildeltUbruktGb: ubruktGb,
+      reservertGb: DISK_MARGIN_GB,
+      maksNyGb,
+    },
+    standardSshNokkel: standardNokler().length > 0,
+    grenser: {
+      maksKjerner: traader,
+      minDiskGb: MIN_DISK_GB,
+      maksDiskGb: maksNyGb,
+      minRamMb: MIN_RAM_MB,
+      maksGarantertMb: ledigForGaranti(ram.takMb, ram.garantertMb),
+    },
+  };
 }
 
 export async function setRamPool(reservertMb: number): Promise<RamPool> {
@@ -440,12 +545,15 @@ export async function createVps(input: NyVps): Promise<Vps> {
     throw new VpsError(400, "Navnet må være 2–40 tegn: små bokstaver, tall og bindestrek, og starte med en bokstav", "vps.invalid_name");
   }
 
-  const [rader, vert, mal, vmid] = await Promise.all([
+  const [rader, status, mal, vmid, ram, lagring] = await Promise.all([
     medlemmerMedConfig(),
-    vertsRamMb(),
+    nodeStatus(),
     finnMal(input.template ?? "debian-12"),
     ledigVmid(),
+    getRamPool(),
+    lagringStatus(),
   ]);
+  const vertTotalMb = Math.floor(status.memory.total / 2 ** 20);
 
   if (rader.some(({ member, cfg }) => (cfg.hostname ?? member.name) === navn)) {
     throw new VpsError(409, `Det finnes allerede en VPS som heter «${navn}»`, "vps.name_taken");
@@ -460,10 +568,30 @@ export async function createVps(input: NyVps): Promise<Vps> {
     throw new VpsError(400, "Ingen SSH-nøkkel: oppgi sshPublicKeys eller sett SNOAT_VPS_DEFAULT_SSH_KEYS_B64", "vps.no_ssh_key");
   }
 
-  const cores = Math.min(Math.max(input.cores ?? 2, 1), 12);
-  const diskGb = Math.min(Math.max(input.diskGb ?? 20, 4), 300);
-  const memoryMaxMb = Math.min(Math.max(input.memoryMaxMb ?? vert.totalMb, 256), vert.totalMb);
+  const cores = Math.min(Math.max(input.cores ?? 2, 1), traaderFra(status));
+  const diskGb = Math.min(Math.max(input.diskGb ?? 20, MIN_DISK_GB), MAKS_DISK_GB);
+  const memoryMaxMb = Math.min(Math.max(input.memoryMaxMb ?? vertTotalMb, MIN_RAM_MB), vertTotalMb);
   const memoryMinMb = Math.min(Math.max(input.memoryMinMb ?? 0, 0), memoryMaxMb);
+
+  // Disken tas fra samme lagring som Snoat-VM-en, og RAM-garantiene deler ett tak.
+  // Begge sjekkes her og ikke bare i menyen: MCP-verktøyet går rett hit.
+  const ubruktGb = tildeltUbrukt(rader.map(({ member }) => member));
+  const maksDisk = maksNyDiskGb(lagring.ledigGb, ubruktGb);
+  if (diskGb > maksDisk) {
+    throw new VpsError(
+      409,
+      `Det er bare plass til ${maksDisk} GB disk (${lagring.ledigGb} GB ledig, ${ubruktGb} GB lovet til andre VPS-er, ${DISK_MARGIN_GB} GB holdes av til Snoat). Velg mindre disk.`,
+      "vps.disk_full",
+    );
+  }
+  const ledigGaranti = ledigForGaranti(ram.takMb, ram.garantertMb);
+  if (memoryMinMb > ledigGaranti) {
+    throw new VpsError(
+      409,
+      `Kan bare garantere ${ledigGaranti} MB til: VPS-ene har allerede fått garantert ${ram.garantertMb} MB av taket på ${ram.takMb} MB.`,
+      "vps.ram_guarantee_exceeded",
+    );
+  }
 
   const beskrivelse = medMinRam(`Snoat-VPS «${navn}», laget ${new Date().toISOString()} via Snoat.`, memoryMinMb);
 
@@ -507,13 +635,28 @@ export async function oppdaterVps(
   endring: { cores?: number; memoryMaxMb?: number; memoryMinMb?: number },
 ): Promise<Vps> {
   const { cfg } = await hentVpsIPool(vmid);
-  const vert = await vertsRamMb();
+  const status = await nodeStatus();
+  const vertTotalMb = Math.floor(status.memory.total / 2 ** 20);
   const params: Params = {};
-  if (endring.cores !== undefined) params.cores = Math.min(Math.max(endring.cores, 1), 12);
-  if (endring.memoryMaxMb !== undefined) params.memory = Math.min(Math.max(endring.memoryMaxMb, 256), vert.totalMb);
+  if (endring.cores !== undefined) params.cores = Math.min(Math.max(endring.cores, 1), traaderFra(status));
+  if (endring.memoryMaxMb !== undefined) params.memory = Math.min(Math.max(endring.memoryMaxMb, MIN_RAM_MB), vertTotalMb);
   if (endring.memoryMinMb !== undefined) {
-    const maks = Number(params.memory ?? cfg.memory ?? vert.totalMb);
-    params.description = medMinRam(cfg.description, Math.min(Math.max(endring.memoryMinMb, 0), maks));
+    const maks = Number(params.memory ?? cfg.memory ?? vertTotalMb);
+    const nyMin = Math.min(Math.max(endring.memoryMinMb, 0), maks);
+    const naaMin = parseMinRam(cfg.description);
+    if (nyMin > naaMin) {
+      const ram = await getRamPool();
+      // Denne VPS-ens egen garanti er allerede med i `garantertMb`.
+      const ledig = ledigForGaranti(ram.takMb, ram.garantertMb - naaMin);
+      if (nyMin > ledig) {
+        throw new VpsError(
+          409,
+          `Kan bare garantere ${ledig} MB for denne VPS-en: de andre har til sammen ${ram.garantertMb - naaMin} MB av taket på ${ram.takMb} MB.`,
+          "vps.ram_guarantee_exceeded",
+        );
+      }
+    }
+    params.description = medMinRam(cfg.description, nyMin);
   }
   if (Object.keys(params).length === 0) return await getVps(vmid);
   await pve("PUT", `/nodes/${node()}/lxc/${vmid}/config`, params);

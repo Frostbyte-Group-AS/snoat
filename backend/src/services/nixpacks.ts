@@ -54,6 +54,18 @@ export async function buildImage(
 
   const args = ["build", directory, "--name", image];
 
+  // Nixpacks nøkler cache-monteringene (npm-cachen, `.next/cache`,
+  // `node_modules/.cache`) på mappestien når ingen nøkkel er oppgitt – og hvert
+  // bygg får en ny arbeidsmappe. Da ble cachen aldri gjenbrukt, og BuildKit satt
+  // igjen med én foreldreløs kopi per bygg (35 GB målt 2026-10-04). Nøkkelen er
+  // prosjektets ID: stabil mellom bygg, og aldri delt med et annet prosjekt, så
+  // ett prosjekt kan ikke legge noe i et annets cache.
+  args.push("--cache-key", `snoat-${project.id}`);
+
+  // zstd i stedet for gzip når laget eksporteres – se SNOAT_BUILD_DOCKER_OUTPUT.
+  const output = config.SNOAT_BUILD_DOCKER_OUTPUT.trim();
+  if (output && output !== "none") args.push("--docker-output", output);
+
   // Applikasjonen må lytte på den porten Caddy ruter til.
   args.push("--env", `PORT=${config.SNOAT_APP_PORT}`);
 

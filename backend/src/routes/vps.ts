@@ -59,7 +59,7 @@ const templateSchema = z.enum(Object.keys(vps.VPS_TEMPLATES) as [vps.VpsTemplate
 const nySchema = z.object({
   name: z.string().min(2).max(40),
   template: templateSchema.optional(),
-  cores: z.number().int().min(1).max(12).optional(),
+  cores: z.number().int().min(1).max(256).optional(),
   diskGb: z.number().int().min(4).max(300).optional(),
   memoryMaxMb: z.number().int().min(256).optional(),
   memoryMinMb: z.number().int().min(0).optional(),
@@ -67,7 +67,7 @@ const nySchema = z.object({
 });
 
 const endreSchema = z.object({
-  cores: z.number().int().min(1).max(12).optional(),
+  cores: z.number().int().min(1).max(256).optional(),
   memoryMaxMb: z.number().int().min(256).optional(),
   memoryMinMb: z.number().int().min(0).optional(),
 });
@@ -85,6 +85,15 @@ vpsApi.post("/", async (c) => {
   try {
     const input = nySchema.parse(await c.req.json());
     return c.json({ vps: await vps.createVps(input) }, 201);
+  } catch (error) {
+    oversett(error);
+  }
+});
+
+/** Ledig CPU, RAM og disk, og grensene «Ny VPS»-menyen skal holde seg innenfor. */
+vpsApi.get("/ressurser", async (c) => {
+  try {
+    return c.json({ ressurser: await vps.getRessurser(), templates: Object.keys(vps.VPS_TEMPLATES) });
   } catch (error) {
     oversett(error);
   }
