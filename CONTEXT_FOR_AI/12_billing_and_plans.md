@@ -157,8 +157,17 @@ CPU, øverst i byggekøen, og fritatt suspensjonssveipet.
 > den farligste standardverdien i hele betalingsmuren: leses «ingenting oppgitt»
 > som «alle», er muren av i det øyeblikket variabelen faller ut av miljøet.
 > `erEierkonto()` svarer usant med én gang lista er tom, og `plans.test.ts`
-> beviser det med egne tester. Lista leses ved oppstart, så den endres med en
-> omstart av backend – ikke med en deploy.
+> beviser det med egne tester. Lista leses ved oppstart, så den endres uten en
+> deploy – men containeren må *reopprettes* (`docker compose up -d --no-deps
+> backend`), ikke bare restartes; se `.env.example`.
+
+> ⚠️ **Nøkkelen må stå i `scripts/bootstrap-env.mjs`.** Skriptet bygger `.env`
+> på nytt fra sin egen mal ved hver deploy og sletter nøkler malen ikke kjenner.
+> Fram til 20. september 2026 manglet `SNOAT_OWNER_ACCOUNTS` der: verdien ble
+> satt for hånd på VPS-en 8. september, neste deploy skrev den stille ut igjen,
+> og eieren traff Pro-taket på 500 byggeminutter en gang til (målt 596 brukte
+> minutter 20. september). Nå står nøkkelen i malen som `preserved(...)`, og
+> eierkontoen i produksjon er satt med bruker-ID, ikke e-post.
 
 **Det er ikke en femte `SubscriptionTier`.** Det var den nærliggende løsningen –
 `agency` finnes jo allerede som en tier ingen kan kjøpe – men tre ting gjorde

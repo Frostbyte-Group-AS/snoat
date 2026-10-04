@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { devAliasHostname } from "./caddy.js";
+import { devAliasHostname, extraAppHostnames } from "./caddy.js";
 import { logger } from "./logger.js";
 import { supabase } from "./supabase.js";
 
@@ -49,6 +49,7 @@ export async function refreshHostMap(): Promise<void> {
     const next = new Map<string, string>();
     for (const row of rows) {
       next.set(`${row.name}${config.SNOAT_APP_DOMAIN_SUFFIX}`.toLowerCase(), row.id);
+      for (const host of extraAppHostnames(row.name)) next.set(host.toLowerCase(), row.id);
       if (row.custom_domain) next.set(row.custom_domain.toLowerCase(), row.id);
 
       // En dev-side svarer også på `<gren>.<hovedprosjekt>`. Uten denne linja

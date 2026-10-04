@@ -1,6 +1,24 @@
 # Produksjon og Deployment (Snoat VPS)
 
-Snoat er deployert til en dedikert VPS-server som driftes på IP-adressen `38.87.117.167`.
+Snoat kjører fra 2026-10-04 i VM-en `snoat` (`10.10.10.10`, 10 vCPU / 48 GB) på
+Proxmox-verten `88.99.100.186` (Hetzner, 256 GB RAM). VM-en har ingen offentlig
+IP: verten NAT-er ut og videresender tcp 80/443 og udp 443 til den, og
+klient-IP-en bevares. SSH går med hopp:
+
+```bash
+ssh -J root@88.99.100.186 root@10.10.10.10
+```
+
+Den gamle serveren `38.87.117.167` (LuxVPS, 4 vCPU / 16 GB) kjører **parallelt**
+med en kopi av samme database fra flyttetidspunktet, til DNS for `snoat.com` og
+kundedomenene er flyttet. De to er uavhengige: endringer på den ene når ikke den
+andre. Alt under om «serveren» gjelder den nye, med mindre noe annet står.
+
+Mens DNS fortsatt peker på den gamle, svarer hver app på den nye også på
+`<prosjekt>.88-99-100-186.sslip.io` (`SNOAT_EXTRA_APP_DOMAIN_SUFFIXES`, sertifikat
+fra ZeroSSL). Plattformen selv testes med `curl --resolve snoat.com:443:88.99.100.186`.
+
+Proxmox-verten, VPS-ene og RAM-taket: se `14_vps.md`.
 
 Dette dokumentet beskriver produksjonsarkitekturen, rutingen og gir AI-assistenter direkte fullmakt til å utføre SSH-operasjoner mot produksjonsserveren.
 
@@ -173,6 +191,12 @@ nøkkelen mangler helt. Konsekvensen:
 - **Legger du til en ny hemmelighet, blir den tom i produksjon.** Den har aldri
   eksistert der, så `preserved` gir fallbacken – typisk `""`. `RESEND_API_KEY` og
   `SMTP_ADMIN_EMAIL` sto tomme til de ble satt manuelt.
+- **Setter du en variabel for hånd på VPS-en uten å legge den i malen, er den
+  borte etter neste deploy.** Skriptet skriver `.env` fra malen og sletter nøkler
+  det ikke kjenner – med en advarsel i deploy-loggen som er lett å overse.
+  `SNOAT_OWNER_ACCOUNTS` gikk slik tapt mellom 8. og 20. september 2026, og
+  eierkontoen traff byggeminutt-taket igjen. Regelen: en ny nøkkel legges i
+  `bootstrap-env.mjs` *og* settes på serveren, i den rekkefølgen.
 
 Nye eller endrede verdier må derfor settes **på serveren**, én gang:
 

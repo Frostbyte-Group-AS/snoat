@@ -111,7 +111,7 @@ const preserved = (key, fallback, isValid = (value) => value !== "") => {
 // riktige svaret: da er det maskinen din Caddy kjører på.
 const serverIp = (
   process.env.SNOAT_SERVER_IP ??
-  preserved("SNOAT_SERVER_IP", isLocal ? "127.0.0.1" : "38.87.117.167")
+  preserved("SNOAT_SERVER_IP", isLocal ? "127.0.0.1" : "88.99.100.186")
 ).trim();
 
 // Realtime bruker DB_ENC_KEY som AES-128-nøkkel og krever nøyaktig 16 byte.
@@ -252,6 +252,29 @@ CADDY_ADMIN_URL=${preserved("CADDY_ADMIN_URL", "http://caddy:2019")}
 SNOAT_APPS_NETWORK=${preserved("SNOAT_APPS_NETWORK", "snoat_apps")}
 SNOAT_FRONTEND_ORIGIN=${frontendOrigin}
 LOG_LEVEL=${preserved("LOG_LEVEL", "info")}
+# Eierkontoer uten plangrenser (backend/src/services/plans.ts, EIER_LIMITS).
+# Tom = ingen eierkontoer, aldri alle. Settes for hånd på serveren; linja her
+# finnes for at preserved() skal bevare verdien – 2026-09-08 sto den bare i
+# .env på VPS-en, og neste deploy skrev den stille ut igjen.
+SNOAT_OWNER_ACCOUNTS=${preserved("SNOAT_OWNER_ACCOUNTS", "")}
+
+# Ekstra domenesuffikser appene også svarer på, f.eks. .88-99-100-186.sslip.io
+# mens DNS for domenet ennå peker et annet sted. Sertifikatene for dem hentes
+# fra ZeroSSL, som krever en kontaktadresse (SNOAT_ACME_EMAIL).
+SNOAT_EXTRA_APP_DOMAIN_SUFFIXES=${preserved("SNOAT_EXTRA_APP_DOMAIN_SUFFIXES", "")}
+SNOAT_ACME_EMAIL=${preserved("SNOAT_ACME_EMAIL", "")}
+
+# --- VPS-er på Proxmox (kun eierkontoen) -------------------------------------
+# Se CONTEXT_FOR_AI/14_vps.md. Tomme = VPS-funksjonen er av.
+SNOAT_PROXMOX_URL=${preserved("SNOAT_PROXMOX_URL", "")}
+SNOAT_PROXMOX_NODE=${preserved("SNOAT_PROXMOX_NODE", "pve")}
+SNOAT_PROXMOX_TLS_NAME=${preserved("SNOAT_PROXMOX_TLS_NAME", "pve")}
+SNOAT_PROXMOX_TOKEN_ID=${preserved("SNOAT_PROXMOX_TOKEN_ID", "")}
+SNOAT_PROXMOX_TOKEN_SECRET=${preserved("SNOAT_PROXMOX_TOKEN_SECRET", "")}
+SNOAT_PROXMOX_CA_PEM_B64=${preserved("SNOAT_PROXMOX_CA_PEM_B64", "")}
+SNOAT_PROXMOX_POOL=${preserved("SNOAT_PROXMOX_POOL", "snoat-vps")}
+SNOAT_VPS_PUBLIC_HOST=${preserved("SNOAT_VPS_PUBLIC_HOST", "")}
+SNOAT_VPS_DEFAULT_SSH_KEYS_B64=${preserved("SNOAT_VPS_DEFAULT_SSH_KEYS_B64", "")}
 
 # --- Frontend (Vite baker disse inn ved build) ------------------------------
 VITE_SUPABASE_URL=${apiUrl}

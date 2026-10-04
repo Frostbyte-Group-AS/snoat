@@ -1,8 +1,10 @@
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import { DashboardNav } from "@/components/DashboardNav";
+import { getVpsAccess } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 /**
@@ -23,6 +25,8 @@ function SettingsLayout() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  // Fanen finnes bare for eierkontoen. Backend håndhever grensen; dette er bare visning.
+  const vpsAccess = useQuery({ queryKey: ["vps-access"], queryFn: getVpsAccess, enabled: Boolean(user) });
 
   useEffect(() => {
     if (!loading && !user) void navigate({ to: "/login" });
@@ -70,6 +74,15 @@ function SettingsLayout() {
             >
               {t("billing.title")}
             </Link>
+            {vpsAccess.data?.eier && (
+              <Link
+                to="/settings/vps"
+                className={tabClass}
+                activeProps={{ className: activeTabClass }}
+              >
+                {t("vps.tab")}
+              </Link>
+            )}
           </nav>
 
           <div className="min-w-0 flex-1">

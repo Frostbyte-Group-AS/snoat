@@ -273,6 +273,15 @@ void (async () => {
     logger.warn({ err: error }, "Kunne ikke rydde avbrutte deployments");
   }
 
+  // Før rutene: ruter med de ekstra vertsnavnene skal ikke rekke å få en
+  // handshake før Caddy vet hvilken CA de skal hentes fra.
+  try {
+    const tls = await caddy.ensureExtraSuffixTlsPolicy();
+    if (tls !== "av") logger.info({ tls, suffikser: caddy.extraAppDomainSuffixes }, "TLS-policy for ekstra suffikser");
+  } catch (error) {
+    logger.warn({ err: error }, "Kunne ikke legge inn TLS-policy for ekstra suffikser");
+  }
+
   try {
     await reconcileRoutes();
   } catch (error) {

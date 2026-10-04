@@ -497,6 +497,75 @@ const schema = z.object({
    * ikke har fått oppgitt skal ikke gjettes.
    */
   SNOAT_NOTIFY_TO: optionalEnv,
+
+  /**
+   * Ekstra domenesuffikser hver app også svarer på, komma-separert – f.eks.
+   * `.88-99-100-186.sslip.io`, som gir `osia.88-99-100-186.sslip.io`.
+   *
+   * Finnes for å kunne nå en ny server på IP-en før DNS for `snoat.com` er
+   * flyttet dit: sslip.io svarer med IP-en som står i navnet, så ingen DNS må
+   * endres. Tom = av. Suffiksene godtas av TLS-sjekken på samme måte som
+   * `SNOAT_APP_DOMAIN_SUFFIX`, og bare med én etikett foran.
+   */
+  SNOAT_EXTRA_APP_DOMAIN_SUFFIXES: z.string().default(""),
+
+  /**
+   * CA-en sertifikatene for de ekstra suffiksene hentes fra.
+   *
+   * Ikke Let's Encrypt: sslip.io og nip.io står ikke på Public Suffix List, så
+   * hele sslip.io deler én kvote på 50 000 sertifikater i uka, og den er
+   * oppbrukt (github.com/cunnie/sslip.io/issues/108). ZeroSSL har ingen slik
+   * grense per domene. Caddy henter EAB-legitimasjonen selv når e-post er satt.
+   */
+  SNOAT_EXTRA_APP_DOMAIN_ACME_CA: z.string().url().default("https://acme.zerossl.com/v2/DV90"),
+  /** Kontaktadressen ZeroSSL krever. Uten den legges ingen TLS-policy inn. */
+  SNOAT_ACME_EMAIL: optionalEnv,
+
+  /**
+   * Proxmox – VPS-er for eierkontoen.
+   *
+   * URL, token-ID, token-hemmelighet og CA må være satt, ellers svarer
+   * `/api/vps` 503 og VPS-verktøyene i MCP sier at funksjonen ikke er
+   * konfigurert. Tokenet tilhører `snoat@pve`, som bare har rettigheter i poolen
+   * `SNOAT_PROXMOX_POOL` (se `CONTEXT_FOR_AI/14_vps.md`).
+   *
+   * Vi kobler til IP-en på det interne nettet, men verifiserer sertifikatet mot
+   * Proxmox' egen CA og navnet i sertifikatet (`SNOAT_PROXMOX_TLS_NAME`).
+   * Node-sertifikatet har ikke den interne IP-en i SAN, så vanlig
+   * vertsnavnsjekk ville feilet – og å slå av verifiseringen ville gitt bort
+   * tokenet til hvem som helst som kom seg mellom VM-en og verten.
+   */
+  SNOAT_PROXMOX_URL: optionalEnv,
+  SNOAT_PROXMOX_NODE: z.string().min(1).default("pve"),
+  SNOAT_PROXMOX_TLS_NAME: z.string().min(1).default("pve"),
+  SNOAT_PROXMOX_TOKEN_ID: optionalEnv,
+  SNOAT_PROXMOX_TOKEN_SECRET: optionalEnv,
+  /** `base64 -w0 /etc/pve/pve-root-ca.pem` – base64 fordi PEM har linjeskift. */
+  SNOAT_PROXMOX_CA_PEM_B64: optionalEnv,
+  SNOAT_PROXMOX_POOL: z.string().min(1).default("snoat-vps"),
+
+  /** Hvor VPS-ene bor: lagring, bro og adresseområde på det private nettet. */
+  SNOAT_VPS_STORAGE: z.string().min(1).default("local"),
+  SNOAT_VPS_BRIDGE: z.string().min(1).default("vmbr1"),
+  SNOAT_VPS_SUBNET: z.string().min(1).default("10.10.10"),
+  SNOAT_VPS_IP_FIRST: z.coerce.number().int().min(2).max(254).default(100),
+  SNOAT_VPS_IP_LAST: z.coerce.number().int().min(2).max(254).default(250),
+  SNOAT_VPS_GATEWAY: z.string().min(1).default("10.10.10.1"),
+  SNOAT_VPS_NAMESERVERS: z.string().min(1).default("185.12.64.1 185.12.64.2"),
+  /**
+   * VMID-ene VPS-ene får, og SSH-porten på verten som følger av dem:
+   * port = `SNOAT_VPS_SSH_PORT_BASE + (vmid - SNOAT_VPS_VMID_BASE)`. Samme regel
+   * står i `snoat-vps-avstem` på verten, som setter opp videresendingen.
+   */
+  SNOAT_VPS_VMID_BASE: z.coerce.number().int().positive().default(2000),
+  SNOAT_VPS_SSH_PORT_BASE: z.coerce.number().int().positive().default(22000),
+  /** Den offentlige adressen SSH-portene står på. */
+  SNOAT_VPS_PUBLIC_HOST: optionalEnv,
+  /**
+   * SSH-nøkler som alltid legges inn i nye VPS-er: base64 av nøklene, én per
+   * linje. Kalleren kan legge til flere per VPS.
+   */
+  SNOAT_VPS_DEFAULT_SSH_KEYS_B64: optionalEnv,
 });
 
 const parsed = schema.safeParse(process.env);

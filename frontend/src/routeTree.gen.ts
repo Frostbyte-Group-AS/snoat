@@ -24,6 +24,7 @@ import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projec
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsBillingRouteImport } from './routes/settings.billing'
 import { Route as SettingsMcpRouteImport } from './routes/settings.mcp'
+import { Route as SettingsVpsRouteImport } from './routes/settings.vps'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -100,6 +101,11 @@ const SettingsMcpRoute = SettingsMcpRouteImport.update({
   path: '/mcp',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsVpsRoute = SettingsVpsRouteImport.update({
+  id: '/vps',
+  path: '/vps',
+  getParentRoute: () => SettingsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -115,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
   '/settings/mcp': typeof SettingsMcpRoute
+  '/settings/vps': typeof SettingsVpsRoute
   '/articles/': typeof ArticlesIndexRoute
   '/settings/': typeof SettingsIndexRoute
 }
@@ -131,6 +138,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
   '/settings/mcp': typeof SettingsMcpRoute
+  '/settings/vps': typeof SettingsVpsRoute
   '/articles': typeof ArticlesIndexRoute
   '/settings': typeof SettingsIndexRoute
 }
@@ -149,6 +157,7 @@ export interface FileRoutesById {
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
   '/settings/mcp': typeof SettingsMcpRoute
+  '/settings/vps': typeof SettingsVpsRoute
   '/articles/': typeof ArticlesIndexRoute
   '/settings/': typeof SettingsIndexRoute
 }
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/settings/billing'
     | '/settings/mcp'
+    | '/settings/vps'
     | '/articles/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
@@ -184,6 +194,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/settings/billing'
     | '/settings/mcp'
+    | '/settings/vps'
     | '/articles'
     | '/settings'
   id:
@@ -201,6 +212,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/settings/billing'
     | '/settings/mcp'
+    | '/settings/vps'
     | '/articles/'
     | '/settings/'
   fileRoutesById: FileRoutesById
@@ -327,18 +339,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsMcpRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/vps': {
+      id: '/settings/vps'
+      path: '/vps'
+      fullPath: '/settings/vps'
+      preLoaderRoute: typeof SettingsVpsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
   }
 }
 
 interface SettingsRouteChildren {
   SettingsBillingRoute: typeof SettingsBillingRoute
   SettingsMcpRoute: typeof SettingsMcpRoute
+  SettingsVpsRoute: typeof SettingsVpsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsBillingRoute: SettingsBillingRoute,
   SettingsMcpRoute: SettingsMcpRoute,
+  SettingsVpsRoute: SettingsVpsRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
 
