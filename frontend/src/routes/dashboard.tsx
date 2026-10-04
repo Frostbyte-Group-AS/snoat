@@ -699,7 +699,8 @@ function NewProjectDialog({
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [kind, setKind] = useState<"app" | "vps">("app");
+  // Eierkontoen velger først hva som skal lages; alle andre går rett til appen.
+  const [kind, setKind] = useState<"velg" | "app" | "vps">(vpsEnabled ? "velg" : "app");
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("");
   const [repoDefaultBranch, setRepoDefaultBranch] = useState<string | null>(null);
@@ -773,48 +774,56 @@ function NewProjectDialog({
       onClick={onClose}
     >
       <div
-        className={`ink-card-lg anim-pop max-h-[calc(100dvh-40px)] w-full overflow-y-auto px-[30px] py-[32px] ${
-          kind === "vps" ? "max-w-[680px]" : "max-w-[560px]"
-        }`}
+        className="ink-card-lg anim-pop max-h-[calc(100dvh-40px)] w-full max-w-[560px] overflow-y-auto px-[30px] py-[32px]"
         onClick={(event) => event.stopPropagation()}
       >
         <h2 id="new-project-title" className="font-display text-[28px] font-bold text-ink">
-          {t("dashboard.new_project_modal.title")}
+          {kind === "vps" ? t("vps.new_title") : t("dashboard.new_project_modal.title")}
         </h2>
         <span className="swoosh anim-draw mt-[6px]" aria-hidden="true" />
 
-        {/* Bare eierkontoen ser valget. For alle andre er «Nytt prosjekt» det
-            det alltid har vært: en app fra et GitHub-repo. */}
-        {vpsEnabled && (
-          <div role="radiogroup" className="mt-[18px] grid grid-cols-2 border-2 border-line">
-            {(["app", "vps"] as const).map((k) => (
+        {/* Bare eierkontoen får dette valget. For alle andre er «Nytt prosjekt»
+            det det alltid har vært: en app fra et GitHub-repo. */}
+        {kind === "velg" ? (
+          <div key="velg" className="anim-rise mt-[24px] flex flex-col gap-[18px]">
+            <h3 className="font-display text-[24px] font-bold leading-[1.2] text-ink">
+              {t("dashboard.new_project_modal.choose_title")}
+            </h3>
+            <div className="flex flex-col gap-[10px]">
+              {(["app", "vps"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKind(k)}
+                  className="flex items-center justify-between gap-4 border-2 border-line px-[18px] py-[16px] text-left transition-colors hover:bg-sun-soft"
+                >
+                  <span className="flex flex-col gap-[4px]">
+                    <span className="font-body text-[18px] text-ink">
+                      {t(`dashboard.new_project_modal.kind_${k}`)}
+                    </span>
+                    <span className="font-body text-[14px] font-light text-ink/70">
+                      {t(`dashboard.new_project_modal.kind_${k}_hint`)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-body text-[18px] text-ink" aria-hidden="true">
+                    →
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end">
               <button
-                key={k}
                 type="button"
-                role="radio"
-                aria-checked={kind === k}
-                onClick={() => setKind(k)}
-                className={`flex flex-col gap-[2px] px-[16px] py-[12px] text-left text-ink transition-colors first:border-r-2 first:border-line ${
-                  kind === k ? "bg-sun" : "hover:bg-sun-soft"
-                }`}
+                onClick={onClose}
+                className="btn-outline h-[46px] px-[20px] font-display text-[15px]"
               >
-                <span className="font-display text-[16px] font-bold">
-                  {t(`dashboard.new_project_modal.kind_${k}`)}
-                </span>
-                <span className="font-body text-[13px] font-light">
-                  {t(`dashboard.new_project_modal.kind_${k}_hint`)}
-                </span>
+                {t("dashboard.new_project_modal.cancel")}
               </button>
-            ))}
+            </div>
           </div>
-        )}
-
-        {kind === "vps" ? (
-          <div className="mt-[22px]">
-            <p className="mb-[22px] font-body text-[16px] font-light leading-[1.5] text-ink">
-              {t("dashboard.new_project_modal.vps_desc")}
-            </p>
-            <NewVpsForm onDone={onClose} onCancel={onClose} />
+        ) : kind === "vps" ? (
+          <div key="vps" className="mt-[24px]">
+            <NewVpsForm onDone={onClose} onBack={() => setKind("velg")} />
           </div>
         ) : (
           <>
@@ -929,6 +938,15 @@ function NewProjectDialog({
               )}
 
               <div className="mt-[8px] flex justify-end gap-[12px]">
+                {vpsEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => setKind("velg")}
+                    className="btn-outline mr-auto h-[46px] px-[20px] font-display text-[15px]"
+                  >
+                    {t("vps.wizard.back")}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={onClose}

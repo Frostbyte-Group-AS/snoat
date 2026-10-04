@@ -6,13 +6,14 @@ andre er Snoat et Vercel-alternativ og ingenting mer: `/api/vps/*` svarer 403,
 `snoat_vps_*` finnes ikke i MCP (skjult i `tools/list`, avvist i `tools/call`),
 og dashboardet viser ikke fanen. Grensen sitter i backend.
 
-**Hvor eieren lager en VPS:** «Nytt prosjekt» på dashboardet har et valg
-*Nettside / app* | *VPS* (bare for eierkontoen). VPS-valget åpner
-`components/NewVpsForm.tsx`: OS, ferdige størrelser (Liten/Middels/Stor) eller
-egendefinert med glidebrytere for CPU, garantert RAM, eget RAM-tak og disk, og
-målere som viser hva som er ledig. Samme skjema står under Innstillinger →
-VPS-er. VPS-ene vises også som kort under prosjektene på dashboardet
-(`components/VpsOverview.tsx`).
+**Hvor eieren lager en VPS:** «Nytt prosjekt» på dashboardet spør først «Hva
+vil du lage?» – *Nettside eller app* eller *VPS* (bare eierkontoen; alle andre
+går rett til app-skjemaet). VPS-valget er en veiviser med ett spørsmål per
+skjerm (`components/NewVpsForm.tsx`): navn → operativsystem → størrelse → se
+over. Velges *Egendefinert* som størrelse, kommer CPU, RAM og disk som egne
+steg med glidebryter og måler for hva som er ledig. Oversikten har «Endre» på
+hver rad. Samme veiviser står under Innstillinger → VPS-er, og VPS-ene vises
+som kort under prosjektene (`components/VpsOverview.tsx`).
 
 ## Hvor ting bor
 
