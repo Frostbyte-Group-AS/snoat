@@ -92,6 +92,40 @@ if [[ "$VPS_IP" != "$DEFAULT_VPS_IP" ]]; then
 fi
 
 # 1. Synkroniserer filer med rsync
+# 0. Selvoppdateringen (infra/selvoppdatering/) deployer main av seg selv hvert
+# minutt. En deploy for hånd må ikke krangle med den: står den midt i et bygg,
+# stopper vi her, og mens vi holder på er automatikken på pause – ellers kunne
+# den rullet ut main over det vi er i ferd med å deployere.
+#
+# Er det vi deployer en ren main, får selvoppdateringen vite det til slutt
+# (deployet-commit), og pausen oppheves – med mindre den sto der fra før.
+# Er det noe annet – en gren, ucommittede endringer – blir pausen stående, så
+# testdeployen ikke byttes ut et minutt senere. Gjenoppta fra Snoat-kortet i
+# dashboardet eller med `rm /var/lib/snoat-selvoppdatering/pause` på serveren.
+SELV_DIR="/var/lib/snoat-selvoppdatering"
+git fetch --quiet origin main 2>/dev/null || true
+LOKAL_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
+REN_MAIN=false
+if [[ -n "$LOKAL_COMMIT" && "$LOKAL_COMMIT" == "$(git rev-parse origin/main 2>/dev/null || true)" \
+  && -z "$(git status --porcelain 2>/dev/null)" ]]; then
+  REN_MAIN=true
+fi
+
+SELV_FOR="$(ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_IP}" "SELV_DIR='${SELV_DIR}' bash -s" <<'EOF'
+  set -euo pipefail
+  if [ ! -f "$SELV_DIR/status.json" ]; then echo "ikke-installert"; exit 0; fi
+  if jq -e '.kjorer == true' "$SELV_DIR/status.json" >/dev/null 2>&1; then echo "kjorer"; exit 0; fi
+  if [ -e "$SELV_DIR/pause" ]; then echo "pause-fra-for"; exit 0; fi
+  date -u +%Y-%m-%dT%H:%M:%SZ >"$SELV_DIR/pause"
+  echo "satt-pause"
+EOF
+)" || SELV_FOR="ukjent"
+
+if [[ "$SELV_FOR" == "kjorer" ]]; then
+  echo -e "\e[31m[STOPP] Selvoppdateringen bygger akkurat nå. Vent til den er ferdig (Snoat-kortet i dashboardet).\e[0m"
+  exit 1
+fi
+
 run_step 15 "Synkroniserer prosjektfiler..." \
   rsync -avz -e "ssh ${SSH_OPTS[*]}" \
     --exclude 'node_modules' \
@@ -103,6 +137,7 @@ run_step 15 "Synkroniserer prosjektfiler..." \
     --exclude 'backend/vendor' \
     --exclude '.snoat' \
     --exclude '.claude' \
+    --exclude '.snoat-selvoppdatering' \
     ./ "${VPS_USER}@${VPS_IP}:${TARGET_DIR}"
 
 # 2. Oppdaterer .env på VPS via SSH
@@ -196,6 +231,20 @@ verify_production() {
 }
 
 run_step 95 "Verifiserer deployment..." verify_production
+
+# Se steg 0.
+if [[ "$SELV_FOR" == "satt-pause" || "$SELV_FOR" == "pause-fra-for" ]]; then
+  if [[ "$REN_MAIN" == true ]]; then
+    ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_IP}" \
+      "echo '${LOKAL_COMMIT}' > '${SELV_DIR}/deployet-commit' && rm -f '${SELV_DIR}/feilet-commit'"
+    if [[ "$SELV_FOR" == "satt-pause" ]]; then
+      ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_IP}" "rm -f '${SELV_DIR}/pause'"
+    fi
+  else
+    echo -e "\n\e[33mDette var ikke en ren main, så selvoppdateringen står på pause.\e[0m"
+    echo "Gjenoppta fra Snoat-kortet i dashboardet, eller: rm ${SELV_DIR}/pause på serveren."
+  fi
+fi
 
 # Ferdig!
 show_progress 100 "Deployment ferdig!"

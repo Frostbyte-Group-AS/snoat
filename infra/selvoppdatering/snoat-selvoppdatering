@@ -1,0 +1,295 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# Snoat oppdaterer seg selv fra main.
+#
+# Kjøres av systemd på Snoat-VM-en (snoat-selvoppdatering.service), utløst av
+# en timer hvert minutt og av en path-enhet når dashboardet eller MCP-en ber om
+# en deploy. Gjør det samme som scripts/deploy.sh, men fra en git-klon på
+# serveren i stedet for fra noens arbeidsmappe – så det som kjører alltid er en
+# commit på main.
+#
+# Hvorfor her og ikke i backend: deployen restarter backend og Caddy. En prosess
+# inne i en av dem kan ikke se sin egen utrulling ferdig, og kan ikke rulle
+# tilbake hvis den nye versjonen ikke starter. Backend leser bare filene dette
+# skriptet legger igjen (backend/src/services/selvoppdatering.ts).
+#
+# Tilstand i $TILSTAND (montert inn i backend):
+#   jobber/*.json      bestillinger fra dashboardet/MCP: {"commit": null|"<sha>", "bestiltAv": "…"}
+#   bygg/<id>.json     ett bygg: commit, status (bygger|ok|feilet|rullet_tilbake), tider
+#   bygg/<id>.log      loggen til bygget
+#   deployet-commit    commiten som kjører nå
+#   feilet-commit      main-commiten som feilet sist – prøves ikke automatisk igjen
+#   pause              finnes den, deployes ikke main automatisk (manuelle bestillinger går)
+#   status.json        siste sjekk: main-commit, om noe bygger
+#
+# Tilbakerulling: feiler bygg, oppstart eller helsesjekk, rulles forrige
+# commit ut på nytt. Databasemigrasjoner rulles ikke tilbake – de er additive
+# og idempotente (supabase/migrations), så forrige kode tåler dem.
+# ---------------------------------------------------------------------------
+set -euo pipefail
+
+TILSTAND="${SNOAT_SELVOPPDATERING_TILSTAND:-/var/lib/snoat-selvoppdatering}"
+KILDE="${SNOAT_SELVOPPDATERING_KILDE:-/opt/snoat-kilde}"
+MAL="${SNOAT_SELVOPPDATERING_MAL:-/opt/snoat}"
+REPO_URL="${SNOAT_SELVOPPDATERING_REPO:-https://github.com/Frostbyte-Group-AS/snoat.git}"
+BIN_DIR="${SNOAT_SELVOPPDATERING_BIN_DIR:-/usr/local/sbin}"
+UNIT_DIR="${SNOAT_SELVOPPDATERING_UNIT_DIR:-/etc/systemd/system}"
+BEHOLD_BYGG=50
+
+mkdir -p "$TILSTAND/jobber" "$TILSTAND/bygg"
+
+# Én kjøring om gangen. Timeren og path-enheten kan treffe samtidig.
+exec 9>"$TILSTAND/laas"
+flock -n 9 || exit 0
+
+naa() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+skriv_json() {
+  # Atomisk: backend skal aldri lese en halvskrevet fil.
+  local fil=$1 innhold=$2
+  printf '%s\n' "$innhold" >"$fil.tmp"
+  mv "$fil.tmp" "$fil"
+}
+
+status() {
+  local kjorer=$1 bygg=${2:-}
+  skriv_json "$TILSTAND/status.json" "$(jq -n \
+    --arg sjekket "$(naa)" --arg main "${MAIN:-}" --arg bygg "$bygg" --argjson kjorer "$kjorer" \
+    '{sjekket: $sjekket, main: $main, kjorer: $kjorer, bygg: (if $bygg == "" then null else $bygg end)}')"
+}
+
+if [ ! -d "$KILDE/.git" ]; then
+  git clone --quiet "$REPO_URL" "$KILDE"
+fi
+
+git -C "$KILDE" fetch --quiet --prune origin main
+MAIN=$(git -C "$KILDE" rev-parse origin/main)
+status false
+
+# NB: `set -e` gjelder ikke inne i en funksjon som kalles som betingelse i en
+# `if` – og det er nettopp slik utrull og verifiser kalles. Hvert steg har
+# derfor sin egen `|| return 1`. Uten dem ville et feilet `docker compose build`
+# gått rett videre til `up -d` med de gamle imagene og meldt suksess.
+utrull() {
+  local commit=$1
+  echo "==> $(naa) Henter $commit"
+  git -C "$KILDE" checkout --quiet --force --detach "$commit" || return 1
+
+  # `--delete`, men bare under toppnivået (`P /*` beskytter alt som ligger rett
+  # i $MAL: .env, backupene av den, .snoat/). Uten den ble filer fra en ødelagt
+  # commit liggende etter tilbakerullingen – og TypeScript-bygget tar med alt i
+  # src/, så forrige versjon ville ikke bygget heller. Det som er unntatt
+  # (node_modules, dist, vendor, frontend/.env) er beskyttet av rsync selv.
+  # Databasen ligger i et navngitt Docker-volum, ikke i $MAL.
+  echo "==> Synkroniserer filer til $MAL (samme unntak som scripts/deploy.sh)"
+  rsync -a --delete --filter='P /*' \
+    --exclude 'node_modules' --exclude '.git' --exclude '.env' --exclude 'frontend/.env' \
+    --exclude 'frontend/.output' --exclude 'backend/dist' --exclude 'backend/vendor' \
+    --exclude '.snoat' --exclude '.claude' --exclude '.snoat-selvoppdatering' \
+    "$KILDE"/ "$MAL"/ || return 1
+
+  cd "$MAL" || return 1
+  local domene
+  domene=$(sed -n 's/^SNOAT_DOMAIN=//p' .env | head -n 1)
+  echo "==> Miljøvariabler (bootstrap-env, domene ${domene:-snoat.com})"
+  SNOAT_DOMAIN="${domene:-snoat.com}" node scripts/bootstrap-env.mjs || return 1
+
+  local mangler="" key
+  for key in RESEND_API_KEY SMTP_ADMIN_EMAIL; do
+    grep -qE "^${key}=.+" .env || mangler="${mangler} ${key}"
+  done
+  if [ -n "$mangler" ]; then
+    echo "FEIL: mangler i $MAL/.env:${mangler}"
+    return 1
+  fi
+
+  echo "==> Ressurstak for bygging"
+  local cpu mem
+  cpu=$(( $(nproc) * 80 ))
+  mem=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 3 / 4 / 1024 ))
+  systemctl set-property docker.service CPUQuota=${cpu}% CPUWeight=20 MemoryHigh=${mem}M || return 1
+  systemctl set-property containerd.service CPUQuota=${cpu}% CPUWeight=20 || return 1
+
+  echo "==> $(naa) Bygger frontend og backend"
+  docker compose build frontend backend || { echo "FEIL: byggingen feilet"; return 1; }
+
+  echo "==> $(naa) Starter tjenestene"
+  docker compose up -d --remove-orphans || { echo "FEIL: docker compose up feilet"; return 1; }
+
+  echo "==> $(naa) Restarter Caddy og backend"
+  docker compose restart caddy || return 1
+  docker compose restart backend || return 1
+}
+
+verifiser() {
+  cd "$MAL" || return 1
+  local siden=$1 port domene
+  port=$(sed -n 's/^BACKEND_PORT=//p' .env | head -n 1)
+  domene=$(sed -n 's/^SNOAT_DOMAIN=//p' .env | head -n 1)
+  port=${port:-3100}
+  domene=${domene:-snoat.com}
+
+  echo "==> $(naa) Venter på at backend er frisk og har lagt rutene inn igjen"
+  local forsok
+  for forsok in $(seq 1 60); do
+    if curl -fsS -m 5 "http://127.0.0.1:${port}/health" >/dev/null 2>&1 \
+      && docker compose logs --since "$siden" backend 2>/dev/null | grep -q "Caddy-ruter synkronisert"; then
+      echo "Backend svarer og rutene er synkronisert (etter ${forsok} forsøk)."
+      break
+    fi
+    if [ "$forsok" -eq 60 ]; then
+      echo "FEIL: backend ble ikke frisk på 5 minutter."
+      curl -sS -m 5 "http://127.0.0.1:${port}/health" || true
+      docker compose ps || true
+      return 1
+    fi
+    sleep 5
+  done
+
+  echo "==> Auth-innstillingene (som deploy.sh)"
+  local innstillinger
+  innstillinger=$(curl -fsS -m 10 --retry 3 --retry-delay 2 \
+    --resolve "api.${domene}:443:127.0.0.1" "https://api.${domene}/auth/v1/settings") \
+    || { echo "FEIL: auth svarer ikke"; return 1; }
+  if echo "$innstillinger" | grep -q '"mailer_autoconfirm":true'; then
+    echo "FEIL: produksjon kjører med mailer_autoconfirm=true."
+    return 1
+  fi
+
+  echo "==> Dashboardet"
+  curl -fsS -m 10 -o /dev/null --resolve "${domene}:443:127.0.0.1" "https://${domene}/" \
+    || { echo "FEIL: dashboardet svarer ikke"; return 1; }
+  echo "OK"
+}
+
+# Installerer skriptet og enhetene fra commiten som nettopp gikk ut, så neste
+# kjøring bruker dem. Bash leser skriptet fra en åpen fil, og `install` lager en
+# ny fil framfor å skrive over den gamle – denne kjøringen merker ingenting.
+oppdater_seg_selv() {
+  local kilde="$KILDE/infra/selvoppdatering"
+  [ -d "$kilde" ] || return 0
+  install -m 0755 "$kilde/snoat-selvoppdatering" "$BIN_DIR/snoat-selvoppdatering"
+  local endret=0 enhet
+  for enhet in snoat-selvoppdatering.service snoat-selvoppdatering.timer snoat-selvoppdatering.path; do
+    if ! cmp -s "$kilde/$enhet" "$UNIT_DIR/$enhet"; then
+      install -m 0644 "$kilde/$enhet" "$UNIT_DIR/$enhet"
+      endret=1
+    fi
+  done
+  if [ "$endret" -eq 1 ]; then
+    systemctl daemon-reload
+  fi
+}
+
+rydd_historikk() {
+  local gamle
+  gamle=$(ls -1 "$TILSTAND/bygg"/*.json 2>/dev/null | sort -r | tail -n +$((BEHOLD_BYGG + 1)) || true)
+  for fil in $gamle; do
+    rm -f "$fil" "${fil%.json}.log"
+  done
+}
+
+deploy() {
+  local onsket=$1 kilde=$2 bestilt_av=${3:-}
+  local commit avvist=""
+  if ! commit=$(git -C "$KILDE" rev-parse --verify --quiet "${onsket}^{commit}"); then
+    commit="$onsket"
+    avvist="Ukjent commit «$onsket»."
+  # Bare kode som er merget. En bestilling kan peke på en eldre commit
+  # (tilbakerulling), men aldri på noe som ikke ligger på main.
+  elif ! git -C "$KILDE" merge-base --is-ancestor "$commit" origin/main; then
+    avvist="Commit $commit ligger ikke på main."
+  fi
+
+  local kort
+  kort=$(printf '%s' "$commit" | tr -cd '0-9a-f' | cut -c1-7)
+  local id="$(date -u +%Y%m%dT%H%M%SZ)-${kort:-0000000}"
+  local meta="$TILSTAND/bygg/$id.json" logg="$TILSTAND/bygg/$id.log"
+  local forrige startet melding
+  forrige=$(cat "$TILSTAND/deployet-commit" 2>/dev/null || true)
+  startet=$(naa)
+  melding=$(git -C "$KILDE" log -1 --format=%s "$commit" 2>/dev/null || true)
+
+  bygg_json() {
+    jq -n --arg id "$id" --arg commit "$commit" --arg melding "$melding" --arg kilde "$kilde" \
+      --arg bestiltAv "$bestilt_av" --arg forrige "$forrige" --arg startet "$startet" \
+      --arg status "$1" --arg ferdig "${2:-}" --arg feil "${3:-}" \
+      '{id: $id, commit: $commit, melding: $melding, kilde: $kilde,
+        bestiltAv: (if $bestiltAv == "" then null else $bestiltAv end),
+        forrigeCommit: (if $forrige == "" then null else $forrige end),
+        status: $status, startet: $startet,
+        ferdig: (if $ferdig == "" then null else $ferdig end),
+        feil: (if $feil == "" then null else $feil end)}'
+  }
+
+  if [ -n "$avvist" ]; then
+    echo "$avvist Ingenting er endret." >"$logg"
+    skriv_json "$meta" "$(bygg_json feilet "$(naa)" "$avvist")"
+    return 1
+  fi
+
+  skriv_json "$meta" "$(bygg_json bygger)"
+  status true "$id"
+  echo "Deployer $commit ($kilde): $melding" >"$logg"
+
+  local resultat
+  if (utrull "$commit" && verifiser "$startet") >>"$logg" 2>&1; then
+    echo "$commit" >"$TILSTAND/deployet-commit"
+    rm -f "$TILSTAND/feilet-commit"
+    oppdater_seg_selv >>"$logg" 2>&1 || echo "ADVARSEL: kunne ikke installere ny versjon av selvoppdateringen" >>"$logg"
+    echo "==> $(naa) Ferdig: $commit kjører." >>"$logg"
+    skriv_json "$meta" "$(bygg_json ok "$(naa)")"
+    resultat=0
+  else
+    local feil
+    feil=$(grep -E "FEIL|ERROR|error|failed" "$logg" | tail -n 1 | cut -c1-300 || true)
+    feil=${feil:-"Se loggen."}
+    if [ -n "$forrige" ] && [ "$forrige" != "$commit" ]; then
+      echo "==> $(naa) Feilet. Ruller tilbake til $forrige" >>"$logg"
+      local tilbake_startet
+      tilbake_startet=$(naa)
+      if (utrull "$forrige" && verifiser "$tilbake_startet") >>"$logg" 2>&1; then
+        echo "==> $(naa) Tilbakerullet: $forrige kjører igjen." >>"$logg"
+        skriv_json "$meta" "$(bygg_json rullet_tilbake "$(naa)" "$feil")"
+      else
+        echo "==> $(naa) Tilbakerullingen feilet også. Plattformen må sjekkes for hånd." >>"$logg"
+        skriv_json "$meta" "$(bygg_json feilet "$(naa)" "$feil (tilbakerullingen feilet også)")"
+      fi
+    else
+      skriv_json "$meta" "$(bygg_json feilet "$(naa)" "$feil")"
+    fi
+    resultat=1
+  fi
+
+  status false
+  rydd_historikk
+  return "$resultat"
+}
+
+# 1. Bestillinger fra dashboardet og MCP-en, eldste først. Løkka leser mappa på
+#    nytt etter hver jobb, så en bestilling som kommer underveis også blir tatt.
+while true; do
+  jobb=$(ls -1tr "$TILSTAND/jobber"/*.json 2>/dev/null | head -n 1 || true)
+  [ -n "$jobb" ] || break
+  commit=$(jq -r '.commit // empty' "$jobb" 2>/dev/null || true)
+  bestilt_av=$(jq -r '.bestiltAv // empty' "$jobb" 2>/dev/null || true)
+  rm -f "$jobb"
+  git -C "$KILDE" fetch --quiet --prune origin main
+  MAIN=$(git -C "$KILDE" rev-parse origin/main)
+  deploy "${commit:-$MAIN}" manuell "$bestilt_av" || true
+
+  # En bestilt eldre commit er en tilbakerulling. Da skal ikke neste kjøring
+  # rulle main ut igjen et minutt senere – automatikken settes på pause til
+  # noen gjenopptar den.
+  if [ -n "$commit" ] && [ "$(git -C "$KILDE" rev-parse --verify --quiet "${commit}^{commit}" || true)" != "$MAIN" ]; then
+    echo "Tilbakerullet manuelt til ${commit:0:7} $(naa)" >"$TILSTAND/pause"
+  fi
+done
+
+# 2. Ny commit på main. Hoppes over når den nettopp feilet (ellers ville et
+#    ødelagt bygg blitt prøvd hvert minutt), eller når automatikken er på pause.
+deployet=$(cat "$TILSTAND/deployet-commit" 2>/dev/null || true)
+feilet=$(cat "$TILSTAND/feilet-commit" 2>/dev/null || true)
+if [ ! -e "$TILSTAND/pause" ] && [ "$MAIN" != "$deployet" ] && [ "$MAIN" != "$feilet" ]; then
+  deploy "$MAIN" main || echo "$MAIN" >"$TILSTAND/feilet-commit"
+fi

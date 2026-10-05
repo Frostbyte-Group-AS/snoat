@@ -264,6 +264,10 @@ SNOAT_OWNER_ACCOUNTS=${preserved("SNOAT_OWNER_ACCOUNTS", "")}
 SNOAT_EXTRA_APP_DOMAIN_SUFFIXES=${preserved("SNOAT_EXTRA_APP_DOMAIN_SUFFIXES", "")}
 SNOAT_ACME_EMAIL=${preserved("SNOAT_ACME_EMAIL", "")}
 
+# Mappa selvoppdateringen på verten bruker (infra/selvoppdatering/). Lokalt en
+# mappe i repoet, så Docker Desktop ikke må dele /var/lib.
+SNOAT_SELVOPPDATERING_HOST_DIR=${preserved("SNOAT_SELVOPPDATERING_HOST_DIR", isLocal ? "./.snoat-selvoppdatering" : "/var/lib/snoat-selvoppdatering")}
+
 # --- VPS-er på Proxmox (kun eierkontoen) -------------------------------------
 # Se CONTEXT_FOR_AI/14_vps.md. Tomme = VPS-funksjonen er av.
 SNOAT_PROXMOX_URL=${preserved("SNOAT_PROXMOX_URL", "")}

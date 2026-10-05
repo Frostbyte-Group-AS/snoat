@@ -144,6 +144,60 @@ Kjør `prune` **etter** at utrullingen er ferdig, aldri midt i en – et image s
 holdes av en kjørende container røres ikke, men det er en unødvendig risiko å ta
 mens en deployment pågår.
 
+## 3a. Snoat oppdaterer seg selv fra main
+
+Fra 2026-10-05 er det normale å **merge til main og la serveren gjøre resten**,
+akkurat som for prosjektene på Snoat. `scripts/deploy.sh` (under) er førstegangs-
+og nødveien.
+
+**Hvordan:** `snoat-selvoppdatering.timer` på VM-en kjører
+`/usr/local/sbin/snoat-selvoppdatering` hvert minutt (regnet fra forrige kjøring
+var ferdig). Den henter `origin/main` til en egen klon i `/opt/snoat-kilde`, og
+er main ny, gjør den det samme som `deploy.sh`: rsync til `/opt/snoat`,
+`bootstrap-env`, sjekk av hemmeligheter, byggetak, `docker compose build frontend
+backend`, `up -d`, restart av Caddy og backend. Deretter venter den på at
+`/health` svarer og at backend har logget «Caddy-ruter synkronisert», og sjekker
+auth-innstillingene og dashboardet.
+
+**Feiler noe, rulles forrige commit ut på nytt**, og main-commiten skrives til
+`feilet-commit` så den ikke prøves hvert minutt. Neste merge prøves som vanlig.
+Migrasjoner rulles ikke tilbake – de skal være additive og idempotente.
+
+**Kilde, ikke arbeidsmappe:** bare commits som ligger på main kan rulles ut. Det
+gjør at det som kjører alltid er det som er merget, i motsetning til `deploy.sh`,
+som rsyncer fra den som kjører den. rsync går med `--delete` under toppnivået
+(`P /*` beskytter `.env`, backupene og `.snoat/`), så filer fra en ødelagt commit
+ikke blir liggende etter tilbakerullingen.
+
+**Tilstand** i `/var/lib/snoat-selvoppdatering` (montert inn i backend):
+`status.json`, `deployet-commit`, `feilet-commit`, `pause`, `bygg/<id>.json|.log`
+(de 50 siste) og `jobber/*.json` (bestillinger). `snoat-selvoppdatering.path`
+starter kjøringen med en gang en bestilling dukker opp.
+
+**Dashboardet** (eierkontoen): kortet «snoat» blant prosjektene viser hva som
+kjører, byggene med logg, «Deploy main nå», «Rull tilbake hit» og pause.
+**MCP** (eierkontoen): `snoat_platform_status`, `snoat_platform_deploy`,
+`snoat_platform_logs`. Backend: `routes/plattform.ts`, `services/selvoppdatering.ts`.
+
+**Pause** stopper bare den automatiske utrullingen; bestillinger går fortsatt. Den
+settes av seg selv ved en manuell tilbakerulling (ellers ville main kommet
+tilbake et minutt senere) og av `deploy.sh` mens den kjører. `deploy.sh` av en
+ren main oppdaterer `deployet-commit` og opphever pausen den selv satte; alt
+annet (gren, ucommittede endringer) lar pausen stå.
+
+**Installasjon** (én gang, etter at koden er deployet med `deploy.sh`):
+
+```bash
+ssh snoat-ny 'bash -s -- <commit-som-kjører>' < infra/selvoppdatering/installer
+```
+
+Etterpå installerer skriptet nye versjoner av seg selv og enhetene fra main.
+
+**Merk:** hvem som helst med skrivetilgang til main i
+`Frostbyte-Group-AS/snoat` kan nå få kode kjørt som root på VM-en. Det var sant
+før også (via `deploy.sh`), men nå uten at noen trenger SSH. Branch protection
+på main er det som holder igjen.
+
 ## 3. Lokal Deployment Flow
 All deployment skjer via et lokalt script (`scripts/deploy.sh`) kjørt fra utviklerens Mac.
 

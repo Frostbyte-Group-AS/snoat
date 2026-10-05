@@ -729,5 +729,34 @@
       "preset_cpu_other": "{{count}} CPU threads",
       "add_keys": "Add"
     }
+  },
+  "plattform": {
+    "title": "The Snoat platform",
+    "desc": "The platform itself. Deploys from main on its own within a minute of a merge.",
+    "explain": "{{repo}} deploys itself: the server checks main for a new commit every minute, builds, health-checks and rolls back if anything fails. All apps see a short interruption while the backend and Caddy restart.",
+    "status_live": "Live",
+    "status_building": "Building",
+    "status_failed": "Failed",
+    "status_paused": "Paused",
+    "on_main": "Running what is on main.",
+    "behind_main": "Main is {{main}} – deploying shortly.",
+    "paused_note": "Automatic deploys are paused, so new commits on main are not rolled out on their own. «Deploy main now» still works.",
+    "failed_note": "Main ({{commit}}) failed and will not be retried automatically until something new is merged. See the log below.",
+    "deploy_main": "Deploy main now",
+    "deploy_confirm": "Deploy main now? The backend and Caddy restart, and all apps see a short interruption.",
+    "pause": "Pause",
+    "resume": "Resume",
+    "builds": "Builds",
+    "no_builds": "No builds yet.",
+    "show_log": "Log",
+    "hide_log": "Hide log",
+    "loading_log": "Loading log…",
+    "running": "running",
+    "rollback": "Roll back to this",
+    "rollback_confirm": "Deploy {{commit}} again? The backend and Caddy restart.",
+    "build_bygger": "Building",
+    "build_ok": "OK",
+    "build_feilet": "Failed",
+    "build_rullet_tilbake": "Rolled back"
   }
 }

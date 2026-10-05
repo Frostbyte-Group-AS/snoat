@@ -7,6 +7,7 @@ import { DashboardNav } from "@/components/DashboardNav";
 
 import { DeploymentStatusBadge } from "@/components/DeploymentStatusBadge";
 import { NewVpsForm } from "@/components/NewVpsForm";
+import { PlattformKort } from "@/components/PlattformKort";
 import { VpsOverview } from "@/components/VpsOverview";
 import { useDeploymentsRealtime } from "@/hooks/useDeploymentsRealtime";
 import {
@@ -205,6 +206,9 @@ function DashboardPage() {
 
         {projects.isSuccess && projects.data.length > 0 && (
           <div className="stagger grid grid-cols-1 gap-[31px] md:grid-cols-2 lg:grid-cols-3">
+            {/* Snoat selv, for eierkontoen. Kortet tegner seg ikke før
+                selvoppdateringen er installert på serveren. */}
+            {vpsAccess.data?.eier && <PlattformKort />}
             {projects.data.map((project) => (
               <ProjectCard key={project.id} project={project} />
             ))}

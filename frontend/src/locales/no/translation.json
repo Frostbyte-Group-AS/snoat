@@ -729,5 +729,34 @@
       "preset_cpu_other": "{{count}} CPU-tråder",
       "add_keys": "Legg til"
     }
+  },
+  "plattform": {
+    "title": "Snoat-plattformen",
+    "desc": "Plattformen selv. Deployes fra main av seg selv innen et minutt etter en merge.",
+    "explain": "{{repo}} deployes av seg selv: serveren ser etter ny commit på main hvert minutt, bygger, helsesjekker og ruller tilbake hvis noe feiler. Alle apper får et kort avbrudd mens backend og Caddy restarter.",
+    "status_live": "Live",
+    "status_building": "Bygger",
+    "status_failed": "Feilet",
+    "status_paused": "Pause",
+    "on_main": "Kjører det som er på main.",
+    "behind_main": "Main er {{main}} – deployes snart.",
+    "paused_note": "Automatikken er på pause, så nye commits på main rulles ikke ut av seg selv. «Deploy main nå» virker fortsatt.",
+    "failed_note": "Main ({{commit}}) feilet og prøves ikke automatisk på nytt før noe nytt merges. Se loggen under.",
+    "deploy_main": "Deploy main nå",
+    "deploy_confirm": "Deploye main nå? Backend og Caddy restarter, og alle apper får et kort avbrudd.",
+    "pause": "Sett på pause",
+    "resume": "Gjenoppta",
+    "builds": "Bygg",
+    "no_builds": "Ingen bygg ennå.",
+    "show_log": "Logg",
+    "hide_log": "Skjul logg",
+    "loading_log": "Henter logg…",
+    "running": "kjører",
+    "rollback": "Rull tilbake hit",
+    "rollback_confirm": "Deploye {{commit}} på nytt? Backend og Caddy restarter.",
+    "build_bygger": "Bygger",
+    "build_ok": "OK",
+    "build_feilet": "Feilet",
+    "build_rullet_tilbake": "Rullet tilbake"
   }
 }

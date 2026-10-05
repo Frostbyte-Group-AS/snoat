@@ -417,6 +417,8 @@ services:
       SNOAT_EXTRA_APP_DOMAIN_SUFFIXES: ${SNOAT_EXTRA_APP_DOMAIN_SUFFIXES:-}
       SNOAT_ACME_EMAIL: ${SNOAT_ACME_EMAIL:-}
 
+      SNOAT_SELVOPPDATERING_DIR: /var/lib/snoat-selvoppdatering
+
       # VPS-er på Proxmox – kun eierkontoen. Tomme = av. Se CONTEXT_FOR_AI/14_vps.md.
       SNOAT_PROXMOX_URL: ${SNOAT_PROXMOX_URL:-}
       SNOAT_PROXMOX_NODE: ${SNOAT_PROXMOX_NODE:-pve}
@@ -445,6 +447,10 @@ services:
       # Ferdigbygde statiske sider. Backend skriver, Caddy leser – derfor må
       # begge ha volumet montert på samme sti (SNOAT_SITES_DIR).
       - snoat-sites:${SNOAT_SITES_DIR:-/srv/sites}
+      # Selvoppdateringen på verten (infra/selvoppdatering/) skriver status og
+      # bygglogger hit og leser bestillinger herfra. Lokalt er det en tom mappe
+      # i repoet, og funksjonen er av.
+      - ${SNOAT_SELVOPPDATERING_HOST_DIR:-./.snoat-selvoppdatering}:/var/lib/snoat-selvoppdatering
     ports:
       - "127.0.0.1:${BACKEND_PORT:-3100}:3000"
     networks: [snoat]

@@ -547,6 +547,14 @@ const schema = z.object({
    * vertsnavnsjekk ville feilet – og å slå av verifiseringen ville gitt bort
    * tokenet til hvem som helst som kom seg mellom VM-en og verten.
    */
+  /**
+   * Mappa selvoppdateringen på verten skriver status og bygglogger til, og
+   * leser bestillinger fra (`infra/selvoppdatering/`). Montert inn fra
+   * `SNOAT_SELVOPPDATERING_HOST_DIR` i docker-compose.yml. Funksjonen regnes som
+   * på bare når skriptet har skrevet `status.json` der.
+   */
+  SNOAT_SELVOPPDATERING_DIR: z.string().default("/var/lib/snoat-selvoppdatering"),
+
   SNOAT_PROXMOX_URL: optionalEnv,
   SNOAT_PROXMOX_NODE: z.string().min(1).default("pve"),
   SNOAT_PROXMOX_TLS_NAME: z.string().min(1).default("pve"),

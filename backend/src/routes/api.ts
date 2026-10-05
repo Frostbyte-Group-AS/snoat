@@ -5,6 +5,7 @@ import { generateApiKey } from "../lib/api-keys.js";
 import { listConnections, revokeClientTokens } from "../lib/oauth.js";
 import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware/auth.js";
 import { vpsApi } from "./vps.js";
+import { plattformApi } from "./plattform.js";
 import * as analytics from "../services/analytics.js";
 import { invalidateHostMap } from "../lib/host-map.js";
 import * as deploy from "../services/deploy.js";
@@ -37,6 +38,9 @@ api.route("/billing", billing);
 
 /** VPS-er på Proxmox. Kun eierkontoen – sjekken ligger i `routes/vps.ts`. */
 api.route("/vps", vpsApi);
+
+/** Snoat selv: bygg fra main og «deploy nå». Kun eierkontoen. */
+api.route("/plattform", plattformApi);
 
 /**
  * Bekrefter at en GitHub-installasjon faktisk tilhører kalleren.
