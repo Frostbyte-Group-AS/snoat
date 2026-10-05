@@ -66,6 +66,36 @@ git -C "$KILDE" fetch --quiet --prune origin main
 MAIN=$(git -C "$KILDE" rev-parse origin/main)
 status false
 
+# Venter til ingen app bygges, før backend restartes.
+#
+# En restart av backend avbryter hvert bygg som pågår («Backend startet på nytt
+# mens denne deploymenten pågikk»), og appen blir stående på forrige versjon
+# til noen deployer den igjen. Målt 2026-10-05: tre OSIA-bygg på rad gikk tapt
+# slik, ett for hver plattformdeploy. Bildene er allerede bygget når vi kommer
+# hit, så ventetiden er bare tiden et app-bygg trenger på å bli ferdig.
+#
+# Tak på ventingen: et bygg som henger, skal ikke kunne stoppe en plattformfiks
+# for alltid. Etter taket deployes det likevel, og loggen sier hvilke som ble
+# avbrutt.
+vent_paa_appbygg() {
+  local maks=${SNOAT_SELVOPPDATERING_MAKS_VENT_S:-1200} ventet=0 aktive
+  while :; do
+    aktive=$(docker compose exec -T db psql -U postgres -tAc \
+      "select count(*) from deployments where status in ('queued','building')" 2>/dev/null | tr -d '[:space:]')
+    if [ -z "$aktive" ] || [ "$aktive" = "0" ]; then
+      [ "$ventet" -gt 0 ] && echo "Ingen app-bygg pågår lenger (ventet ${ventet} s)."
+      return 0
+    fi
+    if [ "$ventet" -ge "$maks" ]; then
+      echo "ADVARSEL: ${aktive} app-bygg pågår fortsatt etter ${maks} s – fortsetter, og de blir avbrutt."
+      return 0
+    fi
+    [ "$ventet" -eq 0 ] && echo "==> $(naa) Venter på ${aktive} app-bygg før backend restartes"
+    sleep 10
+    ventet=$((ventet + 10))
+  done
+}
+
 # NB: `set -e` gjelder ikke inne i en funksjon som kalles som betingelse i en
 # `if` – og det er nettopp slik utrull og verifiser kalles. Hvert steg har
 # derfor sin egen `|| return 1`. Uten dem ville et feilet `docker compose build`
@@ -112,6 +142,8 @@ utrull() {
 
   echo "==> $(naa) Bygger frontend og backend"
   docker compose build frontend backend || { echo "FEIL: byggingen feilet"; return 1; }
+
+  vent_paa_appbygg
 
   echo "==> $(naa) Starter tjenestene"
   docker compose up -d --remove-orphans || { echo "FEIL: docker compose up feilet"; return 1; }
