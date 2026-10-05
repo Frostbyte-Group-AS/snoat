@@ -340,14 +340,6 @@ async function warnOnRepeatedFailedCommit(
 }
 
 /**
- * Peker Caddy tilbake dit trafikken gikk før deploymenten, og rydder containeren
- * som ikke ble god nok.
- *
- * Hele poenget med rullerende utrulling: en feilet deployment skal ikke koste
- * brukeren nedetid. Den forrige containeren er urørt, så det er nok å fjerne vår
- * egen. Ingenting her får kaste – den opprinnelige feilen er det brukeren skal se.
- */
-/**
  * Passord-hashen ruten skal skrives med, eller null når appen er åpen.
  *
  * Oppslaget gjøres per ruteskriving og ikke én gang per pipeline, fordi det er
@@ -359,34 +351,66 @@ async function accessHashFor(project: Project): Promise<string | null> {
   return project.access_protected ? await passwordHashFor(project.id) : null;
 }
 
+/**
+ * Peker Caddy tilbake dit trafikken gikk før deploymenten, og rydder containeren
+ * som ikke ble god nok.
+ *
+ * Hele poenget med rullerende utrulling: en feilet deployment skal ikke koste
+ * brukeren nedetid. Den forrige containeren er urørt, så det er nok å fjerne vår
+ * egen. Ingenting her får kaste – den opprinnelige feilen er det brukeren skal se.
+ *
+ * ── NÅR CADDY IKKE SVARER ───────────────────────────────────────────────────
+ * Den nye containeren fjernes bare når vi har lest fra Caddy at ruten IKKE
+ * peker på den. Et admin-kall som tidsavbrytes kan likevel ha gått gjennom:
+ * 5. oktober 2026 hang en omlasting i Caddy i et kvarter, PATCH-en for
+ * eierbolig-admin-dev og eierfullstack fikk «Headers Timeout», og ruten pekte
+ * likevel på den nye containeren. Den gamle koden tolket «kan ikke lese ruten»
+ * som «ruten er uendret», fjernet containeren ruten pekte på, og begge sidene
+ * svarte 502. Vet vi ikke hvor trafikken går, blir containeren stående – en
+ * container for mye koster litt RAM, én for lite koster en nede side.
+ * `retirePrevious` rydder den ved neste vellykkede deployment.
+ */
 async function rollback(
   project: Project,
   containerName: string,
+  newUpstream: string,
   previousUpstream: string | null,
   logs: LogStream,
 ): Promise<void> {
   logs.step("Ruller tilbake");
 
-  if (previousUpstream) {
-    const current = await caddy.appRouteUpstream(project.name).catch(() => previousUpstream);
+  // `undefined` betyr «vet ikke»: Caddy svarte ikke. `null` betyr at ruten ikke finnes.
+  let current: string | null | undefined = await caddy.appRouteUpstream(project.name).catch((error: unknown) => {
+    logger.error({ project: project.name, err: error }, "Kunne ikke lese Caddy-ruten under rollback");
+    return undefined;
+  });
 
-    if (current !== previousUpstream) {
-      try {
-        await caddy.upsertAppRoute(
-          project.name,
-          project.custom_domain,
-          previousUpstream,
-          await accessHashFor(project),
-          await aliasHostnamesFor(project).catch(() => [] as string[]),
-        );
-        logs.write(`Ruten peker igjen på ${previousUpstream}.`);
-      } catch (error) {
-        logs.write(`Advarsel: kunne ikke peke ruten tilbake til ${previousUpstream}.`);
-        logger.error({ project: project.name, err: error }, "Kunne ikke rulle tilbake Caddy-ruten");
-      }
-    } else {
-      logs.write(`Forrige versjon serverer fortsatt trafikk på ${previousUpstream}.`);
+  if (previousUpstream && current !== previousUpstream) {
+    try {
+      await caddy.upsertAppRoute(
+        project.name,
+        project.custom_domain,
+        previousUpstream,
+        await accessHashFor(project),
+        await aliasHostnamesFor(project).catch(() => [] as string[]),
+      );
+      current = previousUpstream;
+      logs.write(`Ruten peker igjen på ${previousUpstream}.`);
+    } catch (error) {
+      // Skrivingen kan ha gått gjennom selv om svaret uteble. Les på nytt i stedet for å gjette.
+      current = await caddy.appRouteUpstream(project.name).catch(() => undefined);
+      logs.write(`Advarsel: kunne ikke peke ruten tilbake til ${previousUpstream}.`);
+      logger.error({ project: project.name, err: error }, "Kunne ikke rulle tilbake Caddy-ruten");
     }
+  } else if (previousUpstream) {
+    logs.write(`Forrige versjon serverer fortsatt trafikk på ${previousUpstream}.`);
+  }
+
+  if (current === undefined || current === newUpstream) {
+    const why = current === undefined ? "Caddy svarer ikke, så vi vet ikke hvor trafikken går" : "Caddy peker på den";
+    logs.write(`Beholder ${containerName}: ${why}. Den ryddes ved neste vellykkede deployment.`);
+    logger.error({ project: project.name, container: containerName, current }, "Beholder ny container etter feilet rollback");
+    return;
   }
 
   await containers.removeContainerByName(containerName).catch((error) => {
@@ -651,7 +675,7 @@ async function runPipeline(
 
       logs.write(`Trafikken går nå til ${containerName}.`);
     } catch (error) {
-      await rollback(project, containerName, previousUpstream, logs);
+      await rollback(project, containerName, upstream, previousUpstream, logs);
       throw error;
     }
 
