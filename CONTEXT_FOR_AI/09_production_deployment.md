@@ -188,7 +188,7 @@ annet (gren, ucommittede endringer) lar pausen stå.
 **Installasjon** (én gang, etter at koden er deployet med `deploy.sh`):
 
 ```bash
-ssh snoat-ny 'bash -s' < infra/selvoppdatering/installer <commit-som-kjører>
+ssh snoat-ny 'bash -s -- <commit-som-kjører>' < infra/selvoppdatering/installer
 ```
 
 Etterpå installerer skriptet nye versjoner av seg selv og enhetene fra main.

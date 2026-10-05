@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installerer selvoppdateringen på Snoat-VM-en. Kjøres én gang, som root:
 #
-#   ssh snoat-ny 'bash -s' < infra/selvoppdatering/installer <commit-som-kjører-nå>
+#   ssh snoat-ny 'bash -s -- <commit-som-kjører-nå>' < infra/selvoppdatering/installer
 #
 # Argumentet er commiten som allerede er deployet (med scripts/deploy.sh). Uten
 # det ville første timer-kjøring bygget main på nytt selv om den kjører.
