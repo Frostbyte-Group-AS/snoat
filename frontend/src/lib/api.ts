@@ -704,3 +704,48 @@ export function getRedirectStatus(
 ): Promise<{ redirectId: string; ready: boolean; domains: DomainStatus[] }> {
   return request(`/api/redirects/${id}/status`);
 }
+
+// --- Snoat selv (kun eierkontoen) --------------------------------------------
+
+/** Ett bygg av plattformen, skrevet av selvoppdateringen på verten. */
+export interface PlattformBygg {
+  id: string;
+  commit: string;
+  melding: string;
+  kilde: "main" | "manuell";
+  bestiltAv: string | null;
+  forrigeCommit: string | null;
+  status: "bygger" | "ok" | "feilet" | "rullet_tilbake";
+  startet: string;
+  ferdig: string | null;
+  feil: string | null;
+}
+
+export interface PlattformStatus {
+  aktivert: boolean;
+  repo: string;
+  deployetCommit: string | null;
+  mainCommit: string | null;
+  feiletCommit: string | null;
+  pause: boolean;
+  kjorer: boolean;
+  sistSjekket: string | null;
+  ventendeBestillinger: number;
+  bygg: PlattformBygg[];
+}
+
+export function getPlattform(): Promise<PlattformStatus> {
+  return request("/api/plattform");
+}
+
+export function getPlattformLogg(byggId: string): Promise<{ logg: string }> {
+  return request(`/api/plattform/bygg/${byggId}/logg`);
+}
+
+export function deployPlattform(commit: string | null = null): Promise<{ bestilt: true }> {
+  return request("/api/plattform/deploy", { method: "POST", body: JSON.stringify({ commit }) });
+}
+
+export function settPlattformPause(pause: boolean): Promise<{ pause: boolean }> {
+  return request("/api/plattform/pause", { method: "POST", body: JSON.stringify({ pause }) });
+}

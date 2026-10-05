@@ -29,6 +29,8 @@ backend/vendor/*
 !backend/vendor/README.md
 # Klonede repoer og build-artefakter fra deployments
 .snoat/
+# Selvoppdateringens tilstand når compose kjøres lokalt
+.snoat-selvoppdatering/
 
 # Editor directories and files
 .vscode/*

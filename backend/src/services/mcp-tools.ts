@@ -1496,6 +1496,80 @@ export const MCP_TOOLS: McpTool[] = [
       };
     },
   },
+
+  // --- Snoat selv (kun eierkontoen) -----------------------------------------
+
+  {
+    name: "snoat_platform_status",
+    title: "Status for Snoat selv",
+    description:
+      "Viser hvilken commit av Frostbyte-Group-AS/snoat som kjører, hva main står på, om noe bygger nå, " +
+      "om automatikken er på pause, og de siste byggene. Snoat deployer main av seg selv innen et minutt etter en merge.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    ownerOnly: true,
+    async run(_args, ctx) {
+      const data = (await callOrThrow(ctx, "GET", "/plattform")) as {
+        aktivert: boolean;
+        deployetCommit: string | null;
+        mainCommit: string | null;
+        kjorer: boolean;
+        pause: boolean;
+      };
+      if (!data.aktivert) return { summary: "Selvoppdateringen er ikke installert på serveren.", data };
+      const kort = (sha: string | null) => (sha ? sha.slice(0, 7) : "ukjent");
+      return {
+        summary:
+          `Kjører ${kort(data.deployetCommit)}, main er ${kort(data.mainCommit)}` +
+          `${data.kjorer ? ", et bygg pågår" : ""}${data.pause ? ", automatikken er på pause" : ""}.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_platform_deploy",
+    title: "Deploy Snoat selv",
+    description:
+      "Ber serveren deploye Snoat-plattformen: main som den er nå, eller en bestemt commit på main (for å rulle " +
+      "tilbake). Bygget tar noen minutter og restarter backend og Caddy – alle apper får et kort avbrudd. Spør brukeren først.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        commit: { type: "string", description: "SHA på main. Utelat for å deploye main slik den er nå." },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    ownerOnly: true,
+    async run(args, ctx) {
+      const { commit } = z.object({ commit: z.string().min(7).optional() }).parse(args);
+      const data = await callOrThrow(ctx, "POST", "/plattform/deploy", { commit: commit ?? null });
+      return {
+        summary: `Deploy av ${commit ? commit.slice(0, 7) : "main"} er bestilt. Følg med med snoat_platform_status.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_platform_logs",
+    title: "Bygglogg for Snoat selv",
+    description: "Henter loggen til ett bygg av Snoat-plattformen (ID fra snoat_platform_status).",
+    inputSchema: {
+      type: "object",
+      properties: { byggId: { type: "string", description: "Byggets ID, f.eks. «20261005T101500Z-b38722b»." } },
+      required: ["byggId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    ownerOnly: true,
+    async run(args, ctx) {
+      const { byggId } = z.object({ byggId: z.string().min(1) }).parse(args);
+      const data = (await callOrThrow(ctx, "GET", `/plattform/bygg/${byggId}/logg`)) as { logg: string };
+      return { summary: "Bygglogg hentet.", data: { logg: data.logg.slice(-LOG_TAIL_LENGTH) } };
+    },
+  },
 ];
 
 export const MCP_TOOLS_BY_NAME = new Map(MCP_TOOLS.map((tool) => [tool.name, tool]));
@@ -1516,4 +1590,5 @@ export const MCP_INSTRUCTIONS = [
 
 /** Tillegg for eierkontoen, som også ser VPS-verktøyene. */
 export const MCP_INSTRUCTIONS_EIER =
-  "VPS-verktøyene (snoat_vps_*) lager LXC-containere på Proxmox. Alle VPS-er deler ett RAM-tak (verts-RAM minus det som er reservert for resten av serveren); en VPS uten eget tak kan bruke alt ledig minne innenfor det.";
+  "VPS-verktøyene (snoat_vps_*) lager LXC-containere på Proxmox. Alle VPS-er deler ett RAM-tak (verts-RAM minus det som er reservert for resten av serveren); en VPS uten eget tak kan bruke alt ledig minne innenfor det. " +
+  "Snoat selv deployer main av seg selv innen et minutt etter en merge; snoat_platform_status viser hva som kjører.";

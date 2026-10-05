@@ -6,6 +6,7 @@ import { listConnections, revokeClientTokens } from "../lib/oauth.js";
 import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware/auth.js";
 import { vpsApi } from "./vps.js";
 import { redirectsApi } from "./redirects.js";
+import { plattformApi } from "./plattform.js";
 import * as analytics from "../services/analytics.js";
 import { invalidateHostMap } from "../lib/host-map.js";
 import * as deploy from "../services/deploy.js";
@@ -42,6 +43,9 @@ api.route("/vps", vpsApi);
 
 /** Domener som bare omdirigerer. Caddy svarer selv – se `services/redirects.ts`. */
 api.route("/redirects", redirectsApi);
+
+/** Snoat selv: bygg fra main og «deploy nå». Kun eierkontoen. */
+api.route("/plattform", plattformApi);
 
 /**
  * Bekrefter at en GitHub-installasjon faktisk tilhører kalleren.
