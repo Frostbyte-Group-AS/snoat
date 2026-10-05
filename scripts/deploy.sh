@@ -209,6 +209,20 @@ EOF
 run_step 50 "Bygger containere (dette kan ta litt tid)..." \
   ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_IP}" "cd /opt/snoat && docker compose build frontend backend"
 
+# 3b. En restart av backend avbryter app-bygg som pågår. Vent til de er ferdige
+# (høyst 20 min), som selvoppdateringen gjør – se vent_paa_appbygg der.
+run_step 65 "Venter på app-bygg som pågår..." \
+  ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_IP}" 'bash -s' <<'EOF'
+    cd /opt/snoat
+    for i in $(seq 1 120); do
+      aktive=$(docker compose exec -T db psql -U postgres -tAc "select count(*) from deployments where status in ('queued','building')" 2>/dev/null | tr -d '[:space:]')
+      { [ -z "$aktive" ] || [ "$aktive" = "0" ]; } && exit 0
+      echo "Venter på ${aktive} app-bygg…"
+      sleep 10
+    done
+    echo "ADVARSEL: app-bygg pågår fortsatt etter 20 min – fortsetter."
+EOF
+
 # 4. Starter tjenestene
 run_step 70 "Starter tjenester (Caddy, Supabase, API, Frontend)..." \
   ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_IP}" "cd /opt/snoat && docker compose up -d --remove-orphans"

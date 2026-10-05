@@ -159,6 +159,11 @@ backend`, `up -d`, restart av Caddy og backend. Deretter venter den på at
 `/health` svarer og at backend har logget «Caddy-ruter synkronisert», og sjekker
 auth-innstillingene og dashboardet.
 
+**Den venter på app-bygg.** Bildene bygges først, men før `up -d` og
+restartene venter den (høyst 20 min) til ingen deployment står som `queued` eller
+`building`. En restart av backend avbryter hvert app-bygg som pågår – 2026-10-05
+gikk tre OSIA-bygg tapt slik, ett per plattformdeploy. `deploy.sh` venter likt.
+
 **Feiler noe, rulles forrige commit ut på nytt**, og main-commiten skrives til
 `feilet-commit` så den ikke prøves hvert minutt. Neste merge prøves som vanlig.
 Migrasjoner rulles ikke tilbake – de skal være additive og idempotente.
