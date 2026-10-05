@@ -114,6 +114,48 @@ dig +short dittdomene.no            # skal svare med SNOAT_SERVER_IP
 dig +short www.dittdomene.no CNAME  # skal svare med <slug>.snoat.com.
 ```
 
+## Omdirigeringer (migrasjon 0018)
+
+Et domene som bare skal sende folk videre, trenger ikke et prosjekt. Før dette
+var fire domener (bedrift(s)hjerne(n).no) fire prosjekter med hver sin container
+som svarte 301. Nå svarer Caddy selv med en `static_response` (det `redir`
+kompileres til), uten repo, bygg eller prosess.
+
+| Del | Hvor |
+| --- | --- |
+| Tabeller `redirects` + `redirect_domains` (domenet er PK, unikt på tvers av kontoer) | `supabase/migrations/0018_redirects.sql` |
+| Validering, konflikter, CRUD, oppstarts-reconcile | `backend/src/services/redirects.ts` |
+| Caddy-rutene `snoat_redirect_<id>` | `backend/src/lib/caddy.ts` (`upsertRedirectRoute`) |
+| REST `GET/POST /api/redirects`, `GET/PATCH/DELETE /api/redirects/:id`, `GET …/:id/status` | `backend/src/routes/redirects.ts` |
+| MCP `snoat_list_redirects`, `snoat_set_redirect`, `snoat_get_redirect_status`, `snoat_delete_redirect` | `backend/src/services/mcp-tools.ts` |
+| Dashboard: «Nytt prosjekt» → Omdirigering, og kort under prosjektene | `frontend/src/components/Redirect*.tsx` |
+
+Regler som er lette å bryte:
+
+- **Rekkefølgen i Caddy.** Omdirigeringene settes inn *først* i `snoat_apps`
+  (`PUT …/routes/0`), apprutene legges bakerst (`POST`). Et eget domene dekker
+  `*.domenet`, så `gammel.osia.no` ville aldri nådd en omdirigering som sto bak
+  `*.osia.no`. Verifisert mot Caddy 2.11: rekkefølgen holder også når apper
+  deployes etterpå.
+- **`www.` legges på av oss.** Domenet lagres uten `www.`, ruten dekker begge, og
+  `tls-ask` stripper `www.` før oppslaget i `redirect_domains`.
+- **`{` og `}` i målet prosent-kodes.** `Location` er en header, og Caddy
+  erstatter plassholdere som `{env.NOE}` i header-verdier.
+- **Konflikter sjekkes begge veier.** En omdirigering kan ikke ta et prosjekts
+  domene (eller `www.`-varianten), og ikke et subdomene av en *annen* kontos
+  prosjektdomene. `PATCH /projects/:id/domain` nekter et domene som er en
+  omdirigering, og et domene som har en annen kontos omdirigering under seg.
+- **Løkker avvises:** målets vert kan ikke være et av domenene.
+- **Tak:** 20 domener per omdirigering, 200 per konto (sertifikatkvoten).
+
+### Avgrensede API-nøkler
+
+`api_keys.scopes` (samme migrasjon). NULL = full tilgang som før. `{redirects}`
+slipper bare inn på `/api/redirects…` – ikke `/api/api-keys`, så nøkkelen kan
+ikke lage seg en full en. Håndheves i `requireAuth`. Utstedes med
+`issue-api-key --scope redirects`. Laget for OSIA, som styrer omdirigeringer fra
+domenemodulen sin uten å få makt over prosjektene.
+
 ## Det som gjenstår
 
 1. **Flere domener per prosjekt.** `custom_domain` er én kolonne, så et prosjekt

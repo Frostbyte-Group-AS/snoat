@@ -185,7 +185,9 @@
       "kind_app_hint": "From a GitHub repo. Snoat builds and publishes it automatically.",
       "kind_vps": "VPS",
       "kind_vps_hint": "Your own Linux server with SSH and Docker. You choose CPU, RAM and disk.",
-      "choose_title": "What do you want to create?"
+      "choose_title": "What do you want to create?",
+      "kind_omdirigering": "Redirect",
+      "kind_omdirigering_hint": "Send one or more domains on to another address. No code, no build."
     },
     "start": "Start",
     "stopped": "Stopped"
@@ -728,6 +730,33 @@
       "preset_cpu_one": "{{count}} CPU thread",
       "preset_cpu_other": "{{count}} CPU threads",
       "add_keys": "Add"
+    }
+  },
+  "redirects": {
+    "new_title": "New redirect",
+    "edit_title": "Edit redirect",
+    "overview_title": "Redirects",
+    "status_ready": "Live",
+    "status_pending": "Waiting",
+    "status_checking": "Checking",
+    "keeps_path": "(keeps the path)",
+    "edit": "Edit",
+    "delete": "Delete",
+    "delete_confirm": "Delete the redirect? {{domains}} will stop responding immediately.",
+    "form": {
+      "desc": "The domains send visitors straight on to the address you choose. Snoat answers itself – no repo or build needed.",
+      "domains": "Domains",
+      "domains_hint": "One per line. www. is included automatically.",
+      "target": "Send to",
+      "status": "Type",
+      "status_301": "301 – permanent",
+      "status_302": "302 – temporary",
+      "preserve_path": "Keep the path (old.com/page → target/page)",
+      "name": "Name (optional)",
+      "dns_hint": "Point each domain here at your domain provider:",
+      "create": "Create redirect",
+      "save": "Save",
+      "saving": "Saving…"
     }
   }
 }

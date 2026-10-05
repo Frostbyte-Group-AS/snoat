@@ -7,6 +7,8 @@ import { DashboardNav } from "@/components/DashboardNav";
 
 import { DeploymentStatusBadge } from "@/components/DeploymentStatusBadge";
 import { NewVpsForm } from "@/components/NewVpsForm";
+import { RedirectForm } from "@/components/RedirectForm";
+import { RedirectsOverview } from "@/components/RedirectsOverview";
 import { VpsOverview } from "@/components/VpsOverview";
 import { useDeploymentsRealtime } from "@/hooks/useDeploymentsRealtime";
 import {
@@ -210,6 +212,8 @@ function DashboardPage() {
             ))}
           </div>
         )}
+
+        <RedirectsOverview />
 
         <VpsOverview enabled={vpsEnabled} />
       </main>
@@ -699,8 +703,12 @@ function NewProjectDialog({
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  // Eierkontoen velger først hva som skal lages; alle andre går rett til appen.
-  const [kind, setKind] = useState<"velg" | "app" | "vps">(vpsEnabled ? "velg" : "app");
+  // Først velges hva som skal lages: en app, en omdirigering, eller – for
+  // eierkontoen – en VPS.
+  const [kind, setKind] = useState<"velg" | "app" | "omdirigering" | "vps">("velg");
+  const kinds = vpsEnabled
+    ? (["app", "omdirigering", "vps"] as const)
+    : (["app", "omdirigering"] as const);
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("");
   const [repoDefaultBranch, setRepoDefaultBranch] = useState<string | null>(null);
@@ -778,19 +786,23 @@ function NewProjectDialog({
         onClick={(event) => event.stopPropagation()}
       >
         <h2 id="new-project-title" className="font-display text-[28px] font-bold text-ink">
-          {kind === "vps" ? t("vps.new_title") : t("dashboard.new_project_modal.title")}
+          {kind === "vps"
+            ? t("vps.new_title")
+            : kind === "omdirigering"
+              ? t("redirects.new_title")
+              : t("dashboard.new_project_modal.title")}
         </h2>
         <span className="swoosh anim-draw mt-[6px]" aria-hidden="true" />
 
-        {/* Bare eierkontoen får dette valget. For alle andre er «Nytt prosjekt»
-            det det alltid har vært: en app fra et GitHub-repo. */}
+        {/* En omdirigering er ikke et prosjekt i databasen, men det er her man
+            leter når et domene skal svare på noe – derfor står den i samme valg. */}
         {kind === "velg" ? (
           <div key="velg" className="anim-rise mt-[24px] flex flex-col gap-[18px]">
             <h3 className="font-display text-[24px] font-bold leading-[1.2] text-ink">
               {t("dashboard.new_project_modal.choose_title")}
             </h3>
             <div className="flex flex-col gap-[10px]">
-              {(["app", "vps"] as const).map((k) => (
+              {kinds.map((k) => (
                 <button
                   key={k}
                   type="button"
@@ -824,6 +836,10 @@ function NewProjectDialog({
         ) : kind === "vps" ? (
           <div key="vps" className="mt-[24px]">
             <NewVpsForm onDone={onClose} onBack={() => setKind("velg")} />
+          </div>
+        ) : kind === "omdirigering" ? (
+          <div key="omdirigering" className="mt-[24px]">
+            <RedirectForm onDone={onClose} onBack={() => setKind("velg")} />
           </div>
         ) : (
           <>
@@ -938,15 +954,13 @@ function NewProjectDialog({
               )}
 
               <div className="mt-[8px] flex justify-end gap-[12px]">
-                {vpsEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => setKind("velg")}
-                    className="btn-outline mr-auto h-[46px] px-[20px] font-display text-[15px]"
-                  >
-                    {t("vps.wizard.back")}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setKind("velg")}
+                  className="btn-outline mr-auto h-[46px] px-[20px] font-display text-[15px]"
+                >
+                  {t("vps.wizard.back")}
+                </button>
                 <button
                   type="button"
                   onClick={onClose}

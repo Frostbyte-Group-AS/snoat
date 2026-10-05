@@ -135,6 +135,41 @@ export interface ApiKey {
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
+  /**
+   * Områdene nøkkelen gjelder for (migrasjon 0018). NULL = full tilgang, som
+   * alle nøkler hadde før kolonnen fantes. Håndheves i `middleware/auth.ts`.
+   */
+  scopes: ApiKeyScope[] | null;
+}
+
+/** Områder en avgrenset API-nøkkel kan gjelde for. */
+export type ApiKeyScope = "redirects";
+
+/**
+ * Et domene som bare omdirigerer (migrasjon 0018).
+ *
+ * Caddy svarer selv med `status_code` og `Location` – det finnes ingen
+ * container, ingen repo og ingen deployment bak.
+ */
+export interface Redirect {
+  id: string;
+  user_id: string;
+  name: string;
+  target_url: string;
+  status_code: RedirectStatusCode;
+  /** Sant: stien følger med til målet. Usant: alt går til `target_url`. */
+  preserve_path: boolean;
+  external_ref: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RedirectStatusCode = 301 | 302 | 307 | 308;
+
+/** En omdirigering med domenene sine, slik API-et svarer. */
+export interface RedirectWithDomains extends Redirect {
+  /** Normaliserte domener. `www.`-varianten av hvert dekkes automatisk. */
+  domains: string[];
 }
 
 /**

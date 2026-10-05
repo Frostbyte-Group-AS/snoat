@@ -71,18 +71,7 @@ async function resolveTarget(domain: string): Promise<string[]> {
  * Hele poenget er å avdekke når de to spriker.
  */
 async function hasRouteFor(project: Project, domain: string): Promise<boolean> {
-  const route = await caddy.getAppRoute(project.name);
-  if (!route) return false;
-
-  const hosts = route.match?.[0]?.host ?? [];
-  return hosts.some((host) => {
-    if (host === domain) return true;
-    // `*.example.com` dekker én etikett foran, akkurat som Caddys egen matcher.
-    if (!host.startsWith("*.")) return false;
-    const suffix = host.slice(1);
-    if (!domain.endsWith(suffix)) return false;
-    return !domain.slice(0, -suffix.length).includes(".");
-  });
+  return caddy.routeCoversHost(await caddy.getAppRoute(project.name), domain);
 }
 
 /**
@@ -121,9 +110,34 @@ function probeCertificate(domain: string): Promise<boolean> {
 }
 
 export async function checkDomain(project: Project, domain: string): Promise<DomainStatus> {
+  return await measure(domain, hasRouteFor(project, domain), {
+    ok: "Caddy ruter dette vertsnavnet til appen din.",
+    missing: "Ingen rute for vertsnavnet. Deploy prosjektet på nytt for å opprette den.",
+  });
+}
+
+/**
+ * Samme måling for et domene som hører til en omdirigering.
+ *
+ * Ruten slås opp på omdirigeringens egen `@id`, ikke på et prosjekt – det finnes
+ * ikke noe prosjekt bak.
+ */
+export async function checkRedirectDomain(redirectId: string, domain: string): Promise<DomainStatus> {
+  const routed = caddy.getRedirectRoute(redirectId).then((route) => caddy.routeCoversHost(route, domain));
+  return await measure(domain, routed, {
+    ok: "Caddy svarer med omdirigeringen på dette vertsnavnet.",
+    missing: "Ingen rute for vertsnavnet. Lagre omdirigeringen på nytt for å opprette den.",
+  });
+}
+
+async function measure(
+  domain: string,
+  routedCheck: Promise<boolean>,
+  routeDetail: { ok: string; missing: string },
+): Promise<DomainStatus> {
   const expected = config.SNOAT_SERVER_IP;
 
-  const [found, routed] = await Promise.all([resolveTarget(domain), hasRouteFor(project, domain)]);
+  const [found, routed] = await Promise.all([resolveTarget(domain), routedCheck]);
 
   const dnsOk = found.includes(expected);
   const dns: DomainStatus["dns"] = {
@@ -138,10 +152,10 @@ export async function checkDomain(project: Project, domain: string): Promise<Dom
   };
 
   const route: DomainCheck = routed
-    ? { state: "ok", detail: "Caddy ruter dette vertsnavnet til appen din." }
+    ? { state: "ok", detail: routeDetail.ok }
     : {
         state: "failed",
-        detail: "Ingen rute for vertsnavnet. Deploy prosjektet på nytt for å opprette den.",
+        detail: routeDetail.missing,
       };
 
   // Handshaken utløser on-demand-utstedelse hos Caddy. Peker ikke DNS hit ennå,

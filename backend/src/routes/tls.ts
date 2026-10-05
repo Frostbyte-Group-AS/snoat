@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { devAliasParts, parentDomain, slugFromHostname } from "../lib/caddy.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
+import { redirectForHostname } from "../services/redirects.js";
 
 /**
  * Caddys tillatelsessjekk for on-demand TLS.
@@ -76,6 +77,21 @@ tlsPermission.get("/tls-ask", async (c) => {
     const parent = parentDomain(domain);
     if (parent) {
       ({ data, error } = await lookup("custom_domain", parent));
+    }
+  }
+
+  // En omdirigering har ingen prosjektrad, men trenger sertifikat for å kunne
+  // svare på https – også for `www.`-varianten, som ruten alltid dekker.
+  if (!slug && !devAlias && !error && !data) {
+    try {
+      const redirect = await redirectForHostname(domain);
+      if (redirect) {
+        logger.info({ domain, redirectId: redirect.id }, "TLS innvilget for omdirigering");
+        return c.text("ok", 200);
+      }
+    } catch (err) {
+      logger.error({ domain, err }, "TLS-oppslag for omdirigering feilet");
+      return c.text("oppslag feilet", 503);
     }
   }
 

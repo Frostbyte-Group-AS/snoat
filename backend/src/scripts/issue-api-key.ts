@@ -21,7 +21,7 @@
 
 import { generateApiKey } from "../lib/api-keys.js";
 import { supabase } from "../lib/supabase.js";
-import type { SubscriptionTier } from "../types.js";
+import type { ApiKeyScope, SubscriptionTier } from "../types.js";
 
 function arg(flag: string): string | undefined {
   const index = process.argv.indexOf(`--${flag}`);
@@ -61,9 +61,20 @@ async function main(): Promise<void> {
   const email = arg("email");
   const name = arg("name");
   const plan = arg("plan") as SubscriptionTier | undefined;
+  const scopeArg = arg("scope");
 
   if (!email || !name) {
-    fail("Bruk: --email <e-post> --name <nøkkelnavn> [--plan agency]");
+    fail("Bruk: --email <e-post> --name <nøkkelnavn> [--plan agency] [--scope redirects]");
+  }
+
+  // Uten --scope får nøkkelen full tilgang, som før. Med: bare områdene som er
+  // nevnt (kommaseparert). Se `middleware/auth.ts`.
+  const scopes = scopeArg ? scopeArg.split(",").map((scope) => scope.trim()).filter(Boolean) : null;
+  const KNOWN_SCOPES: ApiKeyScope[] = ["redirects"];
+  for (const scope of scopes ?? []) {
+    if (!KNOWN_SCOPES.includes(scope as ApiKeyScope)) {
+      fail(`Ukjent område «${scope}». Gyldige: ${KNOWN_SCOPES.join(", ")}.`);
+    }
   }
 
   const user = await findUserByEmail(email);
@@ -91,6 +102,7 @@ async function main(): Promise<void> {
     name,
     token_prefix: key.tokenPrefix,
     token_hash: key.tokenHash,
+    scopes,
   });
 
   if (error) fail(`Kunne ikke lagre nøkkelen: ${error.message}`);
@@ -100,6 +112,7 @@ async function main(): Promise<void> {
 
     Bruker:  ${user.email} (${user.id})
     Navn:    ${name}${plan ? `\n    Plan:    ${plan}` : ""}
+    Tilgang: ${scopes ? scopes.join(", ") : "full"}
 
     ${key.token}
 
