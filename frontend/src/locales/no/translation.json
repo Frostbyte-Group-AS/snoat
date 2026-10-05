@@ -210,7 +210,7 @@
     "value_target": "Verdi / Peker til",
     "copy": "Kopier",
     "copied": "Kopiert! ✓",
-    "root_a_desc": "Peker rotdomenet {{domain}} direkte til Snoat-serveren i Norge.",
+    "root_a_desc": "Peker rotdomenet {{domain}} til Snoat-serveren. Støtter domeneleverandøren ALIAS, ANAME eller CNAME på rotdomenet (f.eks. Cloudflare), pek heller @ mot {{host}} – da følger domenet med hvis Snoat bytter server.",
     "www_cname_desc": "Sender www.{{domain}} videre til prosjektets Snoat-adresse.",
     "sub_cname_desc": "Sender {{sub}}.{{domain}} videre til prosjektets Snoat-adresse."
   },

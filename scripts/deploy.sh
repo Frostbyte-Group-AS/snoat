@@ -4,9 +4,10 @@ set -euo pipefail
 # Snoat Production Deploy Script
 # Deployer kode fra lokalt arbeidsområde til VPS og starter plattformen på nytt.
 
-# Snoat-plattformen kjører i VM-en `snoat` (10.10.10.10) på Proxmox-verten
-# 88.99.100.186 (Hetzner, fra 2026-10-04). VM-en har ingen offentlig IP – SSH går
-# med hopp gjennom verten, og verten videresender 80/443 til VM-en.
+# Snoat-plattformen kjører i VM-en `snoat` (10.10.10.10) på Proxmox-verten bak
+# edge.snoat.com (Hetzner, fra 2026-10-04). VM-en har ingen offentlig IP – SSH
+# går med hopp gjennom verten, og verten videresender 80/443 til VM-en.
+# Verten nås på vertsnavnet, ikke IP-en, så en ny server bare er en DNS-endring.
 #
 # Den gamle serveren 38.87.117.167 (LuxVPS) kjører fortsatt parallelt til DNS er
 # flyttet. Deploy dit med:
@@ -15,12 +16,18 @@ DEFAULT_VPS_IP="10.10.10.10"
 VPS_IP="${SNOAT_VPS_IP:-$DEFAULT_VPS_IP}"
 VPS_USER="${SNOAT_VPS_USER:-root}"
 # Tom streng = ingen hopp (`SNOAT_SSH_JUMP=` for gammel server).
-SSH_JUMP="${SNOAT_SSH_JUMP-root@88.99.100.186}"
-# IP-en domenet skal treffe. Verifiseringen går hit med --resolve, slik at den
-# tester serveren vi nettopp deployet til – også før DNS er flyttet.
-PUBLIC_IP="${SNOAT_PUBLIC_IP:-88.99.100.186}"
-TARGET_DIR="/opt/snoat"
 SNOAT_DOMAIN="${SNOAT_DOMAIN:-snoat.com}"
+EDGE_HOST="${SNOAT_EDGE_HOST:-edge.${SNOAT_DOMAIN}}"
+SSH_JUMP="${SNOAT_SSH_JUMP-root@${EDGE_HOST}}"
+# IP-en domenet skal treffe. Verifiseringen går hit med --resolve, slik at den
+# tester serveren vi nettopp deployet til. Sett SNOAT_PUBLIC_IP for å teste en
+# server før DNS-en for kantverten er flyttet.
+PUBLIC_IP="${SNOAT_PUBLIC_IP:-$(dig +short "$EDGE_HOST" A | tail -n1)}"
+if [[ -z "$PUBLIC_IP" ]]; then
+  echo "FEIL: fant ingen IP for $EDGE_HOST. Sett SNOAT_PUBLIC_IP." >&2
+  exit 1
+fi
+TARGET_DIR="/opt/snoat"
 LOG_FILE="/tmp/snoat-deploy.log"
 
 # Nøkkelen serveren faktisk kjenner. Uten `IdentitiesOnly=yes` tilbyr ssh alle

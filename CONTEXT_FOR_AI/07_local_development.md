@@ -39,7 +39,7 @@ Scriptet skriver to filer:
 
 - `.env` – hele plattform-stacken
 - `frontend/.env` – `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`,
-  `VITE_SNOAT_API_URL`, `VITE_SNOAT_APP_DOMAIN_SUFFIX`, `VITE_SNOAT_SERVER_IP`
+  `VITE_SNOAT_API_URL`, `VITE_SNOAT_APP_DOMAIN_SUFFIX`
 
 De skrives fra samme kjøring, slik at anon-nøkkelen aldri divergerer fra det
 Supabase faktisk kjører med. Begge er gitignorert, og begge er ekskludert fra

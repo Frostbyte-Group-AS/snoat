@@ -343,19 +343,13 @@ backend, slik Caddy allerede ruter:
 | `VITE_SUPABASE_URL` | `http://api.snoat.localhost` | `https://api.snoat.com` |
 | `SNOAT_FRONTEND_ORIGIN` | `http://localhost:8080,…` | `https://snoat.com` |
 | `BACKEND_BUILD_TARGET` | `dev` | `production` |
-| `SNOAT_SERVER_IP` | `127.0.0.1` | `38.87.117.167` |
+| `SNOAT_EDGE_HOST` | tom (`edge.snoat.localhost`) | tom (`edge.snoat.com`) |
+| `SNOAT_SERVER_IP` | `127.0.0.1` | reserve, slås opp fra `edge.snoat.com` |
 
-`SNOAT_SERVER_IP` er A-record-målet DNS-fanen i prosjektvisningen viser fram, og
-speiles til frontend som `VITE_SNOAT_SERVER_IP`. Den utledes ikke av domenet –
-`bootstrap-env.mjs` beholder verdien som allerede står i `.env`, og du overstyrer
-den ved å sette den foran kommandoen:
-
-```bash
-SNOAT_DOMAIN=snoat.com SNOAT_SERVER_IP=38.87.117.167 node scripts/bootstrap-env.mjs
-```
-
-Bytter serveren IP, må frontend bygges på nytt – Vite baker verdien inn i
-bundlen, akkurat som de andre `VITE_`-variablene.
+Kundenes DNS-mål er kantverten `edge.snoat.com`, ikke en IP i config. Backend
+slår den opp, og dashboardet henter den fra `GET /api/dns-target`. Bytter
+serveren IP, flyttes A-recorden for `edge.snoat.com` – ingen ny build. Se
+`11_custom_domains_and_dns.md`.
 
 **Dev-sidene bruker to etiketter under samme suffiks:**
 `dev.eierfullstack.snoat.com` i tillegg til `eierfullstack-dev.snoat.com`. Det

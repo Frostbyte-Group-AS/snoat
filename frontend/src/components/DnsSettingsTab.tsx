@@ -9,7 +9,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { projectHostname, snoatServerIp } from "@/lib/platform";
+import { projectHostname } from "@/lib/platform";
+import { useDnsTarget } from "@/lib/dns-target";
 
 /** Hvor lenge «Kopiert!» vises på knappen. */
 const COPY_RESET_MS = 2000;
@@ -49,6 +50,7 @@ export function DnsSettingsTab({
   }, [project.custom_domain]);
 
   const snoatHostname = projectHostname(project.name);
+  const dnsTarget = useDnsTarget();
   const cleanDomain = normalizeDomain(domain);
   const displayDomain = cleanDomain || "dittdomene.no";
   const sub = normalizeHost(subdomain) || "app";
@@ -63,9 +65,9 @@ export function DnsSettingsTab({
             id: "root-a",
             type: "A",
             host: "@",
-            value: snoatServerIp,
+            value: dnsTarget.ip,
             ttl: "3600",
-            description: t("dns.root_a_desc", { domain: displayDomain }),
+            description: t("dns.root_a_desc", { domain: displayDomain, host: dnsTarget.host }),
           },
           {
             id: "www-cname",
