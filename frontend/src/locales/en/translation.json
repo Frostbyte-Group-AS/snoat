@@ -210,7 +210,7 @@
     "value_target": "Value / Target",
     "copy": "Copy",
     "copied": "Copied! ✓",
-    "root_a_desc": "Points the apex domain {{domain}} directly to the Snoat server in Norway.",
+    "root_a_desc": "Points the apex domain {{domain}} to the Snoat server. If your provider supports ALIAS, ANAME or CNAME on the apex (e.g. Cloudflare), point @ to {{host}} instead – then the domain follows along if Snoat changes servers.",
     "www_cname_desc": "Forwards www.{{domain}} to the project's Snoat address.",
     "sub_cname_desc": "Forwards {{sub}}.{{domain}} to the project's Snoat address."
   },

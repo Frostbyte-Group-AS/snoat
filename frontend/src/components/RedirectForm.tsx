@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { createRedirect, updateRedirect, type Redirect } from "@/lib/api";
-import { snoatServerIp } from "@/lib/platform";
+import { useDnsTarget } from "@/lib/dns-target";
 
 /**
  * Skjemaet for en omdirigering – både «Nytt prosjekt» → Omdirigering og «Endre»
@@ -25,6 +25,7 @@ export function RedirectForm({
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const dnsTarget = useDnsTarget();
   const [domains, setDomains] = useState(redirect?.domains.join("\n") ?? "");
   const [targetUrl, setTargetUrl] = useState(redirect?.target_url ?? "https://");
   const [statusCode, setStatusCode] = useState<Redirect["status_code"]>(
@@ -146,8 +147,9 @@ export function RedirectForm({
       <div className="border-2 border-line px-[14px] py-[12px] font-body text-[14px] font-light leading-[1.5] text-ink">
         <p>{t("redirects.form.dns_hint")}</p>
         <code className="mt-[6px] block font-mono text-[13px] text-ink">
-          A @ {snoatServerIp}
-          <br />A www {snoatServerIp}
+          A @ {dnsTarget.ip}
+          <br />
+          CNAME www {dnsTarget.host}
         </code>
       </div>
 

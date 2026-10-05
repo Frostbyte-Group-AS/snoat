@@ -982,7 +982,7 @@ export const MCP_TOOLS: McpTool[] = [
     title: "Lag eller endre omdirigering",
     description:
       "Lager en omdirigering, eller endrer en eksisterende når redirectId er satt. Caddy svarer selv – det trengs " +
-      "ikke noe prosjekt. Domenene må peke mot Snoat i DNS (A-record til serverens IP) før sertifikatet kan " +
+      "ikke noe prosjekt. Domenene må peke mot Snoat i DNS (CNAME/ALIAS til edge.snoat.com, eller A-record til IP-en den svarer med) før sertifikatet kan " +
       "utstedes; sjekk med snoat_get_redirect_status etterpå. Et domene kan ikke samtidig være eget domene for et prosjekt.",
     inputSchema: {
       type: "object",

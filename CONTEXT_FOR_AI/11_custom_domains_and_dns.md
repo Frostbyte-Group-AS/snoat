@@ -63,7 +63,7 @@ for domene, `www.` foran, avsluttende skråstrek).
 
 | Type | Host | Verdi | Merknad |
 | --- | --- | --- | --- |
-| `A` | `@` | `SNOAT_SERVER_IP` | Obligatorisk. |
+| `A` | `@` | IP-en `edge.snoat.com` svarer med | Obligatorisk, med mindre leverandøren støtter ALIAS/ANAME/CNAME-flattening – da `@` → `edge.snoat.com`. |
 | `CNAME` | `www` | `<slug><SNOAT_APP_DOMAIN_SUFFIX>` | Anbefalt. |
 
 **Subdomene** (`app.dittdomene.no`):
@@ -73,7 +73,9 @@ for domene, `www.` foran, avsluttende skråstrek).
 | `CNAME` | `app` | `<slug><SNOAT_APP_DOMAIN_SUFFIX>` | Obligatorisk. |
 
 Rotdomenet må være en A-record fordi DNS ikke tillater CNAME på sonens apex –
-en apex-CNAME kolliderer med SOA- og NS-recordene som må ligge der. Subdomener
+en apex-CNAME kolliderer med SOA- og NS-recordene som må ligge der. Unntaket er
+leverandører som flater ut en CNAME/ALIAS selv (Cloudflare, DNSimple, …): da er
+`@` → `edge.snoat.com` best, fordi domenet følger med når Snoat bytter server. Subdomener
 har ikke det problemet, og der er CNAME å foretrekke: peker vi på vertsnavnet
 i stedet for IP-en, overlever kunden en framtidig IP-endring uten å røre sonen
 sin.
@@ -82,19 +84,23 @@ Fanen sier også fra om at gamle `A`/`AAAA`/`CNAME` på samme host må fjernes
 først – én host kan ikke ha både en A-record og en CNAME – og at TTL kan stå på
 `3600` eller «Auto».
 
-## `SNOAT_SERVER_IP`
+## `SNOAT_EDGE_HOST` – kantverten
 
-IP-en fanen viser fram i A-recorden. Den utledes **ikke** av domenet, siden
-serveren kan bytte IP uten at domenet endres:
+Vertsnavnet som alltid peker på serveren Caddy står på: `edge.snoat.com` i
+produksjon (tom env = `edge` + `SNOAT_APP_DOMAIN_SUFFIX`). Ingen kode har
+serverens IP lenger:
 
-- `.env`: `SNOAT_SERVER_IP` (skrives av `scripts/bootstrap-env.mjs`, som beholder
-  en eksisterende verdi og bare faller tilbake til `127.0.0.1` lokalt /
-  `38.87.117.167` i produksjon).
-- Frontend: `VITE_SNOAT_SERVER_IP`, bakt inn i bundlen ved build via `build.args`
-  i `docker-compose.yml` og `ARG`/`ENV` i `frontend/Dockerfile`.
-- Leses i koden av `frontend/src/lib/platform.ts`.
+- Backend slår opp kantverten (`edgeHost()`/`edgeIps()` i
+  `backend/src/services/domain-status.ts`, fem minutters cache) både for
+  DNS-sjekken og for `GET /api/dns-target`.
+- Dashboardet henter vertsnavn og IP fra `GET /api/dns-target`
+  (`frontend/src/lib/dns-target.ts`), i stedet for at IP-en bakes inn ved build.
+- `SNOAT_SERVER_IP` er bare en reserve når oppslaget feiler (lokalt 127.0.0.1).
 
-Bytter serveren IP må frontend bygges på nytt – se `09_production_deployment.md`.
+Bytter Snoat server: flytt A-recorden for `edge.snoat.com` (og `snoat.com`,
+`*.snoat.com`). Ingen ny build. Kunder med CNAME/ALIAS følger med av seg selv;
+kunder med A-record på rotdomenet må fortsatt bytte IP. Før 2026-10-05 sto IP-en
+hardkodet i frontend, og etter flyttingen til Hetzner viste dashboardet den gamle.
 
 ## Cloudflare må stå på «DNS only»
 
@@ -110,7 +116,7 @@ prinsipielle for oss:
 ## Slik verifiserer kunden
 
 ```bash
-dig +short dittdomene.no            # skal svare med SNOAT_SERVER_IP
+dig +short dittdomene.no            # skal svare som dig +short edge.snoat.com
 dig +short www.dittdomene.no CNAME  # skal svare med <slug>.snoat.com.
 ```
 

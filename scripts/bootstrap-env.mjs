@@ -20,6 +20,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
+import { resolve4 } from "node:dns/promises";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,13 +106,15 @@ const preserved = (key, fallback, isValid = (value) => value !== "") => {
   return value === undefined || !isValid(value) ? fallback : value;
 };
 
-// IP-en kundene peker sitt eget domene mot med en A-record, og som DNS-fanen i
-// dashboardet viser fram. Kan settes med SNOAT_SERVER_IP=… foran kommandoen;
-// ellers beholdes verdien som allerede står i .env. Lokalt gir loopback det
-// riktige svaret: da er det maskinen din Caddy kjører på.
+// Reserve-IP for når backend ikke får slått opp kantverten (`SNOAT_EDGE_HOST`,
+// standard edge.<domene>). Fasiten er DNS-en til kantverten, ikke denne – en
+// serverflytting skal bare være én DNS-endring. Kan settes med SNOAT_SERVER_IP=…
+// foran kommandoen; ellers beholdes verdien i .env, eller den slås opp nå.
+// Lokalt gir loopback det riktige svaret: da er det maskinen din Caddy kjører på.
+const edgeIp = isLocal ? "" : await resolve4(`edge.${domain}`).then((ips) => ips[0] ?? "", () => "");
 const serverIp = (
   process.env.SNOAT_SERVER_IP ??
-  preserved("SNOAT_SERVER_IP", isLocal ? "127.0.0.1" : "88.99.100.186")
+  preserved("SNOAT_SERVER_IP", isLocal ? "127.0.0.1" : edgeIp || "127.0.0.1")
 ).trim();
 
 // Realtime bruker DB_ENC_KEY som AES-128-nøkkel og krever nøyaktig 16 byte.
@@ -285,7 +288,6 @@ VITE_SUPABASE_URL=${apiUrl}
 VITE_SUPABASE_ANON_KEY=${anonKey}
 VITE_SNOAT_API_URL=${apiUrl}
 VITE_SNOAT_APP_DOMAIN_SUFFIX=.${domain}
-VITE_SNOAT_SERVER_IP=${serverIp}
 
 # --- Ressurstak per deployet applikasjon ------------------------------------
 # Porten brukerapper må lytte på (injiseres som PORT i containeren).
@@ -345,7 +347,6 @@ VITE_SUPABASE_URL=${apiUrl}
 VITE_SUPABASE_ANON_KEY=${anonKey}
 VITE_SNOAT_API_URL=${apiUrl}
 VITE_SNOAT_APP_DOMAIN_SUFFIX=.${domain}
-VITE_SNOAT_SERVER_IP=${serverIp}
 `,
   { mode: 0o600 },
 );

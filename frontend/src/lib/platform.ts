@@ -11,13 +11,6 @@
 export const appDomainSuffix =
   (import.meta.env.VITE_SNOAT_APP_DOMAIN_SUFFIX as string | undefined) ?? ".snoat.com";
 
-/**
- * IP-en kundene peker sitt eget domene mot med en A-record. Følger
- * `SNOAT_SERVER_IP` – VPS-en Caddy står på (09_production_deployment.md).
- */
-export const snoatServerIp =
-  (import.meta.env.VITE_SNOAT_SERVER_IP as string | undefined) ?? "38.87.117.167";
-
 /** `<slug>.snoat.com` – verten Caddy ruter til prosjektets container. */
 export const projectHostname = (slug: string) => `${slug}${appDomainSuffix}`;
 

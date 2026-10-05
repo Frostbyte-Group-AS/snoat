@@ -51,6 +51,30 @@ const PUBLIC_RESOLVERS = ["1.1.1.1", "8.8.8.8"];
 const DNS_TIMEOUT_MS = 4000;
 const TLS_TIMEOUT_MS = 4000;
 
+/** Vertsnavnet kundene peker domenene sine mot, f.eks. `edge.snoat.com`. */
+export function edgeHost(): string {
+  return config.SNOAT_EDGE_HOST.trim() || `edge${config.SNOAT_APP_DOMAIN_SUFFIX}`;
+}
+
+const EDGE_CACHE_MS = 5 * 60_000;
+let edgeCache: { ips: string[]; at: number } | null = null;
+
+/**
+ * IP-ene kantverten svarer med nå – det et rotdomene må ha som A-record.
+ *
+ * Slås opp i stedet for å stå i config, slik at en serverflytting bare er én
+ * DNS-endring. Fem minutters cache holder statussjekken rask uten å henge
+ * etter en flytting mer enn TTL-en uansett gjør. Svarer ikke DNS, brukes
+ * `SNOAT_SERVER_IP` (lokalt: 127.0.0.1).
+ */
+export async function edgeIps(): Promise<string[]> {
+  if (edgeCache && Date.now() - edgeCache.at < EDGE_CACHE_MS) return edgeCache.ips;
+  const found = await resolveTarget(edgeHost());
+  const ips = found.length > 0 ? found : [config.SNOAT_SERVER_IP];
+  if (found.length > 0) edgeCache = { ips, at: Date.now() };
+  return ips;
+}
+
 async function resolveTarget(domain: string): Promise<string[]> {
   const resolver = new Resolver({ timeout: DNS_TIMEOUT_MS, tries: 1 });
   resolver.setServers(PUBLIC_RESOLVERS);
@@ -135,11 +159,10 @@ async function measure(
   routedCheck: Promise<boolean>,
   routeDetail: { ok: string; missing: string },
 ): Promise<DomainStatus> {
-  const expected = config.SNOAT_SERVER_IP;
+  const [expectedIps, found, routed] = await Promise.all([edgeIps(), resolveTarget(domain), routedCheck]);
+  const expected = expectedIps.join(", ");
 
-  const [found, routed] = await Promise.all([resolveTarget(domain), routedCheck]);
-
-  const dnsOk = found.includes(expected);
+  const dnsOk = found.some((ip) => expectedIps.includes(ip));
   const dns: DomainStatus["dns"] = {
     expected,
     found,
@@ -148,7 +171,7 @@ async function measure(
       ? "Domenet peker hit."
       : found.length === 0
         ? "Fant ingen A-record ennå. Propagering kan ta opptil en time."
-        : `Peker på ${found.join(", ")}, forventet ${expected}.`,
+        : `Peker på ${found.join(", ")}, forventet ${expected} (${edgeHost()}).`,
   };
 
   const route: DomainCheck = routed

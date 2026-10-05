@@ -12,7 +12,7 @@ import { invalidateHostMap } from "../lib/host-map.js";
 import * as deploy from "../services/deploy.js";
 import * as devSites from "../services/dev-sites.js";
 import { ensureProjectRoute, type RouteStatus } from "../services/deploy.js";
-import { checkDomain } from "../services/domain-status.js";
+import { checkDomain, edgeHost, edgeIps } from "../services/domain-status.js";
 import { domainClashesWithRedirect } from "../services/redirects.js";
 import * as errors from "../services/errors.js";
 import { assertSafeBranch, assertSafeRepoUrl } from "../services/git.js";
@@ -538,6 +538,15 @@ api.get("/projects/:projectId/domain/status", async (c) => {
   }
 
   return c.json(await checkDomain(project, project.custom_domain));
+});
+
+/**
+ * Hva kundene skal peke egne domener mot: vertsnavnet (CNAME/ALIAS) og IP-en
+ * det svarer med nå (A-record på rotdomenet). Slått opp, ikke bakt inn i
+ * frontend, så dashboardet viser riktig IP også etter en serverflytting.
+ */
+api.get("/dns-target", async (c) => {
+  return c.json({ host: edgeHost(), ips: await edgeIps() });
 });
 
 /** Status og logger for én deployment. Dashboardet bruker Realtime i stedet. */

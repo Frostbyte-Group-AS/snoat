@@ -104,12 +104,19 @@ const schema = z.object({
   /** Suffikset hvert prosjekt får sitt subdomene under. */
   SNOAT_APP_DOMAIN_SUFFIX: z.string().default(".snoat.localhost"),
   /**
-   * A-record-målet kundene peker sine egne domener mot.
+   * Vertsnavnet som alltid peker på serveren Caddy står på, f.eks.
+   * `edge.snoat.com`. Tom = `edge` + `SNOAT_APP_DOMAIN_SUFFIX`.
    *
-   * Backend trenger fasiten for å kunne svare på om et domene faktisk peker hit.
-   * Uten den kan DNS-fanen bare gjenta hva kunden *skal* sette, ikke om det er
-   * gjort – og det er nettopp forskjellen mellom «virker ikke» og «venter på at
-   * DNS propagerer».
+   * Kundene peker egne domener hit (CNAME/ALIAS), og A-record-IP-en dashboardet
+   * viser slås opp fra det. Flytter Snoat til en ny server, endres én DNS-post –
+   * ikke koden, og ikke kundenes CNAME-er. Før 2026-10-05 sto IP-en hardkodet
+   * flere steder, og etter flyttingen til Hetzner viste dashboardet fortsatt den
+   * gamle.
+   */
+  SNOAT_EDGE_HOST: z.string().default(""),
+  /**
+   * Reserve når kantverten ikke kan slås opp (lokalt, eller DNS nede). Ikke
+   * fasiten i produksjon – det er `SNOAT_EDGE_HOST`.
    */
   SNOAT_SERVER_IP: z.string().default("127.0.0.1"),
   /** Docker-nettverket brukerapplikasjoner kobles til, slik at Caddy når dem. */

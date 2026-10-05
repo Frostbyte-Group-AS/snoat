@@ -163,6 +163,20 @@ export interface DomainStatus {
   certificate: DomainCheck;
 }
 
+/**
+ * Hva egne domener skal peke mot: vertsnavnet for CNAME/ALIAS og IP-ene det
+ * svarer med nå, til A-recorden på et rotdomene. Hentes fra backend i stedet for
+ * å bakes inn ved build, så en serverflytting ikke etterlater en gammel IP her.
+ */
+export interface DnsTarget {
+  host: string;
+  ips: string[];
+}
+
+export function getDnsTarget(): Promise<DnsTarget> {
+  return request("/api/dns-target");
+}
+
 /** Måler om det egne domenet faktisk virker. Endrer ingenting. */
 export function getDomainStatus(projectId: string): Promise<DomainStatus> {
   return request(`/api/projects/${projectId}/domain/status`);
