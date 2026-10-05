@@ -60,6 +60,7 @@
       }
     },
     "http": {
+      "grace_period": "10s",
       "servers": {
         "snoat": {
           "listen": [":80", ":443"],
