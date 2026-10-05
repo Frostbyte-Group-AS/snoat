@@ -1,0 +1,15 @@
+[Unit]
+Description=Snoat: deploy main når den har endret seg, eller når dashboardet ber om det
+Documentation=https://github.com/Frostbyte-Group-AS/snoat/blob/main/CONTEXT_FOR_AI/09_production_deployment.md
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/snoat-selvoppdatering
+# Et bygg av frontend og backend tar noen minutter; en tilbakerulling like lenge.
+TimeoutStartSec=50min
+# Byggingen har egne tak på docker.service (settes av skriptet). Selve skriptet
+# er lett – det skal ikke konkurrere med appene.
+Nice=10

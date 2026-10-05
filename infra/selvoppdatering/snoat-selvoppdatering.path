@@ -1,0 +1,9 @@
+[Unit]
+Description=Snoat: deploy med en gang når dashboardet eller MCP-en bestiller det
+
+[Path]
+PathExistsGlob=/var/lib/snoat-selvoppdatering/jobber/*.json
+Unit=snoat-selvoppdatering.service
+
+[Install]
+WantedBy=paths.target

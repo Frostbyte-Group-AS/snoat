@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Installerer selvoppdateringen på Snoat-VM-en. Kjøres én gang, som root:
+#
+#   ssh snoat-ny 'bash -s' < infra/selvoppdatering/installer <commit-som-kjører-nå>
+#
+# Argumentet er commiten som allerede er deployet (med scripts/deploy.sh). Uten
+# det ville første timer-kjøring bygget main på nytt selv om den kjører.
+# Etterpå oppdaterer skriptet og enhetene seg selv fra main.
+set -euo pipefail
+
+DEPLOYET=${1:?"Bruk: installer <commit som kjører nå>"}
+TILSTAND=/var/lib/snoat-selvoppdatering
+KILDE=/opt/snoat-kilde
+REPO_URL=https://github.com/Frostbyte-Group-AS/snoat.git
+
+mkdir -p "$TILSTAND/jobber" "$TILSTAND/bygg"
+if [ ! -d "$KILDE/.git" ]; then
+  git clone --quiet "$REPO_URL" "$KILDE"
+fi
+git -C "$KILDE" fetch --quiet origin main
+git -C "$KILDE" rev-parse --verify --quiet "${DEPLOYET}^{commit}" >/dev/null \
+  || { echo "Fant ikke $DEPLOYET i $REPO_URL"; exit 1; }
+git -C "$KILDE" checkout --quiet --force --detach "$DEPLOYET"
+
+install -m 0755 "$KILDE/infra/selvoppdatering/snoat-selvoppdatering" /usr/local/sbin/snoat-selvoppdatering
+for enhet in snoat-selvoppdatering.service snoat-selvoppdatering.timer snoat-selvoppdatering.path; do
+  install -m 0644 "$KILDE/infra/selvoppdatering/$enhet" "/etc/systemd/system/$enhet"
+done
+
+git -C "$KILDE" rev-parse "$DEPLOYET" >"$TILSTAND/deployet-commit"
+rm -f "$TILSTAND/feilet-commit" "$TILSTAND/pause"
+
+systemctl daemon-reload
+systemctl enable --now snoat-selvoppdatering.timer snoat-selvoppdatering.path
+systemctl start --no-block snoat-selvoppdatering.service
+
+echo "Selvoppdateringen er på. Deployet: $(cat "$TILSTAND/deployet-commit")"
+systemctl list-timers snoat-selvoppdatering.timer --no-pager
