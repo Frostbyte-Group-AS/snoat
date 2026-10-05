@@ -138,6 +138,10 @@ Byggelogger klippes til de siste 20 000 tegnene og kjøres gjennom `redactCreden
 | `snoat_get_deployment_logs` | lesende | Bygge- og kjøretidslogg for én deployment. |
 | `snoat_get_analytics` | lesende | Besøkstall, responstider, statuskoder, toppstier. |
 | `snoat_get_domain_status` | lesende | DNS, Caddy-rute og TLS-sertifikat for eget domene. |
+| `snoat_list_redirects` | lesende | Omdirigeringene på kontoen: domener, mål, statuskode. |
+| `snoat_set_redirect` | skrivende | Lager eller endrer en omdirigering. Caddy svarer selv – ingen prosjekt eller container. |
+| `snoat_get_redirect_status` | lesende | DNS, rute og sertifikat for hvert domene i en omdirigering. |
+| `snoat_delete_redirect` | destruktiv | Sletter en omdirigering; domenene slutter å svare med en gang. |
 | `snoat_list_dev_sites` | lesende | Dev-grenene til et prosjekt: gren, adresse og om de er passordbeskyttet. |
 | `snoat_list_github_repos` | lesende | Tilkoblede GitHub-kontoer og repoene Snoat kan klone, med installasjons-ID per repo. |
 | `snoat_create_project` | skrivende | Nytt prosjekt fra en GitHub-repo. Bygger ikke automatisk. |

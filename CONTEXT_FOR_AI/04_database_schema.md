@@ -360,3 +360,19 @@ check-constraint ikke kan, fordi de krever oppslag i en annen rad:
 Funksjonen er med vilje ikke `security definer`: under RLS ser en innlogget bruker
 ikke andres rader, så forsøket får «finnes ikke» i stedet for «feil eier». Eier-
 sjekken har likevel en jobb, for backend bruker service-role og omgår RLS.
+
+## `redirects` og `redirect_domains` — omdirigeringer (migrasjon 0018)
+
+`redirects`: `id`, `user_id`, `name`, `target_url`, `status_code` (301/302/307/308),
+`preserve_path`, `external_ref` (unik per bruker, gjør `POST /api/redirects`
+idempotent), `created_at`, `updated_at`.
+
+`redirect_domains`: `domain` (PK – unikt på tvers av alle kontoer, uten `www.`),
+`redirect_id` (cascade).
+
+Begge har RLS uten policy: dashboardet går gjennom `/api/redirects`, siden hver
+endring uansett må til Caddy. Se `11_custom_domains_and_dns.md`.
+
+`api_keys.scopes text[]` (samme migrasjon): NULL = full tilgang, `{redirects}` =
+bare `/api/redirects…`.
+

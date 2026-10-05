@@ -671,3 +671,132 @@ export async function listAppSlugs(): Promise<string[]> {
     .filter((id): id is string => typeof id === "string" && id.startsWith("snoat_app_"))
     .map((id) => id.slice("snoat_app_".length));
 }
+
+// --- Omdirigeringer ---------------------------------------------------------
+
+const redirectRouteId = (redirectId: string) => `snoat_redirect_${redirectId}`;
+const REDIRECT_ROUTE_PREFIX = "snoat_redirect_";
+
+/**
+ * Vertsnavnene en omdirigering svarer på: hvert domene og `www.`-varianten.
+ *
+ * `www.` legges til av oss og ikke av kunden: den som skriver
+ * `www.gammelt-domene.no` i adressefeltet skal også komme fram, og det er lett å
+ * glemme. Det koster ingenting før noen faktisk besøker navnet – sertifikatet
+ * hentes on-demand, og bare når DNS for `www` peker hit.
+ */
+export function redirectHosts(domains: readonly string[]): string[] {
+  return [...new Set(domains.flatMap((domain) => [domain, `www.${domain}`]))];
+}
+
+/**
+ * `Location`-verdien Caddy setter.
+ *
+ * Med `preservePath` følger sti og spørrestreng med: `gammelt.no/om-oss?x=1` →
+ * `https://nytt.no/om-oss?x=1`. `{http.request.uri}` er sti + spørring, og
+ * begynner alltid med `/`, så en avsluttende skråstrek på målet fjernes for ikke
+ * å gi `//om-oss`.
+ */
+export function redirectLocation(targetUrl: string, preservePath: boolean): string {
+  return preservePath ? `${targetUrl.replace(/\/+$/, "")}{http.request.uri}` : targetUrl;
+}
+
+/**
+ * Legger inn eller bytter ruten for en omdirigering.
+ *
+ * Svaret er en `static_response` – det samme Caddyfile-direktivet `redir`
+ * kompileres til. Ingen upstream, ingen container: forespørselen besvares i
+ * proxyen.
+ *
+ * Ruten står **først** i `snoat_apps`. Et prosjekts eget domene dekker også
+ * `*.domenet`, og rutene evalueres i rekkefølge, så en omdirigering for
+ * `gammel.osia.no` ville ellers aldri blitt nådd bak `*.osia.no`. `PUT` mot
+ * indeks 0 setter inn foran uten å røre resten; apprutene legges til bakerst
+ * (`POST`), så rekkefølgen holder seg også når prosjekter deployes etterpå.
+ */
+export async function upsertRedirectRoute(
+  redirectId: string,
+  domains: readonly string[],
+  targetUrl: string,
+  statusCode: number,
+  preservePath: boolean,
+): Promise<void> {
+  const route: CaddyRoute = {
+    "@id": redirectRouteId(redirectId),
+    match: [{ host: redirectHosts(domains) }],
+    handle: [
+      {
+        handler: "static_response",
+        status_code: statusCode,
+        headers: { Location: [redirectLocation(targetUrl, preservePath)] },
+      },
+    ],
+    terminal: true,
+  };
+
+  try {
+    await request("PATCH", `/id/${redirectRouteId(redirectId)}`, route);
+    logger.info({ redirectId, domains, targetUrl, statusCode }, "Omdirigering byttet i Caddy");
+    return;
+  } catch (error) {
+    if (!isUnknownObject(error)) throw error;
+  }
+
+  try {
+    await request("PUT", `${APPS_ROUTES_PATH}/0`, route);
+  } catch (error) {
+    // Caddy godtar ikke indeks 0 i en tom liste («array index out of bounds»).
+    // Da finnes det ingen approute å stå foran, og en vanlig POST blir først.
+    if (!(error instanceof CaddyError && /index out of bounds/i.test(error.message))) throw error;
+    await request("POST", APPS_ROUTES_PATH, route);
+  }
+  logger.info({ redirectId, domains, targetUrl, statusCode }, "Omdirigering opprettet i Caddy");
+}
+
+/** Ruten for en omdirigering slik Caddy har den, eller `null`. */
+export async function getRedirectRoute(redirectId: string): Promise<CaddyRoute | null> {
+  try {
+    const response = await request("GET", `/id/${redirectRouteId(redirectId)}`);
+    return ((await response.json()) as CaddyRoute | null) ?? null;
+  } catch (error) {
+    if (isUnknownObject(error)) return null;
+    throw error;
+  }
+}
+
+/** Fjerner ruten for en omdirigering. No-op hvis den ikke finnes. */
+export async function removeRedirectRoute(redirectId: string): Promise<void> {
+  try {
+    await request("DELETE", `/id/${redirectRouteId(redirectId)}`);
+    logger.info({ redirectId }, "Omdirigering fjernet fra Caddy");
+  } catch (error) {
+    if (isUnknownObject(error)) return;
+    throw error;
+  }
+}
+
+/** ID-ene til omdirigeringene Caddy har ruter for. Brukes til opprydding. */
+export async function listRedirectRouteIds(): Promise<string[]> {
+  const response = await request("GET", APPS_ROUTES_PATH);
+  const routes = (await response.json()) as Array<{ "@id"?: string }> | null;
+
+  return (routes ?? [])
+    .map((route) => route["@id"])
+    .filter((id): id is string => typeof id === "string" && id.startsWith(REDIRECT_ROUTE_PREFIX))
+    .map((id) => id.slice(REDIRECT_ROUTE_PREFIX.length));
+}
+
+/**
+ * Sant når ruten svarer på vertsnavnet, med samme regel som Caddys host-matcher:
+ * `*.example.com` dekker nøyaktig én etikett foran.
+ */
+export function routeCoversHost(route: CaddyRoute | null, hostname: string): boolean {
+  const hosts = route?.match?.[0]?.host ?? [];
+  return hosts.some((host) => {
+    if (host === hostname) return true;
+    if (!host.startsWith("*.")) return false;
+    const suffix = host.slice(1);
+    if (!hostname.endsWith(suffix)) return false;
+    return !hostname.slice(0, -suffix.length).includes(".");
+  });
+}

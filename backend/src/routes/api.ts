@@ -5,6 +5,7 @@ import { generateApiKey } from "../lib/api-keys.js";
 import { listConnections, revokeClientTokens } from "../lib/oauth.js";
 import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware/auth.js";
 import { vpsApi } from "./vps.js";
+import { redirectsApi } from "./redirects.js";
 import { plattformApi } from "./plattform.js";
 import * as analytics from "../services/analytics.js";
 import { invalidateHostMap } from "../lib/host-map.js";
@@ -12,6 +13,7 @@ import * as deploy from "../services/deploy.js";
 import * as devSites from "../services/dev-sites.js";
 import { ensureProjectRoute, type RouteStatus } from "../services/deploy.js";
 import { checkDomain } from "../services/domain-status.js";
+import { domainClashesWithRedirect } from "../services/redirects.js";
 import * as errors from "../services/errors.js";
 import { assertSafeBranch, assertSafeRepoUrl } from "../services/git.js";
 import { entitlementFor, limitsFor } from "../services/plans.js";
@@ -38,6 +40,9 @@ api.route("/billing", billing);
 
 /** VPS-er på Proxmox. Kun eierkontoen – sjekken ligger i `routes/vps.ts`. */
 api.route("/vps", vpsApi);
+
+/** Domener som bare omdirigerer. Caddy svarer selv – se `services/redirects.ts`. */
+api.route("/redirects", redirectsApi);
 
 /** Snoat selv: bygg fra main og «deploy nå». Kun eierkontoen. */
 api.route("/plattform", plattformApi);
@@ -467,6 +472,21 @@ api.patch("/projects/:projectId/domain", async (c) => {
     
     if (count && count > 0) {
       throw new HTTPException(409, { message: "Domenet er allerede i bruk av et annet prosjekt" });
+    }
+
+    // En omdirigering står foran apprutene i Caddy. Var domenet allerede en
+    // omdirigering, ville prosjektet fått domenet i databasen uten at noen
+    // besøkende noen gang nådde appen.
+    let clash: string | null;
+    try {
+      clash = await domainClashesWithRedirect(project.user_id, normalized);
+    } catch (err) {
+      throw new HTTPException(500, { message: `Kunne ikke verifisere domene: ${(err as Error).message}` });
+    }
+    if (clash) {
+      throw new HTTPException(409, {
+        message: `«${clash}» omdirigeres allerede. Fjern omdirigeringen først.`,
+      });
     }
   }
 

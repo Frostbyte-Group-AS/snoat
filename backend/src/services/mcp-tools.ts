@@ -958,6 +958,127 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   /*
+   * ── OMDIRIGERINGER ────────────────────────────────────────────────────────
+   *
+   * Et domene som bare skal sende folk videre trenger ikke et prosjekt. Caddy
+   * svarer selv med 301 (eller 302/307/308), uten repo, bygg eller container.
+   */
+  {
+    name: "snoat_list_redirects",
+    title: "List omdirigeringer",
+    description:
+      "Henter omdirigeringene på kontoen: domenene, måladressen, statuskoden og om stien følger med. " +
+      "www.-varianten av hvert domene dekkes automatisk.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    async run(_args, ctx) {
+      const data = (await callOrThrow(ctx, "GET", "/redirects")) as { redirects: unknown[] };
+      return { summary: `Kontoen har ${data.redirects.length} omdirigeringer.`, data };
+    },
+  },
+
+  {
+    name: "snoat_set_redirect",
+    title: "Lag eller endre omdirigering",
+    description:
+      "Lager en omdirigering, eller endrer en eksisterende når redirectId er satt. Caddy svarer selv – det trengs " +
+      "ikke noe prosjekt. Domenene må peke mot Snoat i DNS (A-record til serverens IP) før sertifikatet kan " +
+      "utstedes; sjekk med snoat_get_redirect_status etterpå. Et domene kan ikke samtidig være eget domene for et prosjekt.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        redirectId: { type: "string", description: "Sett for å endre en eksisterende omdirigering." },
+        domains: {
+          type: "array",
+          items: { type: "string" },
+          description: "Domenene som skal omdirigeres, f.eks. [\"gammelt.no\", \"gammelt.com\"]. www. legges til automatisk.",
+        },
+        targetUrl: { type: "string", description: "Hvor den besøkende sendes, f.eks. «https://nytt.no/side»." },
+        statusCode: {
+          type: "number",
+          enum: [301, 302, 307, 308],
+          description: "301 (permanent, standard), 302 (midlertidig), 307 eller 308.",
+        },
+        preservePath: {
+          type: "boolean",
+          description: "Sant: gammelt.no/om-oss → <targetUrl>/om-oss. Usant (standard): alt går til targetUrl.",
+        },
+        name: { type: "string", description: "Visningsnavn. Standard: første domene." },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    async run(args, ctx) {
+      const { redirectId, ...input } = z
+        .object({
+          redirectId: z.string().min(1).optional(),
+          domains: z.array(z.string().min(1)).min(1).optional(),
+          targetUrl: z.string().min(1).optional(),
+          statusCode: z.number().int().optional(),
+          preservePath: z.boolean().optional(),
+          name: z.string().optional(),
+        })
+        .parse(args);
+
+      if (!redirectId && (!input.domains || !input.targetUrl)) {
+        throw new Error("En ny omdirigering trenger både «domains» og «targetUrl».");
+      }
+
+      const data = redirectId
+        ? await callOrThrow(ctx, "PATCH", `/redirects/${redirectId}`, input)
+        : await callOrThrow(ctx, "POST", "/redirects", input);
+
+      const redirect = (data as { redirect: { domains: string[]; target_url: string; status_code: number } }).redirect;
+      return {
+        summary:
+          `${redirect.domains.join(", ")} sender nå ${redirect.status_code} til ${redirect.target_url}. ` +
+          "Sjekk DNS og sertifikat med snoat_get_redirect_status.",
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_get_redirect_status",
+    title: "Sjekk omdirigering",
+    description:
+      "Sjekker hvert domene i en omdirigering: peker DNS hit, svarer Caddy med omdirigeringen, og er sertifikatet på plass.",
+    inputSchema: {
+      type: "object",
+      properties: { redirectId: { type: "string", description: "Omdirigeringens ID." } },
+      required: ["redirectId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    async run(args, ctx) {
+      const { redirectId } = z.object({ redirectId: z.string().min(1) }).parse(args);
+      const data = (await callOrThrow(ctx, "GET", `/redirects/${redirectId}/status`)) as { ready: boolean };
+      return {
+        summary: data.ready ? "Alle domenene svarer med omdirigeringen." : "Ett eller flere domener er ikke klare ennå.",
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_delete_redirect",
+    title: "Slett omdirigering",
+    description: "Sletter en omdirigering. Domenene slutter å svare med en gang. Spør brukeren først.",
+    inputSchema: {
+      type: "object",
+      properties: { redirectId: { type: "string", description: "Omdirigeringens ID." } },
+      required: ["redirectId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    async run(args, ctx) {
+      const { redirectId } = z.object({ redirectId: z.string().min(1) }).parse(args);
+      await callOrThrow(ctx, "DELETE", `/redirects/${redirectId}`);
+      return { summary: "Omdirigeringen er slettet." };
+    },
+  },
+
+  /*
    * ── DEV-GRENER ────────────────────────────────────────────────────────────
    *
    * En dev-side er en egen prosjektrad med `parent_project_id` satt: den arver

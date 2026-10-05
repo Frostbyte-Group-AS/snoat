@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { isApiKey, touchApiKey, verifyApiKey } from "../lib/api-keys.js";
 import { isOauthAccessToken, touchToken, verifyAccessToken } from "../lib/oauth.js";
 import { supabase } from "../lib/supabase.js";
-import type { Project } from "../types.js";
+import type { ApiKeyScope, Project } from "../types.js";
 
 export interface AuthVariables {
   userId: string;
@@ -37,6 +37,22 @@ export interface AuthVariables {
 }
 
 /**
+ * Stiene et område dekker. `/api/redirects` og alt under, ingenting annet – heller
+ * ikke `/api/api-keys`, så en avgrenset nøkkel kan ikke lage seg en full en.
+ *
+ * `/api` er valgfritt fordi MCP-verktøyene kaller API-appen direkte
+ * (`api.fetch()` i `routes/mcp.ts`), og da er stien `/redirects`. Utenfra når
+ * man bare API-appen gjennom `/api`, så det åpner ingen ny vei inn.
+ */
+const SCOPE_PATHS: Record<ApiKeyScope, RegExp> = {
+  redirects: /^(?:\/api)?\/redirects(?:\/|$)/,
+};
+
+export function scopeAllowsPath(scope: ApiKeyScope, path: string): boolean {
+  return SCOPE_PATHS[scope]?.test(path) ?? false;
+}
+
+/**
  * Verifiserer kalleren – enten en Supabase-sesjon eller en API-nøkkel.
  *
  * Dashboardet sender access-tokenet sitt som `Authorization: Bearer <jwt>`. Vi
@@ -66,6 +82,15 @@ export const requireAuth: MiddlewareHandler<{ Variables: AuthVariables }> = asyn
 
     if (!key) {
       throw new HTTPException(401, { message: "Ugyldig eller tilbaketrukket API-nøkkel" });
+    }
+
+    // En avgrenset nøkkel slipper bare inn på stiene til områdene sine. Sjekken
+    // står her og ikke i hver rute, slik at en ny rute aldri kan glemme den:
+    // alt som ikke eksplisitt hører til et område, er stengt.
+    if (key.scopes && !key.scopes.some((scope) => scopeAllowsPath(scope, c.req.path))) {
+      throw new HTTPException(403, {
+        message: `Denne API-nøkkelen gjelder bare for: ${key.scopes.join(", ")}.`,
+      });
     }
 
     touchApiKey(key.id);

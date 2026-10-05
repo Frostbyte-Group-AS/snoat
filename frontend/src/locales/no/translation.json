@@ -185,7 +185,9 @@
       "kind_app_hint": "Fra et GitHub-repo. Snoat bygger og publiserer automatisk.",
       "kind_vps": "VPS",
       "kind_vps_hint": "En egen Linux-server med SSH og Docker. Du velger CPU, RAM og disk.",
-      "choose_title": "Hva vil du lage?"
+      "choose_title": "Hva vil du lage?",
+      "kind_omdirigering": "Omdirigering",
+      "kind_omdirigering_hint": "Send et eller flere domener videre til en annen adresse. Ingen kode, ingen bygg."
     },
     "start": "Start",
     "stopped": "Stoppet"
@@ -728,6 +730,33 @@
       "preset_cpu_one": "{{count}} CPU-tråd",
       "preset_cpu_other": "{{count}} CPU-tråder",
       "add_keys": "Legg til"
+    }
+  },
+  "redirects": {
+    "new_title": "Ny omdirigering",
+    "edit_title": "Endre omdirigering",
+    "overview_title": "Omdirigeringer",
+    "status_ready": "Svarer",
+    "status_pending": "Venter",
+    "status_checking": "Sjekker",
+    "keeps_path": "(stien følger med)",
+    "edit": "Endre",
+    "delete": "Slett",
+    "delete_confirm": "Slette omdirigeringen? {{domains}} slutter å svare med en gang.",
+    "form": {
+      "desc": "Domenene sender besøkende rett videre til adressen du velger. Snoat svarer selv – det trengs ikke noe repo eller bygg.",
+      "domains": "Domener",
+      "domains_hint": "Ett per linje. www. tas med automatisk.",
+      "target": "Send til",
+      "status": "Type",
+      "status_301": "301 – permanent",
+      "status_302": "302 – midlertidig",
+      "preserve_path": "Ta med stien (gammelt.no/side → målet/side)",
+      "name": "Navn (valgfritt)",
+      "dns_hint": "Pek hvert domene hit hos domeneleverandøren:",
+      "create": "Opprett omdirigering",
+      "save": "Lagre",
+      "saving": "Lagrer…"
     }
   },
   "plattform": {

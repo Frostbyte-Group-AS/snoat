@@ -20,6 +20,7 @@ import { startAnalyticsIngest } from "./services/analytics-ingest.js";
 import { errorCollector, startErrorIngest } from "./services/error-ingest.js";
 import { startRuntimeErrorSweep } from "./services/error-runtime.js";
 import { failOrphanedDeployments, reconcileRoutes } from "./services/deploy.js";
+import { reconcileRedirects } from "./services/redirects.js";
 import { startHealthSweep } from "./services/helse.js";
 import { startSignupSweep } from "./services/signups.js";
 import { eierlisteAntall } from "./services/plans.js";
@@ -286,6 +287,14 @@ void (async () => {
     await reconcileRoutes();
   } catch (error) {
     logger.warn({ err: error }, "Kunne ikke synkronisere Caddy-ruter");
+  }
+
+  // Omdirigeringene lever også bare i Caddys minne. De settes inn foran
+  // apprutene uansett rekkefølge her, så det spiller ingen rolle at de kommer sist.
+  try {
+    await reconcileRedirects();
+  } catch (error) {
+    logger.warn({ err: error }, "Kunne ikke synkronisere omdirigeringer");
   }
 
   // Etter reconcile med vilje: sveipene leser hvilke containere som kjører, og

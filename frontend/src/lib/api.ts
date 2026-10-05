@@ -650,6 +650,61 @@ export function setVpsReservedRam(reservertMb: number): Promise<{ ram: VpsRamPoo
   return request("/api/vps/ram", { method: "PATCH", body: JSON.stringify({ reservertMb }) });
 }
 
+// --- Omdirigeringer -----------------------------------------------------------
+
+/**
+ * Et domene som bare omdirigerer. Caddy svarer selv – det finnes ikke noe
+ * prosjekt, bygg eller container bak. Se `backend/src/services/redirects.ts`.
+ */
+export interface Redirect {
+  id: string;
+  name: string;
+  target_url: string;
+  status_code: 301 | 302 | 307 | 308;
+  preserve_path: boolean;
+  external_ref: string | null;
+  /** Normaliserte domener. `www.`-varianten av hvert dekkes automatisk. */
+  domains: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RedirectInput {
+  name?: string | null;
+  targetUrl: string;
+  domains: string[];
+  statusCode?: Redirect["status_code"];
+  preservePath?: boolean;
+}
+
+export function listRedirects(): Promise<{ redirects: Redirect[] }> {
+  return request("/api/redirects");
+}
+
+export function createRedirect(
+  input: RedirectInput,
+): Promise<{ redirect: Redirect; created: boolean }> {
+  return request("/api/redirects", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateRedirect(
+  id: string,
+  input: Partial<RedirectInput>,
+): Promise<{ redirect: Redirect }> {
+  return request(`/api/redirects/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export function deleteRedirect(id: string): Promise<{ success: true }> {
+  return request(`/api/redirects/${id}`, { method: "DELETE" });
+}
+
+/** DNS, rute og sertifikat per domene – samme måling som DNS-fanen. */
+export function getRedirectStatus(
+  id: string,
+): Promise<{ redirectId: string; ready: boolean; domains: DomainStatus[] }> {
+  return request(`/api/redirects/${id}/status`);
+}
+
 // --- Snoat selv (kun eierkontoen) --------------------------------------------
 
 /** Ett bygg av plattformen, skrevet av selvoppdateringen på verten. */
