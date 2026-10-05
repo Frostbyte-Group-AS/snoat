@@ -34,7 +34,7 @@ export function VpsOverview({ enabled }: { enabled: boolean }) {
 function VpsCard({ vps }: { vps: Vps }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [kopiert, setKopiert] = useState(false);
+  const [kopi, setKopi] = useState<"klar" | "kopiert" | "feilet">("klar");
   const tall = new Intl.NumberFormat(i18n.language.startsWith("en") ? "en-GB" : "nb-NO", {
     maximumFractionDigits: 1,
   });
@@ -50,15 +50,17 @@ function VpsCard({ vps }: { vps: Vps }) {
         <div className="flex min-w-0 items-center gap-[10px]">
           <span
             aria-hidden="true"
-            className="flex h-6 w-6 shrink-0 items-center justify-center bg-ink font-mono text-[12px] font-bold leading-none text-paper"
+            className="flex h-6 w-6 shrink-0 items-center justify-center bg-ink font-body text-[13px] font-bold leading-none text-paper"
           >
-            &gt;_
+            {vps.name.slice(0, 1).toUpperCase()}
           </span>
           <h3 className="truncate font-body text-[20px] font-normal text-ink">{vps.name}</h3>
         </div>
         <span
-          className={`shrink-0 border-2 border-line px-[8px] py-[2px] font-body text-[12px] font-bold uppercase tracking-[0.08em] text-ink ${
-            kjorer ? "bg-sun" : "bg-ash"
+          // Samme språk som DeploymentStatusBadge: svart = kjører (som «Live»),
+          // grå = hviler.
+          className={`shrink-0 border-2 border-line px-[8px] py-[2px] font-body text-[12px] font-bold uppercase tracking-[0.08em] ${
+            kjorer ? "bg-ink text-paper" : "bg-ash text-ink"
           }`}
         >
           {kjorer ? t("vps.status_running") : t("vps.status_stopped")}
@@ -79,16 +81,27 @@ function VpsCard({ vps }: { vps: Vps }) {
           title={t("vps.form.copy")}
           onClick={(event) => {
             event.stopPropagation();
-            void navigator.clipboard?.writeText(vps.ssh?.command ?? "").then(() => {
-              setKopiert(true);
-              setTimeout(() => setKopiert(false), 1500);
-            });
+            if (!navigator.clipboard) {
+              setKopi("feilet");
+              return;
+            }
+            navigator.clipboard.writeText(vps.ssh?.command ?? "").then(
+              () => {
+                setKopi("kopiert");
+                setTimeout(() => setKopi("klar"), 1500);
+              },
+              () => setKopi("feilet"),
+            );
           }}
           className="mt-auto flex items-center justify-between gap-3 text-left"
         >
           <code className="min-w-0 truncate font-mono text-[13px] text-ink">{vps.ssh.command}</code>
           <span className="shrink-0 font-body text-[13px] text-ink/70">
-            {kopiert ? t("vps.form.copied") : t("vps.form.copy")}
+            {kopi === "kopiert"
+              ? t("vps.form.copied")
+              : kopi === "feilet"
+                ? t("vps.wizard.copy_failed")
+                : t("vps.form.copy")}
           </span>
         </button>
       ) : (
