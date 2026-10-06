@@ -183,6 +183,7 @@ function dbError(message: string, error: { message: string }): never {
  * Sjekker at ingen andre eier domenene.
  *
  * - En annen omdirigering (også kontoens egne) kan ikke ha samme domene.
+ * - Et VPS-domene (`services/vps-domener.ts`) kan ikke ha samme domene.
  * - Et prosjekt kan ikke ha domenet, eller `www.`-varianten, som eget domene.
  * - Et prosjekt på en **annen** konto kan ikke ha foreldredomenet: et eget domene
  *   dekker `*.domenet`, og en omdirigering står foran apprutene i Caddy. Uten
@@ -199,6 +200,23 @@ async function assertDomainsFree(userId: string, domains: string[], redirectId: 
   const clash = (taken ?? []).find((row) => row.redirect_id !== redirectId);
   if (clash) {
     throw new RedirectError(409, "redirect.domain_taken", `«${clash.domain}» omdirigeres allerede et annet sted.`);
+  }
+
+  // Et VPS-domene står også først i Caddy. Med begge på samme navn ville
+  // rekkefølgen mellom de to rutene avgjort hvem som svarte.
+  const { data: vpsTaken, error: vpsError } = await supabase
+    .from("vps_domains")
+    .select("domain")
+    .in("domain", domains)
+    .limit(1);
+  if (vpsError) dbError("Kunne ikke sjekke domenene", vpsError);
+  const vpsClash = vpsTaken?.[0] as { domain: string } | undefined;
+  if (vpsClash) {
+    throw new RedirectError(
+      409,
+      "redirect.domain_is_vps",
+      `«${vpsClash.domain}» er koblet til en VPS. Fjern det der først.`,
+    );
   }
 
   const candidates = domains.flatMap((domain) => [domain, `www.${domain}`]);

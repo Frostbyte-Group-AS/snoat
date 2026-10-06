@@ -1,8 +1,11 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
+import { logger } from "../lib/logger.js";
 import type { AuthVariables } from "../middleware/auth.js";
+import { checkVpsDomain } from "../services/domain-status.js";
 import { erEierkonto } from "../services/plans.js";
+import * as vpsDomener from "../services/vps-domener.js";
 import * as vps from "../services/vps.js";
 import type { ErrorDetail } from "../types.js";
 
@@ -74,8 +77,23 @@ const endreSchema = z.object({
 
 vpsApi.get("/", async (c) => {
   try {
-    const [liste, ram] = await Promise.all([vps.listVps(), vps.getRamPool()]);
-    return c.json({ vps: liste, ram, templates: Object.keys(vps.VPS_TEMPLATES) });
+    // Domenene er pynt på lista, ikke en forutsetning: feiler oppslaget (f.eks.
+    // før migrasjon 0019 er kjørt), vises VPS-ene uten dem.
+    const [liste, ram, domener] = await Promise.all([
+      vps.listVps(),
+      vps.getRamPool(),
+      vpsDomener.listVpsDomener(c.get("userId")).catch((error: unknown) => {
+        logger.warn({ err: error }, "Kunne ikke hente VPS-domenene til lista");
+        return [];
+      }),
+    ]);
+    const medDomener = liste.map((v) => ({
+      ...v,
+      domener: domener
+        .filter((d) => d.vmid === v.vmid)
+        .map((d) => ({ domain: d.domain, port: d.port, url: d.url })),
+    }));
+    return c.json({ vps: medDomener, ram, templates: Object.keys(vps.VPS_TEMPLATES) });
   } catch (error) {
     oversett(error);
   }
@@ -145,8 +163,81 @@ vpsApi.post("/:vmid/:handling{start|shutdown|stop|reboot}", async (c) => {
 vpsApi.delete("/:vmid", async (c) => {
   try {
     const { confirmName } = z.object({ confirmName: z.string().min(1) }).parse(await c.req.json().catch(() => ({})));
-    await vps.slettVps(vmidParam(c.req.param("vmid")), confirmName);
+    const vmid = vmidParam(c.req.param("vmid"));
+    await vps.slettVps(vmid, confirmName);
+    // IP-en kan gå til en ny VPS senere. Et domene som sto igjen ville da pekt dit.
+    const domenerFjernet = await vpsDomener.fjernDomenerForVmid(vmid);
+    return c.json({ deleted: true, domenerFjernet });
+  } catch (error) {
+    oversett(error);
+  }
+});
+
+// --- Domener: https://<domene> → <vps-ip>:<port> ----------------------------
+//
+// Tvillingen til `/api/redirects` (se `services/vps-domener.ts`). `POST` lager
+// eller endrer – domenet er unikt på tvers av alle kontoer, så samme kall to
+// ganger gir samme rad. Sletting og status har domenet i stien.
+
+/** Hono har allerede dekodet stien, så `von.osia.no` kommer som det er. */
+const domeneParam = (raw: string) => {
+  const domene = raw.trim();
+  if (domene === "" || domene.length > 253) {
+    throw new HTTPException(400, { message: "Ugyldig domene", cause: { code: "vps.invalid_domain" } satisfies ErrorDetail });
+  }
+  return domene;
+};
+
+const domeneSchema = z.object({
+  domain: z.string().min(1).max(253),
+  port: z.number().int().min(1).max(65535),
+});
+
+vpsApi.get("/:vmid/domener", async (c) => {
+  try {
+    const vmid = vmidParam(c.req.param("vmid"));
+    return c.json({ domener: await vpsDomener.listVpsDomener(c.get("userId"), vmid) });
+  } catch (error) {
+    oversett(error);
+  }
+});
+
+vpsApi.post("/:vmid/domener", async (c) => {
+  try {
+    const { domain, port } = domeneSchema.parse(await c.req.json().catch(() => ({})));
+    const result = await vpsDomener.settVpsDomene(c.get("userId"), vmidParam(c.req.param("vmid")), domain, port);
+    return c.json(result, result.opprettet ? 201 : 200);
+  } catch (error) {
+    oversett(error);
+  }
+});
+
+vpsApi.delete("/:vmid/domener/:domene", async (c) => {
+  try {
+    await vpsDomener.fjernVpsDomene(
+      c.get("userId"),
+      vmidParam(c.req.param("vmid")),
+      domeneParam(c.req.param("domene")),
+    );
     return c.json({ deleted: true });
+  } catch (error) {
+    oversett(error);
+  }
+});
+
+/**
+ * DNS, rute, sertifikat og om VPS-en svarer på porten. Samme måling som for en
+ * omdirigering (`services/domain-status.ts`), pluss upstream-sjekken.
+ */
+vpsApi.get("/:vmid/domener/:domene/status", async (c) => {
+  try {
+    const domene = await vpsDomener.getVpsDomene(
+      c.get("userId"),
+      vmidParam(c.req.param("vmid")),
+      domeneParam(c.req.param("domene")),
+    );
+    const upstream = domene.ip ? vpsDomener.upstreamFor(domene.ip, domene.port) : null;
+    return c.json({ vmid: domene.vmid, ...(await checkVpsDomain(domene.id, domene.domain, upstream)) });
   } catch (error) {
     oversett(error);
   }

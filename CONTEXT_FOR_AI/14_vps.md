@@ -94,6 +94,10 @@ Reservasjonen må dekke Snoat-VM-en (48 GB) pluss Proxmox og kjernen (noen GB).
 | `DELETE /:vmid` `{confirmName}` | `snoat_vps_delete` (krever også `confirmPermanentDeletion`) |
 | `GET /ram`, `PATCH /ram {reservertMb}` | `snoat_vps_get_ram_pool`, `snoat_vps_set_ram_pool` |
 | `GET /ressurser` → CPU, RAM-pool, disk og grenser for en ny VPS | `snoat_vps_resources` |
+| `GET /:vmid/domener` | – (domenene står også på hver VPS i `GET /`) |
+| `POST /:vmid/domener` `{domain, port}` | `snoat_vps_set_domain` |
+| `GET /:vmid/domener/:domene/status` | `snoat_vps_get_domain_status` |
+| `DELETE /:vmid/domener/:domene` | `snoat_vps_remove_domain` |
 
 **Grenser som håndheves i `createVps`** (menyen viser dem, men backend er
 kontrollen – MCP går rett hit):
@@ -111,10 +115,35 @@ Maler: `debian-12`, `debian-13`, `ubuntu-24.04`. Må være lastet ned på verten
 (`pveam download local <mal>`). Nøklene i `SNOAT_VPS_DEFAULT_SSH_KEYS_B64` legges
 alltid inn, og det finnes ikke noe root-passord.
 
+## Domene inn til en VPS (`vps_domains`, migrasjon 0019)
+
+Før gikk bare SSH inn. Nå kan eieren koble et domene til en port i en VPS:
+`https://von.osia.no` → `10.10.10.100:8000`. Første bruk: Von, klassifiserings-
+modellen OSIA kaller fra Rørleggern.
+
+- **Tvillingen til omdirigeringene.** Samme normalisering av domenet
+  (`assertValidDomain`), samme kollisjonssjekker (et domene kan ikke samtidig
+  være en omdirigering, et prosjekts eget domene, eller under et fremmed
+  prosjekts eget domene) og samme plass **først** i `snoat_apps`
+  (`upsertFrontRoute` i `lib/caddy.ts`). Det siste er nødvendig: `osia.no` er
+  eget domene for prosjektet `osia` og dekker `*.osia.no`, så `von.osia.no` ville
+  ellers aldri nådd VPS-en.
+- **Ruten** (`vpsRoute`) er en vanlig `reverse_proxy` til `<ip>:<port>`, med
+  `www.` i tillegg. Caddy setter `X-Forwarded-*` selv. Ingen feilsporing: en VPS
+  har ingen prosjektrad.
+- **TLS:** `routes/tls.ts` svarer ja for et registrert VPS-domene.
+- **IP-en** hentes fra Proxmox når domenet lagres og ved hver oppstart
+  (`reconcileVpsDomener`). `vps_domains.ip` er bare sist kjente verdi, brukt hvis
+  Proxmox ikke svarer da. Finnes ikke VPS-en lenger i Proxmox, legges ruten ikke
+  inn: IP-en kan ha gått til en annen VPS. Sletting av en VPS fjerner domenene.
+- **Status** (`checkVpsDomain`) måler DNS, rute og sertifikat som for en
+  omdirigering, pluss en TCP-sjekk mot `<ip>:<port>`. Tjenesten i VPS-en må lytte
+  på `0.0.0.0`, ikke bare `127.0.0.1`.
+- **DNS** hos kunden: CNAME til `edge.snoat.com`, eller A-record til IP-en den
+  svarer med.
+
 ## Gjenstår
 
-- HTTP inn til en VPS: i dag bare SSH. Det naturlige neste steget er en
-  Caddy-rute `<vps>.snoat.com` → `10.10.10.x:<port>` (Snoat-VM-en når VPS-nettet
-  direkte).
+- Domenene vises i API-et (`GET /api/vps`), men ikke i dashboardet ennå.
 - KVM-VPS-er ligger utenfor `lxc`-cgroupen og dermed utenfor gruppetaket. Kommer
   de, må reservasjonen regnes med dem eller de må få ballong-min/maks.
