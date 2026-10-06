@@ -708,11 +708,7 @@ export function redirectLocation(targetUrl: string, preservePath: boolean): stri
  * kompileres til. Ingen upstream, ingen container: forespørselen besvares i
  * proxyen.
  *
- * Ruten står **først** i `snoat_apps`. Et prosjekts eget domene dekker også
- * `*.domenet`, og rutene evalueres i rekkefølge, så en omdirigering for
- * `gammel.osia.no` ville ellers aldri blitt nådd bak `*.osia.no`. `PUT` mot
- * indeks 0 setter inn foran uten å røre resten; apprutene legges til bakerst
- * (`POST`), så rekkefølgen holder seg også når prosjekter deployes etterpå.
+ * Ruten står **først** i `snoat_apps` (se `upsertFrontRoute`).
  */
 export async function upsertRedirectRoute(
   redirectId: string,
@@ -734,10 +730,106 @@ export async function upsertRedirectRoute(
     terminal: true,
   };
 
+  const result = await upsertFrontRoute(route);
+  logger.info(
+    { redirectId, domains, targetUrl, statusCode },
+    result === "byttet" ? "Omdirigering byttet i Caddy" : "Omdirigering opprettet i Caddy",
+  );
+}
+
+/** Ruten for en omdirigering slik Caddy har den, eller `null`. */
+export async function getRedirectRoute(redirectId: string): Promise<CaddyRoute | null> {
+  return await getRouteById(redirectRouteId(redirectId));
+}
+
+/** Fjerner ruten for en omdirigering. No-op hvis den ikke finnes. */
+export async function removeRedirectRoute(redirectId: string): Promise<void> {
+  if (await removeRouteById(redirectRouteId(redirectId))) {
+    logger.info({ redirectId }, "Omdirigering fjernet fra Caddy");
+  }
+}
+
+/** ID-ene til omdirigeringene Caddy har ruter for. Brukes til opprydding. */
+export async function listRedirectRouteIds(): Promise<string[]> {
+  return await listRouteIdsWithPrefix(REDIRECT_ROUTE_PREFIX);
+}
+
+// --- VPS-domener ------------------------------------------------------------
+
+const VPS_ROUTE_PREFIX = "snoat_vps_";
+const vpsRouteId = (vpsDomainId: string) => `${VPS_ROUTE_PREFIX}${vpsDomainId}`;
+
+/**
+ * Ruten for et VPS-domene: `<domene>` og `www.<domene>` → `<ip>:<port>` på
+ * VPS-nettet.
+ *
+ * En vanlig `reverse_proxy`, som apprutene. Caddy setter selv `X-Forwarded-For`,
+ * `X-Forwarded-Proto` og `X-Forwarded-Host`, og sender `Host` uendret – det er
+ * det appene får også, så tjenesten i VPS-en ser det samme som en app ville sett.
+ * Websockets går gjennom uten noe ekstra.
+ *
+ * Feilsporingen (`injectHandlers`) er med vilje *ikke* med: en VPS er ikke et
+ * prosjekt, og det finnes ingen prosjektrad å knytte feilene til.
+ *
+ * Eksportert og ren slik at testene kan se nøyaktig hva Caddy får.
+ */
+export function vpsRoute(vpsDomainId: string, domain: string, upstream: string): CaddyRoute {
+  return {
+    "@id": vpsRouteId(vpsDomainId),
+    match: [{ host: redirectHosts([domain]) }],
+    handle: [{ handler: "reverse_proxy", upstreams: [{ dial: upstream }] }],
+    terminal: true,
+  };
+}
+
+/**
+ * Legger inn eller bytter ruten for et VPS-domene. Står først i `snoat_apps`,
+ * av samme grunn som omdirigeringene: `von.osia.no` ville ellers aldri nådd
+ * VPS-en bak prosjektruten for `*.osia.no`.
+ */
+export async function upsertVpsRoute(vpsDomainId: string, domain: string, upstream: string): Promise<void> {
+  const result = await upsertFrontRoute(vpsRoute(vpsDomainId, domain, upstream));
+  logger.info(
+    { vpsDomainId, domain, upstream },
+    result === "byttet" ? "VPS-domene byttet i Caddy" : "VPS-domene opprettet i Caddy",
+  );
+}
+
+/** Ruten for et VPS-domene slik Caddy har den, eller `null`. */
+export async function getVpsRoute(vpsDomainId: string): Promise<CaddyRoute | null> {
+  return await getRouteById(vpsRouteId(vpsDomainId));
+}
+
+/** Fjerner ruten for et VPS-domene. No-op hvis den ikke finnes. */
+export async function removeVpsRoute(vpsDomainId: string): Promise<void> {
+  if (await removeRouteById(vpsRouteId(vpsDomainId))) {
+    logger.info({ vpsDomainId }, "VPS-domene fjernet fra Caddy");
+  }
+}
+
+/** ID-ene til VPS-domenene Caddy har ruter for. Brukes til opprydding. */
+export async function listVpsRouteIds(): Promise<string[]> {
+  return await listRouteIdsWithPrefix(VPS_ROUTE_PREFIX);
+}
+
+// --- Felles for rutene som står først ---------------------------------------
+
+/**
+ * Legger inn eller bytter en rute som skal stå **først** i `snoat_apps`.
+ *
+ * Et prosjekts eget domene dekker også `*.domenet`, og rutene evalueres i
+ * rekkefølge, så en omdirigering eller et VPS-domene for `noe.osia.no` ville
+ * ellers aldri blitt nådd bak `*.osia.no`. `PUT` mot indeks 0 setter inn foran
+ * uten å røre resten; apprutene legges til bakerst (`POST`), så rekkefølgen
+ * holder seg også når prosjekter deployes etterpå.
+ *
+ * Finnes ruten fra før, byttes den atomisk med `PATCH` mot `@id`-en og blir
+ * stående der den står.
+ */
+async function upsertFrontRoute(route: CaddyRoute): Promise<"byttet" | "opprettet"> {
   try {
-    await request("PATCH", `/id/${redirectRouteId(redirectId)}`, route);
-    logger.info({ redirectId, domains, targetUrl, statusCode }, "Omdirigering byttet i Caddy");
-    return;
+    await request("PATCH", `/id/${route["@id"]}`, route);
+    return "byttet";
   } catch (error) {
     if (!isUnknownObject(error)) throw error;
   }
@@ -750,13 +842,12 @@ export async function upsertRedirectRoute(
     if (!(error instanceof CaddyError && /index out of bounds/i.test(error.message))) throw error;
     await request("POST", APPS_ROUTES_PATH, route);
   }
-  logger.info({ redirectId, domains, targetUrl, statusCode }, "Omdirigering opprettet i Caddy");
+  return "opprettet";
 }
 
-/** Ruten for en omdirigering slik Caddy har den, eller `null`. */
-export async function getRedirectRoute(redirectId: string): Promise<CaddyRoute | null> {
+async function getRouteById(id: string): Promise<CaddyRoute | null> {
   try {
-    const response = await request("GET", `/id/${redirectRouteId(redirectId)}`);
+    const response = await request("GET", `/id/${id}`);
     return ((await response.json()) as CaddyRoute | null) ?? null;
   } catch (error) {
     if (isUnknownObject(error)) return null;
@@ -764,26 +855,25 @@ export async function getRedirectRoute(redirectId: string): Promise<CaddyRoute |
   }
 }
 
-/** Fjerner ruten for en omdirigering. No-op hvis den ikke finnes. */
-export async function removeRedirectRoute(redirectId: string): Promise<void> {
+/** Sant når ruten fantes og ble fjernet. */
+async function removeRouteById(id: string): Promise<boolean> {
   try {
-    await request("DELETE", `/id/${redirectRouteId(redirectId)}`);
-    logger.info({ redirectId }, "Omdirigering fjernet fra Caddy");
+    await request("DELETE", `/id/${id}`);
+    return true;
   } catch (error) {
-    if (isUnknownObject(error)) return;
+    if (isUnknownObject(error)) return false;
     throw error;
   }
 }
 
-/** ID-ene til omdirigeringene Caddy har ruter for. Brukes til opprydding. */
-export async function listRedirectRouteIds(): Promise<string[]> {
+async function listRouteIdsWithPrefix(prefix: string): Promise<string[]> {
   const response = await request("GET", APPS_ROUTES_PATH);
   const routes = (await response.json()) as Array<{ "@id"?: string }> | null;
 
   return (routes ?? [])
     .map((route) => route["@id"])
-    .filter((id): id is string => typeof id === "string" && id.startsWith(REDIRECT_ROUTE_PREFIX))
-    .map((id) => id.slice(REDIRECT_ROUTE_PREFIX.length));
+    .filter((id): id is string => typeof id === "string" && id.startsWith(prefix))
+    .map((id) => id.slice(prefix.length));
 }
 
 /**

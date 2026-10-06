@@ -173,6 +173,24 @@ export interface RedirectWithDomains extends Redirect {
 }
 
 /**
+ * Et domene Caddy sender videre til en port på en VPS (migrasjon 0019).
+ *
+ * Tvillingen til `Redirect`, men med en upstream i stedet for en `Location`.
+ */
+export interface VpsDomain {
+  id: string;
+  user_id: string;
+  /** Normalisert, uten `www.`. `www.`-varianten dekkes automatisk av ruten. */
+  domain: string;
+  vmid: number;
+  port: number;
+  /** Sist kjente IP fra Proxmox. Oppdateres ved oppstart; ikke fasit. */
+  ip: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
  * En MCP-klient som har registrert seg via `POST /oauth/register`.
  * Speiler `public.oauth_clients` (migrasjon 0011).
  *

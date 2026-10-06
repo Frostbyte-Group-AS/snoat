@@ -1393,6 +1393,92 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   {
+    name: "snoat_vps_set_domain",
+    title: "Koble domene til VPS",
+    description:
+      "Kobler et domene til en port på en VPS: https://<domain> → <vps-ip>:<port>, med sertifikat fra Let's Encrypt. " +
+      "Caddy på Snoat sender trafikken videre over VPS-nettet, så det trengs ingen ny port på verten. Domenet må peke mot " +
+      "Snoat i DNS (CNAME til edge.snoat.com, eller A-record til IP-en den svarer med) før sertifikatet kan utstedes – " +
+      "sjekk med snoat_vps_get_domain_status etterpå. Tjenesten i VPS-en må lytte på 0.0.0.0, ikke bare 127.0.0.1. " +
+      "Er domenet allerede koblet til en VPS på kontoen, flyttes det hit. www. dekkes automatisk.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        vmid: { type: "integer", description: "VPS-ens ID fra snoat_vps_list." },
+        domain: { type: "string", description: "Domenet, f.eks. «api.mittdomene.no»." },
+        port: { type: "integer", minimum: 1, maximum: 65535, description: "Porten tjenesten lytter på inne i VPS-en, f.eks. 8000." },
+      },
+      required: ["vmid", "domain", "port"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, idempotentHint: true },
+    ownerOnly: true,
+    async run(args, ctx) {
+      const { vmid, domain, port } = z
+        .object({ vmid: z.number().int().positive(), domain: z.string().min(1), port: z.number().int().min(1).max(65535) })
+        .parse(args);
+      const data = (await callOrThrow(ctx, "POST", `/vps/${vmid}/domener`, { domain, port })) as {
+        domene: { domain: string; url: string; ip: string | null; port: number };
+        opprettet: boolean;
+      };
+      const d = data.domene;
+      return {
+        summary: `${d.url} sendes nå videre til ${d.ip ?? "VPS-en"}:${d.port}${data.opprettet ? "" : " (endret)"}. Sjekk DNS og sertifikat med snoat_vps_get_domain_status.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_vps_get_domain_status",
+    title: "Sjekk VPS-domene",
+    description:
+      "Sjekker et domene koblet til en VPS: peker DNS hit, finnes ruten i Caddy, er sertifikatet på plass, og svarer " +
+      "tjenesten i VPS-en på porten.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        vmid: { type: "integer", description: "VPS-ens ID fra snoat_vps_list." },
+        domain: { type: "string", description: "Domenet slik det ble koblet til." },
+      },
+      required: ["vmid", "domain"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    ownerOnly: true,
+    async run(args, ctx) {
+      const { vmid, domain } = z.object({ vmid: z.number().int().positive(), domain: z.string().min(1) }).parse(args);
+      const data = (await callOrThrow(ctx, "GET", `/vps/${vmid}/domener/${encodeURIComponent(domain)}/status`)) as { ready: boolean };
+      return {
+        summary: data.ready ? `${domain} er klart: DNS, rute, sertifikat og tjenesten i VPS-en svarer.` : `${domain} er ikke klart ennå. Se hvilket punkt som feiler.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_vps_remove_domain",
+    title: "Fjern domene fra VPS",
+    description: "Fjerner et domene fra en VPS. Domenet slutter å svare med en gang. Spør brukeren først.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        vmid: { type: "integer", description: "VPS-ens ID fra snoat_vps_list." },
+        domain: { type: "string", description: "Domenet som skal fjernes." },
+      },
+      required: ["vmid", "domain"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    ownerOnly: true,
+    async run(args, ctx) {
+      const { vmid, domain } = z.object({ vmid: z.number().int().positive(), domain: z.string().min(1) }).parse(args);
+      await callOrThrow(ctx, "DELETE", `/vps/${vmid}/domener/${encodeURIComponent(domain)}`);
+      return { summary: `${domain} er fjernet fra VPS ${vmid}.` };
+    },
+  },
+
+  {
     name: "snoat_vps_delete",
     title: "Slett VPS",
     description:

@@ -21,6 +21,7 @@ import { errorCollector, startErrorIngest } from "./services/error-ingest.js";
 import { startRuntimeErrorSweep } from "./services/error-runtime.js";
 import { failOrphanedDeployments, reconcileRoutes } from "./services/deploy.js";
 import { reconcileRedirects } from "./services/redirects.js";
+import { reconcileVpsDomener } from "./services/vps-domener.js";
 import { startHealthSweep } from "./services/helse.js";
 import { startSignupSweep } from "./services/signups.js";
 import { eierlisteAntall } from "./services/plans.js";
@@ -295,6 +296,14 @@ void (async () => {
     await reconcileRedirects();
   } catch (error) {
     logger.warn({ err: error }, "Kunne ikke synkronisere omdirigeringer");
+  }
+
+  // VPS-domenene likeså – samme plassering først i `snoat_apps`. IP-ene hentes
+  // fra Proxmox; svarer den ikke, brukes sist kjente IP fra databasen.
+  try {
+    await reconcileVpsDomener();
+  } catch (error) {
+    logger.warn({ err: error }, "Kunne ikke synkronisere VPS-domener");
   }
 
   // Etter reconcile med vilje: sveipene leser hvilke containere som kjører, og

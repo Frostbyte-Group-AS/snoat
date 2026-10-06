@@ -3,6 +3,7 @@ import { devAliasParts, parentDomain, slugFromHostname } from "../lib/caddy.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
 import { redirectForHostname } from "../services/redirects.js";
+import { vpsDomeneForHostname } from "../services/vps-domener.js";
 
 /**
  * Caddys tillatelsessjekk for on-demand TLS.
@@ -91,6 +92,19 @@ tlsPermission.get("/tls-ask", async (c) => {
       }
     } catch (err) {
       logger.error({ domain, err }, "TLS-oppslag for omdirigering feilet");
+      return c.text("oppslag feilet", 503);
+    }
+
+    // Et VPS-domene har heller ingen prosjektrad. Uten dette fikk det aldri
+    // sertifikat, og https://<domene> brøt handshaken selv om ruten sto i Caddy.
+    try {
+      const vpsDomain = await vpsDomeneForHostname(domain);
+      if (vpsDomain) {
+        logger.info({ domain, vpsDomainId: vpsDomain.id }, "TLS innvilget for VPS-domene");
+        return c.text("ok", 200);
+      }
+    } catch (err) {
+      logger.error({ domain, err }, "TLS-oppslag for VPS-domene feilet");
       return c.text("oppslag feilet", 503);
     }
   }

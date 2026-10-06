@@ -14,6 +14,7 @@ import * as devSites from "../services/dev-sites.js";
 import { ensureProjectRoute, type RouteStatus } from "../services/deploy.js";
 import { checkDomain, edgeHost, edgeIps } from "../services/domain-status.js";
 import { domainClashesWithRedirect } from "../services/redirects.js";
+import { domainClashesWithVps } from "../services/vps-domener.js";
 import * as errors from "../services/errors.js";
 import { assertSafeBranch, assertSafeRepoUrl } from "../services/git.js";
 import { entitlementFor, limitsFor } from "../services/plans.js";
@@ -486,6 +487,19 @@ api.patch("/projects/:projectId/domain", async (c) => {
     if (clash) {
       throw new HTTPException(409, {
         message: `«${clash}» omdirigeres allerede. Fjern omdirigeringen først.`,
+      });
+    }
+
+    // Samme regel for et VPS-domene, som også står foran apprutene.
+    let vpsClash: string | null;
+    try {
+      vpsClash = await domainClashesWithVps(project.user_id, normalized);
+    } catch (err) {
+      throw new HTTPException(500, { message: `Kunne ikke verifisere domene: ${(err as Error).message}` });
+    }
+    if (vpsClash) {
+      throw new HTTPException(409, {
+        message: `«${vpsClash}» er koblet til en VPS. Fjern det der først.`,
       });
     }
   }

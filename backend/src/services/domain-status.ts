@@ -1,4 +1,5 @@
 import { Resolver } from "node:dns/promises";
+import { connect as netConnect } from "node:net";
 import { connect as tlsConnect } from "node:tls";
 import { config } from "../config.js";
 import * as caddy from "../lib/caddy.js";
@@ -151,6 +152,57 @@ export async function checkRedirectDomain(redirectId: string, domain: string): P
   return await measure(domain, routed, {
     ok: "Caddy svarer med omdirigeringen på dette vertsnavnet.",
     missing: "Ingen rute for vertsnavnet. Lagre omdirigeringen på nytt for å opprette den.",
+  });
+}
+
+/**
+ * Samme måling for et VPS-domene, pluss det fjerde som kan feile her: at
+ * tjenesten inne i VPS-en faktisk lytter på porten.
+ *
+ * Uten det siste punktet ville alt vært grønt mens den besøkende fikk 502 fra
+ * Caddy – ruten finnes, men det er ingen i andre enden.
+ */
+export async function checkVpsDomain(
+  vpsDomainId: string,
+  domain: string,
+  upstream: string | null,
+): Promise<DomainStatus & { upstream: DomainCheck & { target: string | null } }> {
+  const routed = caddy.getVpsRoute(vpsDomainId).then((route) => caddy.routeCoversHost(route, domain));
+  const [status, reachable] = await Promise.all([
+    measure(domain, routed, {
+      ok: "Caddy sender dette vertsnavnet videre til VPS-en.",
+      missing: "Ingen rute for vertsnavnet. Lagre domenet på nytt for å opprette den.",
+    }),
+    upstream ? probeTcp(upstream) : Promise.resolve(false),
+  ]);
+
+  const check: DomainCheck = reachable
+    ? { state: "ok", detail: `VPS-en svarer på ${upstream}.` }
+    : {
+        state: "failed",
+        detail: upstream
+          ? `Ingenting svarer på ${upstream}. Kjører tjenesten, og lytter den på 0.0.0.0 og ikke bare 127.0.0.1?`
+          : "VPS-en har ingen kjent IP-adresse.",
+      };
+
+  return { ...status, ready: status.ready && reachable, upstream: { ...check, target: upstream } };
+}
+
+/** Åpner en TCP-forbindelse til `<ip>:<port>` og lukker den med en gang. */
+function probeTcp(target: string): Promise<boolean> {
+  const separator = target.lastIndexOf(":");
+  const host = target.slice(0, separator);
+  const port = Number(target.slice(separator + 1));
+
+  return new Promise((resolve) => {
+    const socket = netConnect({ host, port, timeout: TLS_TIMEOUT_MS });
+    const finish = (result: boolean) => {
+      socket.destroy();
+      resolve(result);
+    };
+    socket.once("connect", () => finish(true));
+    socket.once("timeout", () => finish(false));
+    socket.once("error", () => finish(false));
   });
 }
 
