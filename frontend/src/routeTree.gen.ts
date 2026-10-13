@@ -24,6 +24,7 @@ import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projec
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsBillingRouteImport } from './routes/settings.billing'
 import { Route as SettingsMcpRouteImport } from './routes/settings.mcp'
+import { Route as SettingsSudoRouteImport } from './routes/settings.sudo'
 import { Route as SettingsVpsRouteImport } from './routes/settings.vps'
 
 const IndexRoute = IndexRouteImport.update({
@@ -101,6 +102,11 @@ const SettingsMcpRoute = SettingsMcpRouteImport.update({
   path: '/mcp',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsSudoRoute = SettingsSudoRouteImport.update({
+  id: '/sudo',
+  path: '/sudo',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsVpsRoute = SettingsVpsRouteImport.update({
   id: '/vps',
   path: '/vps',
@@ -121,6 +127,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
   '/settings/mcp': typeof SettingsMcpRoute
+  '/settings/sudo': typeof SettingsSudoRoute
   '/settings/vps': typeof SettingsVpsRoute
   '/articles/': typeof ArticlesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
   '/settings/mcp': typeof SettingsMcpRoute
+  '/settings/sudo': typeof SettingsSudoRoute
   '/settings/vps': typeof SettingsVpsRoute
   '/articles': typeof ArticlesIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -157,6 +165,7 @@ export interface FileRoutesById {
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
   '/settings/mcp': typeof SettingsMcpRoute
+  '/settings/sudo': typeof SettingsSudoRoute
   '/settings/vps': typeof SettingsVpsRoute
   '/articles/': typeof ArticlesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -177,6 +186,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/settings/billing'
     | '/settings/mcp'
+    | '/settings/sudo'
     | '/settings/vps'
     | '/articles/'
     | '/settings/'
@@ -194,6 +204,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/settings/billing'
     | '/settings/mcp'
+    | '/settings/sudo'
     | '/settings/vps'
     | '/articles'
     | '/settings'
@@ -212,6 +223,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/settings/billing'
     | '/settings/mcp'
+    | '/settings/sudo'
     | '/settings/vps'
     | '/articles/'
     | '/settings/'
@@ -339,6 +351,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsMcpRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/sudo': {
+      id: '/settings/sudo'
+      path: '/sudo'
+      fullPath: '/settings/sudo'
+      preLoaderRoute: typeof SettingsSudoRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/vps': {
       id: '/settings/vps'
       path: '/vps'
@@ -352,6 +371,7 @@ declare module '@tanstack/react-router' {
 interface SettingsRouteChildren {
   SettingsBillingRoute: typeof SettingsBillingRoute
   SettingsMcpRoute: typeof SettingsMcpRoute
+  SettingsSudoRoute: typeof SettingsSudoRoute
   SettingsVpsRoute: typeof SettingsVpsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
@@ -359,6 +379,7 @@ interface SettingsRouteChildren {
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsBillingRoute: SettingsBillingRoute,
   SettingsMcpRoute: SettingsMcpRoute,
+  SettingsSudoRoute: SettingsSudoRoute,
   SettingsVpsRoute: SettingsVpsRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }

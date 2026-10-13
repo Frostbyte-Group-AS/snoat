@@ -175,6 +175,11 @@ frontend med anon-nøkkelen, så et installasjonstoken i URL-en ville vært synl
 for alle som kan se loggen. Både vår egen logging, git sitt stderr og execa sine
 feilmeldinger går gjennom den – alle tre gjentar URL-en ordrett.
 
+**Sudo-panelet krever eierkonto og dashboardinnlogging.** `/api/sudo` er den
+eneste ruten som leser på tvers av brukere. Den slipper bare gjennom eierkontoen
+(`SNOAT_OWNER_ACCOUNTS`), og bare med en Supabase-sesjon – ikke API-nøkkel eller
+OAuth/MCP, selv på eierkontoen. Den er kun lesing. Se `06_backend_api.md`.
+
 ## Kjente risikoer
 
 **Personvern i trafikkanalysen er avhengig av at loggen ikke lekker.** Caddys

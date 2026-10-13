@@ -506,6 +506,22 @@ installasjonen faktisk finnes før koblingen lagres.
 Svarer alltid med en redirect til dashboardet: `?github=connected` eller
 `?github=error&reason=…`.
 
+### `GET /api/sudo/tilgang` og `GET /api/sudo`
+
+Sudo-panelet: alle brukere og alle prosjekter på plattformen, vist under
+Innstillinger → Sudo i dashboardet. To krav, begge i `routes/sudo.ts`:
+eierkontoen (`SNOAT_OWNER_ACCOUNTS`) **og** `authKind === "session"`. En
+API-nøkkel eller MCP-tilkobling på eierkontoen får 403 – andres data skal ikke
+kunne listes med en lekket nøkkel. Det finnes derfor ikke noe MCP-verktøy for det.
+
+`/tilgang` svarer alltid 200 med `{ sudo: boolean }`, slik at dashboardet vet om
+fanen skal vises. `/api/sudo` svarer `{ brukere, prosjekter }` – per bruker
+plan, antall prosjekter, kjørende og omdirigeringer; per prosjekt eier, repo,
+gren, adresse, siste deploy og om containeren kjører (`null` hvis Docker ikke
+svarte). Spørringene går med service-nøkkelen uten filter på `user_id`
+(`services/sudo.ts`). Foreløpig bare lesing – stopp og sletting av andres
+prosjekter er bevisst utelatt.
+
 ## Feilformat
 
 Alle feil svarer med samme form:
