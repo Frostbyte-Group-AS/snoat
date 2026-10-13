@@ -7,6 +7,7 @@ import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware
 import { vpsApi } from "./vps.js";
 import { redirectsApi } from "./redirects.js";
 import { plattformApi } from "./plattform.js";
+import { sudoApi } from "./sudo.js";
 import * as analytics from "../services/analytics.js";
 import { invalidateHostMap } from "../lib/host-map.js";
 import * as deploy from "../services/deploy.js";
@@ -47,6 +48,9 @@ api.route("/redirects", redirectsApi);
 
 /** Snoat selv: bygg fra main og «deploy nå». Kun eierkontoen. */
 api.route("/plattform", plattformApi);
+
+/** Alle brukere og prosjekter. Kun eierkontoen, og kun fra dashboardet. */
+api.route("/sudo", sudoApi);
 
 /**
  * Bekrefter at en GitHub-installasjon faktisk tilhører kalleren.

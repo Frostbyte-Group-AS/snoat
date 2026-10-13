@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import { DashboardNav } from "@/components/DashboardNav";
-import { getVpsAccess } from "@/lib/api";
+import { getSudoAccess, getVpsAccess } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 /**
@@ -26,7 +26,16 @@ function SettingsLayout() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   // Fanen finnes bare for eierkontoen. Backend håndhever grensen; dette er bare visning.
-  const vpsAccess = useQuery({ queryKey: ["vps-access"], queryFn: getVpsAccess, enabled: Boolean(user) });
+  const vpsAccess = useQuery({
+    queryKey: ["vps-access"],
+    queryFn: getVpsAccess,
+    enabled: Boolean(user),
+  });
+  const sudoAccess = useQuery({
+    queryKey: ["sudo-access"],
+    queryFn: getSudoAccess,
+    enabled: Boolean(user),
+  });
 
   useEffect(() => {
     if (!loading && !user) void navigate({ to: "/login" });
@@ -81,6 +90,15 @@ function SettingsLayout() {
                 activeProps={{ className: activeTabClass }}
               >
                 {t("vps.tab")}
+              </Link>
+            )}
+            {sudoAccess.data?.sudo && (
+              <Link
+                to="/settings/sudo"
+                className={tabClass}
+                activeProps={{ className: activeTabClass }}
+              >
+                {t("sudo.tab")}
               </Link>
             )}
           </nav>

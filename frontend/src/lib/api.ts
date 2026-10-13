@@ -1,4 +1,10 @@
-import type { Deployment, Project, SubscriptionStatus, SubscriptionTier } from "./database.types";
+import type {
+  Deployment,
+  DeploymentStatus,
+  Project,
+  SubscriptionStatus,
+  SubscriptionTier,
+} from "./database.types";
 import type { MarketId } from "./market";
 import { getSupabase } from "./supabase";
 
@@ -762,4 +768,45 @@ export function deployPlattform(commit: string | null = null): Promise<{ bestilt
 
 export function settPlattformPause(pause: boolean): Promise<{ pause: boolean }> {
   return request("/api/plattform/pause", { method: "POST", body: JSON.stringify({ pause }) });
+}
+
+// --- Sudo: alle brukere og prosjekter (kun eierkontoen, kun fra dashboardet) ---
+
+export interface SudoBruker {
+  id: string;
+  epost: string | null;
+  brukernavn: string | null;
+  opprettet: string;
+  sistInnlogget: string | null;
+  plan: SubscriptionTier;
+  planStatus: SubscriptionStatus | null;
+  eier: boolean;
+  antallProsjekter: number;
+  antallKjorende: number;
+  antallOmdirigeringer: number;
+}
+
+export interface SudoProsjekt {
+  id: string;
+  navn: string;
+  brukerId: string;
+  epost: string | null;
+  repoUrl: string;
+  branch: string | null;
+  url: string;
+  customDomain: string | null;
+  statisk: boolean;
+  devSide: boolean;
+  stoppet: boolean;
+  kjorer: boolean | null;
+  opprettet: string;
+  sisteDeploy: { status: DeploymentStatus; tidspunkt: string } | null;
+}
+
+export function getSudoAccess(): Promise<{ sudo: boolean }> {
+  return request("/api/sudo/tilgang");
+}
+
+export function getSudoOversikt(): Promise<{ brukere: SudoBruker[]; prosjekter: SudoProsjekt[] }> {
+  return request("/api/sudo");
 }
