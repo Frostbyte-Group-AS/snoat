@@ -524,6 +524,9 @@ async function upsertRoute(
 
   try {
     await request("PATCH", `/id/${routeId(slug)}`, route);
+    // PATCH lar ruten bli stående der den står. Har den fått et nytt eget
+    // domene siden den ble opprettet, kan den stå bak en wildcard som dekker det.
+    await flyttForanDekkendeWildcard(route);
     logger.info({ slug, hostname, ...logContext }, "Caddy-rute byttet");
     return appUrl(slug);
   } catch (error) {
@@ -532,9 +535,56 @@ async function upsertRoute(
   }
 
   await request("POST", APPS_ROUTES_PATH, route);
+  await flyttForanDekkendeWildcard(route);
 
   logger.info({ slug, hostname, ...logContext }, "Caddy-rute opprettet");
   return appUrl(slug);
+}
+
+/**
+ * Hvor ruten må stå for å bli nådd: foran den første ruten som fanger et av
+ * dens eksakte vertsnavn med en wildcard. `null` når den alt står riktig.
+ *
+ * Caddy evaluerer rutene i rekkefølge, og apprutene legges til bakerst. Et
+ * prosjekt med eget domene svarer også på `*.domenet`, så en dev-side med
+ * `sudo.mittvel.no` som eget domene, opprettet etter `mittvel`, ble aldri
+ * nådd: `*.mittvel.no` tok forespørselen først (målt 15. okt 2026).
+ */
+export function indeksForanDekkendeWildcard(
+  routes: ReadonlyArray<Pick<CaddyRoute, "@id" | "match">>,
+  id: string,
+): number | null {
+  const egen = routes.findIndex((route) => route["@id"] === id);
+  if (egen === -1) return null;
+
+  const eksakte = (routes[egen]?.match?.[0]?.host ?? []).filter((host) => !host.startsWith("*."));
+  if (eksakte.length === 0) return null;
+
+  const forran = routes.findIndex(
+    (route, indeks) =>
+      indeks < egen &&
+      eksakte.some((host) => !(route.match?.[0]?.host ?? []).includes(host) && routeCoversHost(route as CaddyRoute, host)),
+  );
+  return forran === -1 ? null : forran;
+}
+
+/**
+ * Flytter ruten foran en wildcard-rute som ellers ville skygget for den.
+ *
+ * Caddy har ingen «flytt»: ruten fjernes og settes inn på ny plass med `PUT`
+ * mot indeksen. Mellom de to kallene svarer wildcard-ruten for vertsnavnet,
+ * som er det den gjorde før flyttingen også. Skjer bare når rekkefølgen er feil.
+ */
+async function flyttForanDekkendeWildcard(route: CaddyRoute): Promise<void> {
+  const response = await request("GET", APPS_ROUTES_PATH);
+  const routes = ((await response.json()) as CaddyRoute[] | null) ?? [];
+  const maal = indeksForanDekkendeWildcard(routes, route["@id"]);
+  if (maal === null) return;
+
+  const lagret = routes.find((r) => r["@id"] === route["@id"]) ?? route;
+  await request("DELETE", `/id/${route["@id"]}`);
+  await request("PUT", `${APPS_ROUTES_PATH}/${maal}`, lagret);
+  logger.info({ id: route["@id"], indeks: maal }, "Caddy-rute flyttet foran wildcard-rute");
 }
 
 /**
