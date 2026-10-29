@@ -249,21 +249,60 @@ er låsen som hindrer at samme event behandles to ganger.
 RLS er på **uten en eneste policy**: `authenticated` og `anon` kommer ikke til,
 service_role omgår RLS. Dette er backend-intern tilstand og angår ingen bruker.
 
+## project_members og project_invitations (migrasjon 0020)
+
+Team på et prosjekt. `projects.user_id` er fortsatt **eieren** – kontoen som
+betaler, og den eneste som kan slette, bytte repo og styre teamet.
+
+`project_members`: `(project_id, user_id)` er PK, `invited_by`, `created_at`.
+Bare **hovedprosjekter** – dev-sidene arver teamet til forelderen – og aldri
+eieren selv. Begge håndheves av triggeren `project_members_check`, siden
+service-role-nøkkelen omgår alt annet enn triggere.
+
+`project_invitations`: `id`, `project_id`, `email` (små bokstaver, check-
+constraint), `invited_by`, `created_at`, `sent_at`, `expires_at` (14 dager,
+fornyes ved ny utsendelse), `accepted_at`/`accepted_by`, `declined_at`,
+`revoked_at`. Én åpen invitasjon per `(project_id, email)` (partiell unik indeks).
+
+Begge har RLS **uten policy** og `revoke all` fra `anon`/`authenticated` – all
+lesing og skriving går gjennom `/api/team` (`06_backend_api.md`).
+
+Det som endres for nettleseren:
+
+- `has_project_access(uuid)` – `security definer`, svarer for `auth.uid()`:
+  eier, eller medlem av prosjektet (eller av forelderen til en dev-side).
+  Definer-rettighetene trengs fordi policyen på `projects` må lese
+  `project_members` (ingen policy) og `projects` selv (ellers rekursjon).
+- `projects_select_member`, `projects_update_member` og
+  `deployments_select_member` bruker den. Ingen insert/delete for medlemmer.
+- `projects_guard_member_update()` (BEFORE UPDATE): for en innlogget bruker som
+  ikke er eieren, kan bare `branch`, `build_command`, `env_vars`,
+  `static_output_dir` og `static_spa_fallback` endres. Uten den kunne et medlem
+  satt `user_id` til seg selv, eller pekt `repo_url` mot et annet privat repo
+  eierens installasjon rekker. Allowlist, ikke blokkliste: en ny kolonne er
+  stengt for medlemmer til noen åpner den.
+
+Ingen «lesetilgang»-rolle: `projects.env_vars` ligger på raden dashboardet leser,
+og RLS kan ikke skjule én kolonne for noen brukere. Se `08_security_model.md`.
+
 ## Row Level Security
 
-RLS er på for alle tabellene. Policyene er eier-scopet:
+RLS er på for alle tabellene. Policyene er eier-scopet, utvidet med teammedlemmer
+i migrasjon 0020:
 
 | Tabell | Policy |
 | --- | --- |
 | `profiles` | Bruker kan lese og oppdatere sin egen rad. |
-| `projects` | Bruker har full tilgang til egne prosjekter (`for all`). |
-| `deployments` | Bruker kan **lese** deployments for egne prosjekter. Skriving skjer kun fra backend. |
+| `projects` | Bruker har full tilgang til egne prosjekter (`for all`). Teammedlemmer kan lese, og oppdatere de fem kolonnene `projects_guard_member_update()` slipper gjennom. |
+| `deployments` | Bruker kan **lese** deployments for egne prosjekter og prosjekter hen er med i. Skriving skjer kun fra backend. |
+| `project_members`, `project_invitations` | Ingen policyer. Kun service_role, via `/api/team`. |
 | `github_installations` | Bruker kan **kun lese** egne koblinger. Skriving skjer kun fra backend, etter at GitHub har bekreftet installasjonen – en klient som kunne skrive her, kunne knyttet seg til en annens repoer. |
 | `subscriptions` | Bruker kan **kun lese** sin egen rad. Det finnes bevisst ingen update-policy: planen settes utelukkende av backend etter en verifisert Stripe-signatur. |
 | `stripe_events` | Ingen policyer i det hele tatt. Kun service_role. |
 
 Backend bruker service-role-nøkkelen og **omgår RLS**. Derfor må den verifisere
-eierskap selv – det gjør `loadOwnedProject()` i `backend/src/middleware/auth.ts`.
+eierskap selv – det gjør `loadProject()`/`loadOwnedProject()` i
+`backend/src/middleware/auth.ts`.
 Det er den eneste kontrollen som står mellom en bruker og andres prosjekter, og
 den svarer 404 (ikke 403) slik at et ID-gjett ikke avslører at raden finnes.
 

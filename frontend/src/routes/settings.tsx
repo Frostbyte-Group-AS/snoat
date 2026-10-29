@@ -4,8 +4,9 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import { DashboardNav } from "@/components/DashboardNav";
-import { getSudoAccess, getVpsAccess } from "@/lib/api";
+import { getIncomingInvitations, getSudoAccess, getVpsAccess } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { rememberReturnTo } from "@/lib/return-to";
 
 /**
  * Rammen rundt kontoinnstillingene.
@@ -36,9 +37,23 @@ function SettingsLayout() {
     queryFn: getSudoAccess,
     enabled: Boolean(user),
   });
+  // Tallet ved «Team» er invitasjoner som venter på svar fra deg. Samme spørring
+  // som varselet på dashboardet, så de to aldri sier noe forskjellig.
+  const incoming = useQuery({
+    queryKey: ["team-incoming"],
+    queryFn: async () => (await getIncomingInvitations()).invitations,
+    enabled: Boolean(user),
+    staleTime: 60_000,
+  });
+  const incomingCount = incoming.data?.length ?? 0;
 
   useEffect(() => {
-    if (!loading && !user) void navigate({ to: "/login" });
+    if (!loading && !user) {
+      // Lenker hit kommer også utenfra (fra en e-post). Etter innlogging skal
+      // brukeren tilbake til siden hen åpnet, ikke til dashboardet.
+      rememberReturnTo(`${window.location.pathname}${window.location.search}`);
+      void navigate({ to: "/login" });
+    }
   }, [loading, user, navigate]);
 
   const tabClass =
@@ -75,6 +90,21 @@ function SettingsLayout() {
               activeProps={{ className: activeTabClass }}
             >
               {t("account.connector")}
+            </Link>
+            <Link
+              to="/settings/team"
+              className={`${tabClass} flex items-center justify-between gap-3`}
+              activeProps={{ className: activeTabClass }}
+            >
+              {t("team.tab")}
+              {incomingCount > 0 && (
+                <span
+                  aria-label={t("team.tab_pending", { count: incomingCount })}
+                  className="flex h-[22px] min-w-[22px] items-center justify-center bg-sun px-[6px] font-body text-[13px] font-bold text-ink"
+                >
+                  {incomingCount}
+                </span>
+              )}
             </Link>
             <Link
               to="/settings/billing"

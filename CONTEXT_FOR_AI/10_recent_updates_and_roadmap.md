@@ -4,6 +4,31 @@ Denne filen dokumenterer nye funksjonaliteter og forbedringer som er innført i 
 
 ---
 
+## 0i. Team: inviter andre til et prosjekt
+
+Et prosjekt hadde én bruker. Nå kan eieren invitere andre på e-post under
+**Innstillinger → Team** (`/settings/team`), eller via «Team»-knappen på
+prosjektsiden, som velger prosjektet i skjemaet. Mottakeren får en e-post med en
+lenke til `/invite/<id>`, logger inn (eller registrerer seg) med den adressen og
+godtar. Ventende invitasjoner vises også som et varsel øverst på dashboardet og
+som et tall ved «Team» – det er der en ny bruker lander etter
+bekreftelses-e-posten.
+
+Medlemmer kan deploye, stoppe, endre gren, byggeinnstillinger, miljøvariabler,
+domene og passord, og ser logger, statistikk og feil. Bare eieren kan slette,
+bytte repo, endre plan og styre teamet; planen og byggeminuttene er eierens.
+Delte prosjekter merkes «Delt» på dashboardet, og et medlem kan forlate
+prosjektet fra Innstillinger-fanen.
+
+Datamodell og RLS: `04_database_schema.md`. Ruter og tilgangstabell:
+`06_backend_api.md`. Sikkerhetsresonnementet: `08_security_model.md`.
+
+Gjenstår: en egen «lesetilgang»-rolle (krever at `env_vars` flyttes ut av
+`projects`-raden), overføring av eierskap, og varsel til eieren når en
+invitasjon blir godtatt.
+
+---
+
 ## 0h. Miljøvariabler kan endres én og én over MCP
 
 `snoat_update_project` tok bare hele settet med miljøvariabler, mens

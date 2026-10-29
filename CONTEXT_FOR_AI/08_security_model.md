@@ -36,9 +36,24 @@ RLS-policyene som avgjør hva som returneres. Frontend filtrerer aldri på
 `user_id`; databasen gjør det.
 
 **Eierskapssjekk i backend.** Backend bruker service-role-nøkkelen og omgår RLS.
-`loadOwnedProject()` er derfor den eneste kontrollen som står mellom en bruker og
+`loadProject()` er derfor den eneste kontrollen som står mellom en bruker og
 andres prosjekter. Den svarer 404 og ikke 403, slik at et ID-gjett ikke avslører
-at raden finnes.
+at raden finnes. Standarden er eier-only (`loadOwnedProject()`); en rute må
+eksplisitt be om `"member"` for å slippe inn teamet.
+
+**Team (migrasjon 0020).** Et prosjekt kan ha medlemmer, men ingen blir medlem
+uten å godta selv, innlogget med den **bekreftede** e-postadressen invitasjonen
+ble sendt til. Lenken i e-posten gir derfor ingen tilgang alene, og ingen token
+lagres. Invitasjoner, godtak og fjerning går bare med en dashboardsesjon – ikke
+med API-nøkkel eller MCP – slik at en prompt-injeksjon i en connector ikke kan
+invitere en fremmed. Medlemmer kan deploye og endre konfigurasjon, og ser derfor
+også miljøvariablene; de kan ikke slette prosjektet, bytte repo eller GitHub-
+installasjon (som ville gitt dem eierens installasjonstoken mot andre repoer),
+endre planen eller styre teamet. Det håndheves både i backend og i databasen
+(`projects_guard_member_update()`), siden dashboardet skriver prosjektraden
+direkte. Invitasjoner er rate-begrenset (30 per konto per døgn, 15 minutter
+mellom hver ny utsendelse av samme invitasjon) fordi e-posten går fra vårt
+domene.
 
 **Abonnementet ligger i en tabell brukeren ikke kan skrive til.** RLS i Postgres
 er rad-nivå, ikke kolonne-nivå. `profiles` har en update-policy for eieren, så en

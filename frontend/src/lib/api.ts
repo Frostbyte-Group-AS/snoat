@@ -236,8 +236,11 @@ export interface RepoBranches {
  *
  * `repo` kan være en klone-URL eller `owner/repo`; backend normaliserer begge.
  */
-export function listGithubBranches(repo: string): Promise<RepoBranches> {
-  return request(`/api/github/branches?repo=${encodeURIComponent(repo)}`);
+export function listGithubBranches(repo: string, projectId?: string): Promise<RepoBranches> {
+  // `projectId` lar backend bruke prosjektets egen GitHub-kobling. Uten den får
+  // et teammedlem aldri en grenliste: koblingen er eierens, ikke medlemmets.
+  const project = projectId ? `&projectId=${encodeURIComponent(projectId)}` : "";
+  return request(`/api/github/branches?repo=${encodeURIComponent(repo)}${project}`);
 }
 
 /** Grensene som følger en plan. Speiler `PlanLimits` i backend. */
@@ -809,4 +812,106 @@ export function getSudoAccess(): Promise<{ sudo: boolean }> {
 
 export function getSudoOversikt(): Promise<{ brukere: SudoBruker[]; prosjekter: SudoProsjekt[] }> {
   return request("/api/sudo");
+}
+
+// ---------------------------------------------------------------------------
+// Team: medlemmer og invitasjoner (`routes/team.ts` i backend)
+// ---------------------------------------------------------------------------
+
+/** En bruker slik teamsiden viser hen. */
+export interface TeamPerson {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+}
+
+export interface TeamMember extends TeamPerson {
+  joinedAt: string;
+}
+
+export interface TeamInvitation {
+  id: string;
+  email: string;
+  status: "pending" | "expired" | "declined";
+  sentAt: string;
+  expiresAt: string;
+  /** Lenken i e-posten. Ingen hemmelighet – den virker bare for riktig konto. */
+  link: string;
+}
+
+export interface TeamOverview {
+  /** Den bekreftede e-posten invitasjoner matches mot. `null` = ikke bekreftet. */
+  email: string | null;
+  owned: Array<{
+    project: { id: string; name: string };
+    members: TeamMember[];
+    invitations: TeamInvitation[];
+  }>;
+  shared: Array<{
+    project: { id: string; name: string };
+    owner: TeamPerson | null;
+    joinedAt: string | null;
+  }>;
+  incoming: Array<{
+    id: string;
+    project: { id: string; name: string };
+    invitedBy: TeamPerson | null;
+    expiresAt: string;
+  }>;
+}
+
+export interface InvitationDetails {
+  id: string;
+  project: { id: string; name: string };
+  invitedBy: TeamPerson | null;
+  owner: TeamPerson | null;
+  expiresAt: string;
+  status: "pending" | "expired" | "declined" | "accepted";
+  alreadyMember: boolean;
+}
+
+export function getTeam(): Promise<TeamOverview> {
+  return request("/api/team");
+}
+
+export function inviteToProject(
+  projectId: string,
+  email: string,
+): Promise<{ invitation: TeamInvitation; emailSent: boolean; renewed: boolean }> {
+  return request(`/api/team/projects/${projectId}/invitations`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function revokeInvitation(invitationId: string): Promise<{ revoked: boolean }> {
+  return request(`/api/team/invitations/${invitationId}`, { method: "DELETE" });
+}
+
+export function getInvitation(invitationId: string): Promise<{ invitation: InvitationDetails }> {
+  return request(`/api/team/invitations/${invitationId}`);
+}
+
+export function acceptInvitation(invitationId: string): Promise<{ projectId: string }> {
+  return request(`/api/team/invitations/${invitationId}/accept`, { method: "POST" });
+}
+
+export function declineInvitation(invitationId: string): Promise<{ declined: boolean }> {
+  return request(`/api/team/invitations/${invitationId}/decline`, { method: "POST" });
+}
+
+/** Fjerner et medlem. Med egen bruker-ID er det «Forlat prosjektet». */
+export function removeProjectMember(
+  projectId: string,
+  userId: string,
+): Promise<{ removed: boolean }> {
+  return request(`/api/team/projects/${projectId}/members/${userId}`, { method: "DELETE" });
+}
+
+/** Invitasjonene som venter på deg. Lett nok til å kalles fra dashboardet. */
+export function getIncomingInvitations(): Promise<{
+  invitations: Array<{ id: string; project: { id: string; name: string }; expiresAt: string }>;
+}> {
+  return request("/api/team/invitations");
 }

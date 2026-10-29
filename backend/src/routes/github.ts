@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import * as github from "../lib/github.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
-import type { AuthVariables } from "../middleware/auth.js";
+import { loadProject, type AuthVariables } from "../middleware/auth.js";
 import type { GithubInstallation } from "../types.js";
 
 /** Dashboardet, dit installasjonsflyten sender brukeren tilbake. */
@@ -117,10 +117,40 @@ githubApi.get("/repos", async (c) => {
  * Rekker ingen av koblingene repoet, er svaret 404 og ikke en tom liste: en tom
  * liste leses som «repoet har ingen grener», og da er et fritekstfelt bedre enn
  * en nedtrekksliste som lyver.
+ *
+ * Med `?projectId=` brukes i stedet **prosjektets** installasjon, på
+ * **prosjektets** repo. Det er det som gir et teammedlem en grenliste: GitHub-
+ * koblingen er eierens, og medlemmet har ingen egen som rekker repoet. `repo` fra
+ * forespørselen ignoreres da – ellers kunne et medlem brukt eierens installasjon
+ * til å liste grener i et hvilket som helst annet repo eieren har delt.
  */
 githubApi.get("/branches", async (c) => {
   if (!github.isConfigured()) {
     throw new HTTPException(503, { message: "GitHub-integrasjonen er ikke konfigurert" });
+  }
+
+  const projectId = c.req.query("projectId")?.trim();
+  if (projectId) {
+    const project = await loadProject(c, projectId, "member");
+    const identity = github.repoIdentity(project.repo_url);
+
+    if (identity && project.github_installation_id) {
+      try {
+        const result = await github.listBranches(project.github_installation_id, identity);
+        return c.json({ repo: identity, installationId: project.github_installation_id, ...result });
+      } catch (error) {
+        if (!(error instanceof github.GithubError && error.status === 404)) throw error;
+      }
+    }
+
+    // Ingen installasjon på prosjektet (offentlig repo limt inn som URL), eller
+    // den rekker ikke repoet lenger. Eieren faller videre til sine egne
+    // koblinger under; et medlem har ingen som hjelper, og får fritekstfeltet.
+    if (project.user_id !== c.get("userId")) {
+      throw new HTTPException(404, {
+        message: `Snoat rekker ikke grenene i ${identity ?? project.repo_url}. Skriv grennavnet manuelt.`,
+      });
+    }
   }
 
   const repo = c.req.query("repo")?.trim();

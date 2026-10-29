@@ -60,11 +60,18 @@ export function BranchPicker({
   onChange,
   /** Kjent standardgren fra repo-velgeren, før grenlista er hentet. */
   defaultBranch,
+  /**
+   * Prosjektet grenene hentes for, når det finnes. Da bruker backend prosjektets
+   * GitHub-kobling – det er det som gir et teammedlem en liste, siden koblingen
+   * er eierens.
+   */
+  projectId,
 }: {
   repo: string;
   value: string;
   onChange: (branch: string) => void;
   defaultBranch?: string | null;
+  projectId?: string;
 }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState("");
@@ -82,8 +89,8 @@ export function BranchPicker({
   const identity = githubIdentity(settled);
 
   const query = useQuery({
-    queryKey: ["github-branches", identity],
-    queryFn: () => listGithubBranches(identity!),
+    queryKey: ["github-branches", identity, projectId ?? null],
+    queryFn: () => listGithubBranches(identity!, projectId),
     enabled: identity !== null,
     // Ett forsøk. Svaret er 404 når Snoat ikke rekker repoet, og det er et svar
     // – ikke en feil å prøve seg fram mot. Tekstfeltet skal komme fram raskt.

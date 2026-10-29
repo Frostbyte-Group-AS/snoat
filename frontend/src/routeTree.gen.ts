@@ -19,12 +19,14 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as ArticlesIndexRouteImport } from './routes/articles.index'
 import { Route as ArticlesSlugRouteImport } from './routes/articles.$slug'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
+import { Route as InviteInvitationIdRouteImport } from './routes/invite.$invitationId'
 import { Route as OauthConsentRouteImport } from './routes/oauth.consent'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsBillingRouteImport } from './routes/settings.billing'
 import { Route as SettingsMcpRouteImport } from './routes/settings.mcp'
 import { Route as SettingsSudoRouteImport } from './routes/settings.sudo'
+import { Route as SettingsTeamRouteImport } from './routes/settings.team'
 import { Route as SettingsVpsRouteImport } from './routes/settings.vps'
 
 const IndexRoute = IndexRouteImport.update({
@@ -77,6 +79,11 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteInvitationIdRoute = InviteInvitationIdRouteImport.update({
+  id: '/invite/$invitationId',
+  path: '/invite/$invitationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OauthConsentRoute = OauthConsentRouteImport.update({
   id: '/oauth/consent',
   path: '/oauth/consent',
@@ -107,6 +114,11 @@ const SettingsSudoRoute = SettingsSudoRouteImport.update({
   path: '/sudo',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsTeamRoute = SettingsTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsVpsRoute = SettingsVpsRouteImport.update({
   id: '/vps',
   path: '/vps',
@@ -123,11 +135,13 @@ export interface FileRoutesByFullPath {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/articles/$slug': typeof ArticlesSlugRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/invite/$invitationId': typeof InviteInvitationIdRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
   '/settings/mcp': typeof SettingsMcpRoute
   '/settings/sudo': typeof SettingsSudoRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/settings/vps': typeof SettingsVpsRoute
   '/articles/': typeof ArticlesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -141,11 +155,13 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/articles/$slug': typeof ArticlesSlugRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/invite/$invitationId': typeof InviteInvitationIdRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
   '/settings/mcp': typeof SettingsMcpRoute
   '/settings/sudo': typeof SettingsSudoRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/settings/vps': typeof SettingsVpsRoute
   '/articles': typeof ArticlesIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -161,11 +177,13 @@ export interface FileRoutesById {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/articles/$slug': typeof ArticlesSlugRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/invite/$invitationId': typeof InviteInvitationIdRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/billing': typeof SettingsBillingRoute
   '/settings/mcp': typeof SettingsMcpRoute
   '/settings/sudo': typeof SettingsSudoRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/settings/vps': typeof SettingsVpsRoute
   '/articles/': typeof ArticlesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -182,11 +200,13 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/articles/$slug'
     | '/auth/callback'
+    | '/invite/$invitationId'
     | '/oauth/consent'
     | '/projects/$projectId'
     | '/settings/billing'
     | '/settings/mcp'
     | '/settings/sudo'
+    | '/settings/team'
     | '/settings/vps'
     | '/articles/'
     | '/settings/'
@@ -200,11 +220,13 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/articles/$slug'
     | '/auth/callback'
+    | '/invite/$invitationId'
     | '/oauth/consent'
     | '/projects/$projectId'
     | '/settings/billing'
     | '/settings/mcp'
     | '/settings/sudo'
+    | '/settings/team'
     | '/settings/vps'
     | '/articles'
     | '/settings'
@@ -219,11 +241,13 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/articles/$slug'
     | '/auth/callback'
+    | '/invite/$invitationId'
     | '/oauth/consent'
     | '/projects/$projectId'
     | '/settings/billing'
     | '/settings/mcp'
     | '/settings/sudo'
+    | '/settings/team'
     | '/settings/vps'
     | '/articles/'
     | '/settings/'
@@ -239,6 +263,7 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ArticlesSlugRoute: typeof ArticlesSlugRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  InviteInvitationIdRoute: typeof InviteInvitationIdRoute
   OauthConsentRoute: typeof OauthConsentRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   ArticlesIndexRoute: typeof ArticlesIndexRoute
@@ -316,6 +341,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite/$invitationId': {
+      id: '/invite/$invitationId'
+      path: '/invite/$invitationId'
+      fullPath: '/invite/$invitationId'
+      preLoaderRoute: typeof InviteInvitationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/oauth/consent': {
       id: '/oauth/consent'
       path: '/oauth/consent'
@@ -358,6 +390,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSudoRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/team': {
+      id: '/settings/team'
+      path: '/team'
+      fullPath: '/settings/team'
+      preLoaderRoute: typeof SettingsTeamRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/vps': {
       id: '/settings/vps'
       path: '/vps'
@@ -372,6 +411,7 @@ interface SettingsRouteChildren {
   SettingsBillingRoute: typeof SettingsBillingRoute
   SettingsMcpRoute: typeof SettingsMcpRoute
   SettingsSudoRoute: typeof SettingsSudoRoute
+  SettingsTeamRoute: typeof SettingsTeamRoute
   SettingsVpsRoute: typeof SettingsVpsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
@@ -380,6 +420,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsBillingRoute: SettingsBillingRoute,
   SettingsMcpRoute: SettingsMcpRoute,
   SettingsSudoRoute: SettingsSudoRoute,
+  SettingsTeamRoute: SettingsTeamRoute,
   SettingsVpsRoute: SettingsVpsRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
@@ -398,6 +439,7 @@ const rootRouteChildren: RootRouteChildren = {
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ArticlesSlugRoute: ArticlesSlugRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  InviteInvitationIdRoute: InviteInvitationIdRoute,
   OauthConsentRoute: OauthConsentRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   ArticlesIndexRoute: ArticlesIndexRoute,

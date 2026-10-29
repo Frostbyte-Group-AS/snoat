@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { BranchPicker } from "@/components/BranchPicker";
 import { DashboardNav } from "@/components/DashboardNav";
+import { InvitationsBanner } from "@/components/InvitationsBanner";
 
 import { DeploymentStatusBadge } from "@/components/DeploymentStatusBadge";
 import { NewVpsForm } from "@/components/NewVpsForm";
@@ -144,6 +145,8 @@ function DashboardPage() {
 
         {/* Varselet folder seg ut og igjen. Lå det i en `&&`, forsvant hele
             raden i ett hopp når man lukket den, og rutenettet under sprang opp. */}
+        <InvitationsBanner />
+
         <div
           className="collapse-grid"
           data-open={githubNotice ? "true" : "false"}
@@ -329,6 +332,9 @@ function ProjectFavicon({
 
 function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  /** Prosjektet eies av noen andre og er delt med deg (migrasjon 0020). */
+  const isShared = Boolean(user && project.user_id !== user.id);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
@@ -388,6 +394,14 @@ function ProjectCard({ project }: { project: ProjectWithLatestDeployment }) {
           <h3 className="max-w-[160px] truncate font-body text-[20px] font-normal text-ink sm:max-w-[200px]">
             {project.name}
           </h3>
+          {isShared && (
+            <span
+              title={t("team.shared_chip_title")}
+              className="shrink-0 border-2 border-hair px-[6px] py-[0px] font-body text-[12px] text-ink/70"
+            >
+              {t("team.shared_chip")}
+            </span>
+          )}
         </div>
         <DeploymentStatusBadge
           status={deployment?.status ?? null}
