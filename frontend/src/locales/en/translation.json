@@ -326,7 +326,11 @@
     "dev_branch_of": "Dev branch of {{project}}",
     "production_branch": "Production",
     "dev_branch": "Dev",
-    "terminal_branch": "Branch: {{branch}}"
+    "terminal_branch": "Branch: {{branch}}",
+    "deployment_history_count_one": "{{count}} build",
+    "deployment_history_count_other": "{{count}} builds",
+    "deployment_history_show_all": "Show all {{count}}",
+    "deployment_history_show_recent": "Show only the latest {{count}}"
   },
   "branch": {
     "label": "Branch",

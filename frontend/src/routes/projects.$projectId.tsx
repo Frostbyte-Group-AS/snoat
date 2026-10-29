@@ -806,27 +806,11 @@ function DeploymentsTab({
         )}
       </div>
 
-      {/* Deployment History Table */}
-      <div className="ink-card-lg anim-rise [--anim-delay:90ms] p-6 md:p-8">
-        <h2 className="mb-6 font-display text-[22px] font-bold text-ink">
-          {t("project.deployment_history")}
-        </h2>
-
-        {deployments.length === 0 ? (
-          <p className="font-body text-[16px] text-ink/70">{t("project_details.no_history")}</p>
-        ) : (
-          <div className="stagger flex flex-col divide-y divide-hair">
-            {deployments.map((d) => (
-              <DeploymentRow
-                key={d.id}
-                deployment={d}
-                isLive={d.id === latestSuccessId}
-                unhealthy={d.id === latestSuccessId && isUnhealthy}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      <DeploymentHistory
+        deployments={deployments}
+        latestSuccessId={latestSuccessId}
+        isUnhealthy={isUnhealthy}
+      />
 
       {/* Dev-grenene står her, ved siden av byggene, og ikke nederst i
           Innstillinger der de sto før. En dev-gren spinnes opp midt i arbeidet
@@ -837,6 +821,87 @@ function DeploymentsTab({
           dev-side kunne bare sagt nei. */}
       {!project.parent_project_id && <DevSitesCard project={project} />}
     </div>
+  );
+}
+
+/** Hvor mange bygg historikken viser før «Vis alle». */
+const HISTORY_PREVIEW = 10;
+
+/**
+ * Byggehistorikken, sammenfoldet.
+ *
+ * Et prosjekt med auto-deploy får et bygg per push, og lista ble fort lengre
+ * enn alt annet på siden – dev-grenene under den forsvant ut av syne. Den står
+ * derfor lukket, med antallet i overskriften, og viser de siste ti når den
+ * åpnes. Resten ligger bak «Vis alle»: det eldre er sjelden det man leter etter.
+ *
+ * `<details>` og ikke egen tilstand for åpen/lukket: tastatur, skjermleser og
+ * Ctrl+F inn i lukket innhold virker da uten at vi gjør noe.
+ */
+function DeploymentHistory({
+  deployments,
+  latestSuccessId,
+  isUnhealthy,
+}: {
+  deployments: Deployment[];
+  latestSuccessId: string | undefined;
+  isUnhealthy: boolean;
+}) {
+  const { t } = useTranslation();
+  const [showAll, setShowAll] = useState(false);
+
+  const visible = showAll ? deployments : deployments.slice(0, HISTORY_PREVIEW);
+  const hidden = deployments.length - HISTORY_PREVIEW;
+
+  return (
+    <details className="group ink-card-lg anim-rise [--anim-delay:90ms] p-6 md:p-8">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="font-display text-[22px] font-bold text-ink">
+            {t("project.deployment_history")}
+          </h2>
+          <p className="font-body text-[14px] text-ink/70">
+            {deployments.length === 0
+              ? t("project_details.no_history")
+              : t("project.deployment_history_count", { count: deployments.length })}
+          </p>
+        </div>
+        <span
+          aria-hidden="true"
+          className="flex h-[28px] w-[28px] shrink-0 items-center justify-center border-2 border-line font-body text-[18px] font-bold leading-none text-ink"
+        >
+          <span className="group-open:hidden">+</span>
+          <span className="hidden group-open:inline">–</span>
+        </span>
+      </summary>
+
+      {deployments.length > 0 && (
+        <div className="mt-6 flex flex-col gap-4">
+          <div className="stagger flex flex-col divide-y divide-hair">
+            {visible.map((d) => (
+              <DeploymentRow
+                key={d.id}
+                deployment={d}
+                isLive={d.id === latestSuccessId}
+                unhealthy={d.id === latestSuccessId && isUnhealthy}
+              />
+            ))}
+          </div>
+
+          {hidden > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAll((value) => !value)}
+              className="btn-outline self-start px-4 py-2 font-body text-[15px]"
+            >
+              {showAll
+                ? t("project.deployment_history_show_recent", { count: HISTORY_PREVIEW })
+                : t("project.deployment_history_show_all", { count: deployments.length })}
+            </button>
+          )}
+        </div>
+      )}
+    </details>
   );
 }
 

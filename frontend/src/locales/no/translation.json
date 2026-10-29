@@ -326,7 +326,11 @@
     "dev_branch_of": "Dev-gren av {{project}}",
     "production_branch": "Produksjon",
     "dev_branch": "Dev",
-    "terminal_branch": "Gren: {{branch}}"
+    "terminal_branch": "Gren: {{branch}}",
+    "deployment_history_count_one": "{{count}} bygg",
+    "deployment_history_count_other": "{{count}} bygg",
+    "deployment_history_show_all": "Vis alle {{count}}",
+    "deployment_history_show_recent": "Vis bare de siste {{count}}"
   },
   "branch": {
     "label": "Gren",
