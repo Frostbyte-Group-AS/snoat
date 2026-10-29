@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SnoatLogo } from "@/components/SnoatLogo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { UserMenu } from "@/components/UserMenu";
 import { Mark } from "@/components/Mark";
 import { DeploymentStatusBadge } from "@/components/DeploymentStatusBadge";
 import { BranchPicker } from "@/components/BranchPicker";
@@ -18,7 +19,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { useAuth, displayName, avatarUrl } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import {
   createCheckout,
@@ -59,7 +60,7 @@ const TABS: ReadonlyArray<{ id: Tab; labelKey: string }> = [
 function ProjectDetailPage() {
   const { projectId } = Route.useParams();
   const search = Route.useSearch();
-  const { user, loading, signOut } = useAuth();
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -221,55 +222,37 @@ function ProjectDetailPage() {
           fem prosent gjennomsiktighet er nok til at fargen på headeren avhenger
           av hva som ligger bak den. En sticky flate skal ha én farge. */}
       <header className="sticky top-0 z-50 border-b-2 border-line bg-paper">
-        <div className="mx-auto flex max-w-[1334px] items-center justify-between px-5 py-4 lg:px-0">
-          <div className="flex items-center gap-6">
-            <Link to="/" className="anim-slide-in inline-flex">
+        {/* Samme høyre side som dashboardet: språk og profilmenyen (`UserMenu`).
+            Her sto tidligere avatar, navn og en egen «Logg ut»-lenke på rad,
+            og på mobil ble raden bredere enn skjermen – «Logg ut» ble kuttet
+            og hele siden kunne dras sidelengs. Utlogging ligger i menyen. */}
+        <div className="mx-auto flex max-w-[1334px] items-center justify-between gap-4 px-5 py-4 lg:px-0">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-6">
+            <Link to="/" className="anim-slide-in inline-flex shrink-0">
               <SnoatLogo />
             </Link>
-            <span className="h-4 w-px bg-hair" />
+            <span className="hidden h-4 w-px bg-hair sm:block" />
             <Link
               to="/dashboard"
-              className="anim-slide-in [--anim-delay:60ms] group flex items-center gap-1.5 font-body text-[15px] text-ink/70 transition-colors hover:text-ink"
+              aria-label={t("project.back_to_projects")}
+              className="anim-slide-in [--anim-delay:60ms] group flex min-w-0 items-center gap-1.5 font-body text-[15px] text-ink/70 transition-colors hover:text-ink"
             >
               {/* Pila trekker seg et hakk tilbake når man peker på lenken – den
-                  eneste retningsangivelsen vi har uten ikoner. */}
+                  eneste retningsangivelsen vi har uten ikoner. På mobil står
+                  bare pila; teksten brakk ellers over to linjer. */}
               <span
                 aria-hidden="true"
                 className="inline-block transition-transform duration-200 group-hover:-translate-x-1"
               >
                 ←
               </span>
-              {t("project.back_to_projects")}
+              <span className="hidden truncate sm:inline">{t("project.back_to_projects")}</span>
             </Link>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex shrink-0 items-center gap-4">
             <LanguageSwitcher />
-            {user && (
-              <div className="flex items-center gap-3">
-                {avatarUrl(user) ? (
-                  <img
-                    src={avatarUrl(user)!}
-                    alt=""
-                    className="h-8 w-8 rounded-none object-cover"
-                  />
-                ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-none bg-muted font-body text-[15px] text-ink">
-                    {displayName(user)[0]?.toUpperCase()}
-                  </div>
-                )}
-                <span className="hidden font-body text-[16px] text-ink md:inline">
-                  {displayName(user)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void signOut().then(() => navigate({ to: "/" }))}
-                  className="font-body text-[15px] text-ink/70 transition-colors hover:text-ink"
-                >
-                  {t("project.logout")}
-                </button>
-              </div>
-            )}
+            {user && <UserMenu />}
           </div>
         </div>
       </header>

@@ -126,6 +126,14 @@ export function UserMenu() {
             {t("account.connector")}
           </Link>
           <Link
+            to="/settings/team"
+            role="menuitem"
+            className={itemClass}
+            onClick={() => setOpen(false)}
+          >
+            {t("team.tab")}
+          </Link>
+          <Link
             to="/settings/billing"
             role="menuitem"
             className={itemClass}
