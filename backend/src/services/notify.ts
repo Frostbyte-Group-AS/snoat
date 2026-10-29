@@ -29,6 +29,51 @@ function recipients(): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Sender én e-post til en kunde – ikke til drift.
+ *
+ * Skiller seg fra varslene under på to punkter: mottakeren er gitt av kalleren
+ * (ikke `SNOAT_NOTIFY_TO`), og svaret sier om det gikk. En invitasjon som ikke
+ * kom fram er noe dashboardet skal fortelle eieren, slik at hen kan dele lenken
+ * selv. Kaster aldri, av samme grunn som resten av fila.
+ */
+export async function sendCustomerEmail(message: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}): Promise<boolean> {
+  if (!config.RESEND_API_KEY) {
+    logger.debug({ subject: message.subject }, "Resend er ikke satt opp – e-posten sendes ikke");
+    return false;
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from: config.SNOAT_NOTIFY_FROM, ...message, to: [message.to] }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!response.ok) {
+      logger.warn(
+        { subject: message.subject, status: response.status, body: await response.text().catch(() => "") },
+        "Resend avviste e-posten",
+      );
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    logger.warn({ subject: message.subject, err: error }, "Kunne ikke sende e-post");
+    return false;
+  }
+}
+
 /** Sant når både nøkkel og mottaker finnes. Begge må til for at noe sendes. */
 export function notificationsEnabled(): boolean {
   return Boolean(config.RESEND_API_KEY) && recipients().length > 0;

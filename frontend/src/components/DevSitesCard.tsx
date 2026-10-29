@@ -150,7 +150,12 @@ export function DevSitesCard({ project }: { project: Project }) {
         }}
       >
         <div className="flex flex-col gap-4">
-          <BranchPicker repo={project.repo_url} value={branch} onChange={setBranch} />
+          <BranchPicker
+            repo={project.repo_url}
+            projectId={project.id}
+            value={branch}
+            onChange={setBranch}
+          />
 
           <label className="flex flex-col gap-[8px]">
             <span className="font-body text-[15px] text-ink">{t("dev_sites.password")}</span>

@@ -25,6 +25,7 @@ import {
   deleteProject as deleteProjectRequest,
   deployProject,
   getPricing,
+  removeProjectMember,
   stopProject,
   updateCustomDomain,
 } from "@/lib/api";
@@ -199,6 +200,15 @@ function ProjectDetailPage() {
     .replace(/^https?:\/\/(www\.)?github\.com\//, "")
     .replace(/\.git$/, "");
 
+  /**
+   * Eier eller teammedlem (migrasjon 0020). Et medlem kan deploye og endre
+   * konfigurasjon, men plan, sletting og teamet er eierens. Backend og databasen
+   * håndhever skillet – her skjuler vi bare det medlemmet ikke kan bruke.
+   */
+  const isOwner = project.user_id === user?.id;
+  /** Teamet styres på hovedprosjektet; dev-sidene arver det. */
+  const teamProjectId = project.parent_project_id ?? project.id;
+
   return (
     <div className="flex min-h-screen flex-col bg-paper">
       {/* Top Navigation */}
@@ -284,6 +294,14 @@ function ProjectDetailPage() {
                 branch={latestDeployment?.branch ?? project.branch}
                 tone={isBuilding ? "loud" : "quiet"}
               />
+              {!isOwner && (
+                <span
+                  title={t("team.shared_chip_title")}
+                  className="inline-flex shrink-0 items-center border-2 border-hair px-[8px] py-[1px] font-body text-[12px] text-ink/70"
+                >
+                  {t("team.shared_chip")}
+                </span>
+              )}
               {isDevSite && parentProject.data && (
                 <Link
                   to="/projects/$projectId"
@@ -341,7 +359,18 @@ function ProjectDetailPage() {
             </div>
           </div>
 
-          <div className="anim-rise [--anim-delay:90ms] flex items-center gap-4">
+          <div className="anim-rise [--anim-delay:90ms] flex flex-wrap items-center gap-4">
+            {/* Snarvei til teamsiden, med prosjektet valgt i invitasjonsskjemaet.
+                Team ligger under kontoinnstillingene fordi «hvem har tilgang til
+                hva?» skal kunne leses for alle prosjektene på ett sted. */}
+            <Link
+              to="/settings/team"
+              search={isOwner ? { project: teamProjectId } : {}}
+              className="btn-outline px-[16px] py-[10px] font-body text-[15px]"
+            >
+              {t("team.project_button")}
+            </Link>
+
             {/* På en dev-side er av/på det man gjør oftest: den skal stå når man
                 jobber og ligge nede resten av tiden, uten å telle mot
                 plangrensen. En bryter viser dessuten *tilstanden* – to knapper
@@ -438,7 +467,7 @@ function ProjectDetailPage() {
 
           {activeTab === "env" && <EnvTab project={project} />}
 
-          {activeTab === "settings" && <SettingsTab project={project} />}
+          {activeTab === "settings" && <SettingsTab project={project} isOwner={isOwner} />}
         </div>
       </main>
     </div>
@@ -1639,10 +1668,11 @@ function ProjectPlanCard({ project }: { project: Project }) {
 // -----------------------------------------------------------------------------
 // Tab 4: Settings
 // -----------------------------------------------------------------------------
-function SettingsTab({ project }: { project: Project }) {
+function SettingsTab({ project, isOwner }: { project: Project; isOwner: boolean }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [branch, setBranch] = useState(project.branch ?? "");
   const [buildCommand, setBuildCommand] = useState(project.build_command ?? "");
@@ -1719,10 +1749,36 @@ function SettingsTab({ project }: { project: Project }) {
     }
   };
 
+  /** Et medlem forlater teamet – på hovedprosjektet, som dev-sidene arver fra. */
+  const leaveProject = async () => {
+    if (!user) return;
+    if (!window.confirm(t("team.leave_confirm", { project: project.name }))) return;
+    try {
+      await removeProjectMember(project.parent_project_id ?? project.id, user.id);
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      await queryClient.invalidateQueries({ queryKey: ["team"] });
+      void navigate({ to: "/dashboard" });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("errors.unknown"));
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8">
-      {/* Project Plan & Subscription Card */}
-      <ProjectPlanCard project={project} />
+      {/* Planen betales av eieren. Et medlem som trykket «Oppgrader» her, ville
+          startet et abonnement på sin egen konto for et prosjekt hen ikke eier. */}
+      {isOwner ? (
+        <ProjectPlanCard project={project} />
+      ) : (
+        <div className="ink-card anim-rise flex flex-col gap-1 px-[24px] py-[20px]">
+          <span className="font-body text-[15px] font-bold text-ink">
+            {t("team.plan_owner_only_title", { plan: project.plan ?? "free" })}
+          </span>
+          <span className="font-body text-[14px] text-ink/70">
+            {t("team.plan_owner_only_body")}
+          </span>
+        </div>
+      )}
 
       {/* Passordet foran appen gjelder alle prosjekter og hører hjemme her.
           Dev-grenene gjør det ikke lenger: de sto nederst på denne siden, under
@@ -1749,7 +1805,12 @@ function SettingsTab({ project }: { project: Project }) {
 
         {/* Grenen er ikke en avansert innstilling – den avgjør hvilken kode som
             står på nett. Derfor ligger den over trekkspillet, ikke inni det. */}
-        <BranchPicker repo={project.repo_url} value={branch} onChange={setBranch} />
+        <BranchPicker
+          repo={project.repo_url}
+          projectId={project.id}
+          value={branch}
+          onChange={setBranch}
+        />
 
         {/* Kjøremodus hører her av samme grunn som grenen: den avgjør om appen
             i det hele tatt kommer opp. En Next-app med output: "export" som
@@ -1873,16 +1934,26 @@ function SettingsTab({ project }: { project: Project }) {
           {t("project.settings_danger_zone")}
         </h2>
         <p className="mb-6 font-body text-[16px] text-ink/70">
-          {t("project.delete_project_warning")}
+          {isOwner ? t("project.delete_project_warning") : t("team.leave_warning")}
         </p>
 
-        <button
-          type="button"
-          onClick={deleteProject}
-          className="btn-outline border-error px-[24px] py-[12px] font-body text-[15px] text-error hover:bg-error hover:text-paper"
-        >
-          {t("project.settings_delete_project")}
-        </button>
+        {isOwner ? (
+          <button
+            type="button"
+            onClick={deleteProject}
+            className="btn-outline border-error px-[24px] py-[12px] font-body text-[15px] text-error hover:bg-error hover:text-paper"
+          >
+            {t("project.settings_delete_project")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void leaveProject()}
+            className="btn-outline border-error px-[24px] py-[12px] font-body text-[15px] text-error hover:bg-error hover:text-paper"
+          >
+            {t("team.leave")}
+          </button>
+        )}
       </div>
     </div>
   );

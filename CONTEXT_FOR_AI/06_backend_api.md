@@ -522,6 +522,56 @@ svarte). Spørringene går med service-nøkkelen uten filter på `user_id`
 (`services/sudo.ts`). Foreløpig bare lesing – stopp og sletting av andres
 prosjekter er bevisst utelatt.
 
+### Team: `/api/team` (migrasjon 0020)
+
+Medlemmer og invitasjoner på prosjekter. Hele ruten krever `authKind ===
+"session"` – også lesing. Å gi noen tilgang er en beslutning et menneske tar i
+dashboardet, og en MCP-connector som kunne invitere, er en connector en
+prompt-injeksjon i en byggelogg kan få til å invitere en fremmed. Feilkodene
+ligger under `team.*`.
+
+| Rute | Hvem | Hva |
+| --- | --- | --- |
+| `GET /api/team` | alle | Alt teamsiden trenger: `owned` (egne hovedprosjekter med `members` og `invitations`), `shared` (prosjekter du er med i) og `incoming` (invitasjoner til din bekreftede e-post). |
+| `GET /api/team/invitations` | alle | Bare `incoming`. Lett nok til dashboardvarselet. |
+| `POST /api/team/projects/:projectId/invitations` | eier | `{ email }`. Fornyer og sender på nytt hvis adressen allerede har en åpen invitasjon. Svarer `{ invitation, emailSent, renewed }` – `emailSent: false` når Resend mangler eller avviste, og dashboardet tilbyr da lenken. |
+| `DELETE /api/team/invitations/:id` | eier | Trekker tilbake (`revoked_at`). |
+| `GET /api/team/invitations/:id` | mottaker | Det invitasjonssiden viser. Feil konto får 403 `team.invitation_other_account` med maskert adresse. |
+| `POST /api/team/invitations/:id/accept` | mottaker | Krysser av invitasjonen betinget (`accepted_at is null`) **før** medlemskapet skrives, så to samtidige godtak ikke begge vinner. |
+| `POST /api/team/invitations/:id/decline` | mottaker | `declined_at`. Eieren ser avslaget i 30 dager. |
+| `DELETE /api/team/projects/:projectId/members/:userId` | eier, eller medlemmet selv | Fjern / forlat. |
+
+Grenser i `services/team.ts`: 25 i teamet per prosjekt (åpne invitasjoner
+medregnet), 30 nye invitasjoner per konto per døgn, og 15 minutter mellom hver
+gang samme invitasjon sendes på nytt. E-posten går fra vårt domene; uten taket
+var «inviter» en måte å få Snoat til å sende e-post til hvem som helst.
+
+**Mottakeren må være logget inn med nøyaktig den adressen invitasjonen ble sendt
+til, og den må være bekreftet** (`confirmedEmail()`). Lenken
+(`<dashboard>/invite/<id>`) er derfor ingen hemmelighet og lagres ikke hashet –
+videresendt til feil person gjør den ingenting.
+
+### Tilgang for teammedlemmer
+
+`loadProject(c, id, "owner" | "member")` i `middleware/auth.ts` erstatter den
+rene eiersjekken. `loadOwnedProject(c, id)` finnes fortsatt og betyr «bare
+eieren» – det er standarden, så en ny rute aldri kan glemme å *stenge*, bare
+glemme å *åpne*.
+
+| Rute | Tilgang |
+| --- | --- |
+| `GET /api/projects`, `GET /api/projects/:id`, `…/deployments`, `GET /api/deployments/:id` | medlem (lista har `role: "owner" \| "member"`) |
+| `POST …/deploy`, `POST …/stop`, `PATCH …/domain`, `GET …/domain/status`, `PATCH …/access`, `POST`/`GET …/dev-sites` | medlem |
+| `GET …/analytics`, `GET …/errors`, `GET /api/errors`, `PATCH /api/errors/:id` | medlem |
+| `PATCH /api/projects/:id` | medlem – men `repoUrl` og `githubInstallationId` gir 403 `team.owner_only` for andre enn eieren |
+| `DELETE /api/projects/:id`, `/api/billing/*`, `/api/team` (styring) | eier |
+
+Plangrensene, byggeminuttene og statistikksperren regnes alltid mot **eierens**
+konto (`project.user_id`), ikke den som trykket. `GET /api/github/branches` tar
+`?projectId=` og bruker da prosjektets egen installasjon på prosjektets eget repo
+– det er det som gir et medlem en grenliste, uten at medlemmet kan bruke eierens
+installasjon mot andre repoer.
+
 ## Feilformat
 
 Alle feil svarer med samme form:

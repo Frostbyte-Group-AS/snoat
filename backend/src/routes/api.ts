@@ -3,7 +3,13 @@ import { HTTPException } from "hono/http-exception";
 import { supabase } from "../lib/supabase.js";
 import { generateApiKey } from "../lib/api-keys.js";
 import { listConnections, revokeClientTokens } from "../lib/oauth.js";
-import { loadOwnedProject, requireAuth, type AuthVariables } from "../middleware/auth.js";
+import {
+  accessibleProjectIds,
+  loadOwnedProject,
+  loadProject,
+  requireAuth,
+  type AuthVariables,
+} from "../middleware/auth.js";
 import { vpsApi } from "./vps.js";
 import { redirectsApi } from "./redirects.js";
 import { plattformApi } from "./plattform.js";
@@ -24,6 +30,7 @@ import { EnvVarError, mergeEnvVars, type EnvVarMergeResult } from "../lib/env-va
 import { DeployError, type Deployment, type ErrorDetail } from "../types.js";
 import { billing } from "./billing.js";
 import { githubApi } from "./github.js";
+import { teamApi } from "./team.js";
 
 export const api = new Hono<{ Variables: AuthVariables }>();
 
@@ -51,6 +58,9 @@ api.route("/plattform", plattformApi);
 
 /** Alle brukere og prosjekter. Kun eierkontoen, og kun fra dashboardet. */
 api.route("/sudo", sudoApi);
+
+/** Medlemmer og invitasjoner. Kun fra dashboardet – se `routes/team.ts`. */
+api.route("/team", teamApi);
 
 /**
  * Bekrefter at en GitHub-installasjon faktisk tilhører kalleren.
@@ -272,6 +282,9 @@ api.post("/projects", async (c) => {
  * Rekkefølgen er derfor: riv ned først, slett raden etterpå. Feiler nedrivingen,
  * beholder vi raden – et prosjekt vi fortsatt kan finne igjen er langt bedre enn
  * en foreldreløs container.
+ *
+ * Bare eieren. Et medlem kan stoppe appen, men ikke fjerne prosjektet – det tar
+ * med seg domene, historikk og miljøvariabler, og kan ikke angres.
  */
 /**
  * Oppretter en dev-side for prosjektet.
@@ -291,7 +304,7 @@ api.post("/projects", async (c) => {
  * Free-konto med én app i drift får nei ved bygget, ikke ved opprettelsen.
  */
 api.post("/projects/:projectId/dev-sites", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
   const body = await c.req.json<{ branch?: unknown; password?: unknown }>().catch(() => null);
 
   if (!body) throw new HTTPException(400, { message: "Kroppen må være gyldig JSON" });
@@ -328,7 +341,7 @@ api.post("/projects/:projectId/dev-sites", async (c) => {
 
 /** Dev-sidene som hører til prosjektet. */
 api.get("/projects/:projectId/dev-sites", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
   return c.json({ devSites: await devSites.listDevSites(project.id) });
 });
 
@@ -342,7 +355,7 @@ api.get("/projects/:projectId/dev-sites", async (c) => {
  * appen» er like nyttig for en kundedemo eller en app som ikke er klar.
  */
 api.patch("/projects/:projectId/access", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
   const body = await c.req.json<{ password?: unknown }>().catch(() => null);
 
   if (!body || (typeof body.password !== "string" && body.password !== null)) {
@@ -413,7 +426,7 @@ api.delete("/projects/:projectId", async (c) => {
  * – ikke ved å polle dette endepunktet.
  */
 api.post("/projects/:projectId/deploy", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
 
   try {
     const deployment = await deploy.startDeployment(project);
@@ -438,7 +451,7 @@ api.post("/projects/:projectId/deploy", async (c) => {
 
 /** Stopper applikasjonen og fjerner ruten, uten å slette prosjektet. */
 api.post("/projects/:projectId/stop", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
 
   if (deploy.isDeploying(project.id)) {
     throw new HTTPException(409, {
@@ -458,7 +471,7 @@ api.post("/projects/:projectId/stop", async (c) => {
  * umiddelbart slik at domenet fungerer uten en ny deployment.
  */
 api.patch("/projects/:projectId/domain", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
   const { custom_domain } = await c.req.json<{ custom_domain: string | null }>();
 
   // Normaliser domenet
@@ -549,7 +562,7 @@ api.patch("/projects/:projectId/domain", async (c) => {
  * venter på propagering. Sjekken utfører ingen endringer.
  */
 api.get("/projects/:projectId/domain/status", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
 
   if (!project.custom_domain) {
     throw new HTTPException(404, { message: "Prosjektet har ikke noe eget domene." });
@@ -571,19 +584,27 @@ api.get("/dns-target", async (c) => {
 api.get("/deployments/:deploymentId", async (c) => {
   const { data, error } = await supabase
     .from("deployments")
-    .select("*, projects(user_id)")
+    .select("*")
     .eq("id", c.req.param("deploymentId"))
     .maybeSingle();
 
   if (error) throw new HTTPException(500, { message: error.message });
 
-  const row = data as (Deployment & { projects: { user_id: string } | null }) | null;
+  const deployment = data as Deployment | null;
 
-  if (!row || row.projects?.user_id !== c.get("userId")) {
+  if (!deployment) {
     throw new HTTPException(404, { message: "Deploymenten finnes ikke" });
   }
 
-  const { projects, ...deployment } = row;
+  // Samme tilgang som prosjektet: eieren og teamet. Svarer 404 for alle andre,
+  // slik at en gjettet deployment-ID ikke avslører at den finnes.
+  await loadProject(c, deployment.project_id, "member").catch((error: unknown) => {
+    if (error instanceof HTTPException && error.status === 404) {
+      throw new HTTPException(404, { message: "Deploymenten finnes ikke" });
+    }
+    throw error;
+  });
+
   return c.json({ deployment });
 });
 
@@ -599,12 +620,15 @@ api.get("/deployments/:deploymentId", async (c) => {
  * kundens applikasjon.
  */
 api.get("/projects/:projectId/analytics", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
 
   // Statistikk er en betalt funksjon. Sperren står *her* og ikke bare i
   // dashboardet, fordi fanen ikke er den eneste veien inn: `snoat_get_analytics`
   // over MCP kaller dette endepunktet, og en skjult fane er ingen grense.
-  if (!limitsFor(await entitlementFor(c.get("userId")), project).analytics) {
+  //
+  // Det er eierens plan som teller, ikke den som spør: et medlem på en
+  // gratiskonto skal se statistikken til et Pro-prosjekt hen jobber på.
+  if (!limitsFor(await entitlementFor(project.user_id), project).analytics) {
     throw new HTTPException(402, {
       message: "Trafikkstatistikk krever Pro- eller Business-planen",
       cause: { code: "plan.analytics_requires_paid" } satisfies ErrorDetail,
@@ -628,7 +652,7 @@ api.get("/projects/:projectId/analytics", async (c) => {
  * collectoren for hver app, og sveipet leser stderr for hver container.
  */
 api.get("/projects/:projectId/errors", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
 
   const status = c.req.query("status");
   const parsed =
@@ -646,7 +670,7 @@ api.get("/projects/:projectId/errors", async (c) => {
 });
 
 /**
- * Nye feil på tvers av alle prosjektene kalleren eier.
+ * Nye feil på tvers av alle prosjektene kalleren eier eller er med i.
  *
  * Formet etter det patch-agenten trenger og ikke etter det dashboardet viser:
  * ett kall, alle prosjekter, kun det som er nytt, med commit-hashen som innførte
@@ -657,12 +681,7 @@ api.get("/projects/:projectId/errors", async (c) => {
  * hvem som spør.
  */
 api.get("/errors", async (c) => {
-  const userId = c.get("userId");
-
-  const { data, error } = await supabase.from("projects").select("id").eq("user_id", userId);
-  if (error) throw new Error(`Kunne ikke lese prosjekter: ${error.message}`);
-
-  const projectIds = (data ?? []).map((row) => row.id as string);
+  const projectIds = await accessibleProjectIds(c.get("userId"));
 
   const sinceRaw = c.req.query("since");
   const since = sinceRaw ? new Date(sinceRaw) : undefined;
@@ -704,13 +723,10 @@ api.patch("/errors/:groupId", async (c) => {
     });
   }
 
-  const { data, error } = await supabase.from("projects").select("id").eq("user_id", c.get("userId"));
-  if (error) throw new Error(`Kunne ikke lese prosjekter: ${error.message}`);
-
   const updated = await errors.setStatus(
     c.req.param("groupId"),
     status,
-    (data ?? []).map((row) => row.id as string),
+    await accessibleProjectIds(c.get("userId")),
     typeof body.prUrl === "string" ? body.prUrl : null,
   );
 
@@ -725,16 +741,22 @@ api.patch("/errors/:groupId", async (c) => {
 });
 
 /**
- * Henter alle prosjekter for den innloggede brukeren.
+ * Henter alle prosjekter den innloggede brukeren eier eller er med i.
  * Brukes av integrasjoner som MCP-serveren.
+ *
+ * `role` sier hvilket av de to: `owner` eller `member`. Et medlem kan deploye og
+ * endre konfigurasjon, men ikke slette prosjektet eller bytte repo.
  */
 api.get("/projects", async (c) => {
   const userId = c.get("userId");
+  const ids = await accessibleProjectIds(userId);
+
+  if (ids.length === 0) return c.json({ projects: [] });
 
   const { data, error } = await supabase
     .from("projects")
     .select("*, deployments(id, status, created_at, url)")
-    .eq("user_id", userId)
+    .in("id", ids)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -751,6 +773,7 @@ api.get("/projects", async (c) => {
       ...p,
       deployments: undefined,
       latest_deployment: latestDeployment,
+      role: p.user_id === userId ? "owner" : "member",
     };
   });
 
@@ -758,10 +781,10 @@ api.get("/projects", async (c) => {
 });
 
 /**
- * Henter enkeltdetaljer for et prosjekt eiet av brukeren.
+ * Henter enkeltdetaljer for et prosjekt brukeren eier eller er med i.
  */
 api.get("/projects/:projectId", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
 
   const { data: latestDeployment } = await supabase
     .from("deployments")
@@ -781,7 +804,7 @@ api.get("/projects/:projectId", async (c) => {
  * Henter nylige deployments for et prosjekt.
  */
 api.get("/projects/:projectId/deployments", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
 
   const { data, error } = await supabase
     .from("deployments")
@@ -801,7 +824,7 @@ api.get("/projects/:projectId/deployments", async (c) => {
  * Oppdaterer konfigurasjon på et eksisterende prosjekt (byggekommando, env_vars, etc.).
  */
 api.patch("/projects/:projectId", async (c) => {
-  const project = await loadOwnedProject(c, c.req.param("projectId"));
+  const project = await loadProject(c, c.req.param("projectId"), "member");
 
   const body = await c.req.json<{
     branch?: unknown;
@@ -826,6 +849,21 @@ api.patch("/projects/:projectId", async (c) => {
   }
 
   const updates: Record<string, any> = {};
+
+  // Repo og installasjon er eierens. Installasjonen gir kloningen et token til
+  // alle repoene eieren har delt med Snoat – kunne et medlem peke prosjektet mot
+  // et annet av dem, ville hen fått bygget (og lest ut) kode hen aldri fikk
+  // tilgang til. Samme regel håndheves for nettleseren av
+  // `projects_guard_member_update()` i migrasjon 0020.
+  if (
+    (body.githubInstallationId !== undefined || body.repoUrl !== undefined) &&
+    project.user_id !== c.get("userId")
+  ) {
+    throw new HTTPException(403, {
+      message: "Bare eieren av prosjektet kan bytte repository eller GitHub-kobling.",
+      cause: { code: "team.owner_only" } satisfies ErrorDetail,
+    });
+  }
 
   // Uten dette feltet var en feil installasjon bare reparerbar ved å slette
   // prosjektet og opprette det på nytt – med nytt subdomene, ny historikk og

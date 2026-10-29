@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { isApiKey, touchApiKey, verifyApiKey } from "../lib/api-keys.js";
 import { isOauthAccessToken, touchToken, verifyAccessToken } from "../lib/oauth.js";
 import { supabase } from "../lib/supabase.js";
-import type { ApiKeyScope, Project } from "../types.js";
+import type { ApiKeyScope, ErrorDetail, Project } from "../types.js";
 
 export interface AuthVariables {
   userId: string;
@@ -149,15 +149,49 @@ export const requireAuth: MiddlewareHandler<{ Variables: AuthVariables }> = asyn
 };
 
 /**
- * Henter et prosjekt og bekrefter at det tilhører den innloggede brukeren.
+ * Hvem som slipper gjennom til et prosjekt.
+ *
+ * `owner` er kontoen i `projects.user_id`. `member` er eieren **eller** noen i
+ * teamet (`project_members`, migrasjon 0020) – på hovedprosjektet, og dermed
+ * også på dev-sidene, som arver teamet.
+ */
+export type ProjectAccess = "owner" | "member";
+
+/**
+ * Er brukeren med i teamet på prosjektet? Eieren regnes ikke med her.
+ *
+ * Medlemskap ligger på hovedprosjektet, så for en dev-side er det forelderens
+ * team som teller.
+ */
+export async function isProjectMember(project: Project, userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", project.parent_project_id ?? project.id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new HTTPException(500, { message: `Databasefeil: ${error.message}` });
+  }
+
+  return Boolean(data);
+}
+
+/**
+ * Henter et prosjekt og bekrefter at kalleren har tilgangen ruten krever.
  *
  * Backend bruker service-role-nøkkelen og omgår dermed RLS, så denne sjekken er
  * det eneste som står mellom en bruker og andres prosjekter. Vi svarer 404 – og
  * ikke 403 – for at et ID-gjett ikke skal avsløre at prosjektet finnes.
+ *
+ * Et medlem som ber om noe bare eieren kan, får derimot 403: hen *vet* at
+ * prosjektet finnes, og «finnes ikke» ville bare vært forvirrende.
  */
-export async function loadOwnedProject(
+export async function loadProject(
   c: Context<{ Variables: AuthVariables }>,
   projectId: string,
+  access: ProjectAccess,
 ): Promise<Project> {
   const { data, error } = await supabase
     .from("projects")
@@ -170,10 +204,71 @@ export async function loadOwnedProject(
   }
 
   const project = data as Project | null;
+  const userId = c.get("userId");
 
-  if (!project || project.user_id !== c.get("userId")) {
+  if (project && project.user_id === userId) return project;
+
+  if (!project || !(await isProjectMember(project, userId))) {
     throw new HTTPException(404, { message: "Prosjektet finnes ikke" });
   }
 
+  if (access === "owner") {
+    throw new HTTPException(403, {
+      message: "Bare eieren av prosjektet kan gjøre dette.",
+      cause: { code: "team.owner_only" } satisfies ErrorDetail,
+    });
+  }
+
   return project;
+}
+
+/**
+ * Henter et prosjekt kalleren **eier**.
+ *
+ * Standarden, med vilje: en rute som ikke eksplisitt har valgt
+ * `loadProject(c, id, "member")`, er stengt for teamet. En ny rute kan dermed
+ * aldri glemme å stenge – bare glemme å åpne.
+ */
+export function loadOwnedProject(
+  c: Context<{ Variables: AuthVariables }>,
+  projectId: string,
+): Promise<Project> {
+  return loadProject(c, projectId, "owner");
+}
+
+/**
+ * Alle prosjekt-ID-er brukeren har tilgang til: egne, de hen er medlem av, og
+ * dev-sidene til begge.
+ *
+ * For ruter som spør på tvers av prosjekter (`GET /api/projects`, feillisten),
+ * der `loadProject` per rad ville vært ett oppslag per prosjekt.
+ */
+export async function accessibleProjectIds(userId: string): Promise<string[]> {
+  const [owned, memberships] = await Promise.all([
+    supabase.from("projects").select("id").eq("user_id", userId),
+    supabase.from("project_members").select("project_id").eq("user_id", userId),
+  ]);
+
+  if (owned.error) throw new HTTPException(500, { message: `Databasefeil: ${owned.error.message}` });
+  if (memberships.error) {
+    throw new HTTPException(500, { message: `Databasefeil: ${memberships.error.message}` });
+  }
+
+  const ids = new Set((owned.data ?? []).map((row) => row.id as string));
+  const roots = (memberships.data ?? []).map((row) => row.project_id as string);
+
+  if (roots.length > 0) {
+    const shared = await supabase
+      .from("projects")
+      .select("id")
+      .or(`id.in.(${roots.join(",")}),parent_project_id.in.(${roots.join(",")})`);
+
+    if (shared.error) {
+      throw new HTTPException(500, { message: `Databasefeil: ${shared.error.message}` });
+    }
+
+    for (const row of shared.data ?? []) ids.add(row.id as string);
+  }
+
+  return [...ids];
 }
