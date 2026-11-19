@@ -102,11 +102,16 @@ function DashboardPage() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const result = new URLSearchParams(window.location.search).get("github");
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("github");
     if (!result) return;
 
     setGithubNotice(
-      result === "connected" ? t("dashboard.github_connected") : t("dashboard.github_failed"),
+      result === "connected"
+        ? t("dashboard.github_connected")
+        : params.get("reason") === "not_owner"
+          ? t("dashboard.github_not_owner")
+          : t("dashboard.github_failed"),
     );
     void queryClient.invalidateQueries({ queryKey: ["github-status"] });
     window.history.replaceState(null, "", window.location.pathname);

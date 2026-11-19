@@ -5,6 +5,7 @@ import * as github from "../lib/github.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
 import { loadProject, type AuthVariables } from "../middleware/auth.js";
+import { assertMayLinkInstallation } from "../services/installation-ownership.js";
 import type { GithubInstallation } from "../types.js";
 
 /** Dashboardet, dit installasjonsflyten sender brukeren tilbake. */
@@ -225,6 +226,10 @@ githubApi.post("/installations", async (c) => {
     throw error;
   }
 
+  // At installasjonen finnes, betyr ikke at den er kallerens. Se
+  // services/installation-ownership.ts.
+  await assertMayLinkInstallation(userId, account);
+
   const { error } = await supabase.from("github_installations").upsert(
     {
       user_id: userId,
@@ -278,6 +283,17 @@ githubSetup.get("/setup", async (c) => {
 
   try {
     const account = await github.getInstallation(installationId);
+
+    // `state` binder bare *brukeren*, ikke installasjonen: en angriper med sin
+    // egen gyldige state kunne ellers levert offerets installation_id.
+    try {
+      await assertMayLinkInstallation(userId, account, { freshInstallWindowMs: github.STATE_TTL_MS });
+    } catch (error) {
+      if (error instanceof HTTPException && error.status === 403) {
+        return c.redirect(dashboardUrl({ github: "error", reason: "not_owner" }));
+      }
+      throw error;
+    }
 
     const { error } = await supabase.from("github_installations").upsert(
       {

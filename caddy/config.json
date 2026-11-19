@@ -1,6 +1,6 @@
 {
   "admin": {
-    "listen": "0.0.0.0:2019",
+    "listen": "unix//run/caddy-admin/admin.sock",
     "config": {
       "persist": false
     },

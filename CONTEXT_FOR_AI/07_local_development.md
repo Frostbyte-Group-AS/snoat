@@ -299,8 +299,8 @@ rydder dem – eller gjør det for hånd:
 
 ```bash
 # Hvilken container Caddy faktisk peker på:
-curl -s -H "Origin: http://127.0.0.1:2019" \
-  http://127.0.0.1:2019/id/snoat_app_<slug> | jq '.handle[0].upstreams'
+docker compose exec backend curl -s --unix-socket /run/caddy-admin/admin.sock -H "Origin: http://caddy:2019" \
+  http://caddy:2019/id/snoat_app_<slug> | jq '.handle[0].upstreams'
 
 # Alt Snoat eier, gruppert etter prosjekt:
 docker ps --filter label=no.snoat.managed=true \
@@ -326,8 +326,9 @@ en feilmelding du kan lese rett ut av API-et:
 med en 32-tegns `DB_ENC_KEY`, byttes den ut ved neste kjøring.
 
 **Backend når ikke Caddy admin-API-et (403).** «client is not allowed to access
-from origin ''». Admin-API-et lytter på `0.0.0.0:2019` fordi backend står i en
-egen container, og da håndhever Caddy `admin.origins`. `fetch` uten
+from origin ''». Admin-API-et lytter på unix-socketen
+`/run/caddy-admin/admin.sock` (volumet `caddy-admin`, som bare caddy og backend
+monterer), og Caddy håndhever `admin.origins` mot Host/Origin. `fetch` uten
 `Origin`-header avvises (curl slipper gjennom, som gjør feilen forvirrende å
 teste). Backend setter headeren eksplisitt i `lib/caddy.ts`.
 
@@ -344,7 +345,7 @@ Init-scriptene kjører kun på en tom datakatalog.
 docker compose logs -f backend      # følg bygge-motoren
 docker compose ps                   # status på alle tjenester
 docker ps --filter label=no.snoat.managed=true   # deployede brukerapper
-curl -s http://127.0.0.1:2019/config/apps/http/servers/snoat/routes | jq  # Caddy-ruter
+docker compose exec backend curl -s --unix-socket /run/caddy-admin/admin.sock -H "Origin: http://caddy:2019" http://caddy:2019/config/apps/http/servers/snoat/routes | jq  # Caddy-ruter
 docker compose down                 # stopp
 docker compose down -v              # stopp og slett databasen
 ./scripts/vendor-sync.sh            # hent referansekode på nytt

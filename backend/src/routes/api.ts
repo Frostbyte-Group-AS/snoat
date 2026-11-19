@@ -259,9 +259,17 @@ api.post("/projects", async (c) => {
     // (user_id, external_ref). Begge betyr «dette finnes allerede», som er en
     // konflikt kalleren kan handle på – ikke en serverfeil.
     if (error.code === "23505") {
+      // Navnet er subdomenet, og må derfor være unikt på tvers av alle kontoer
+      // (migrasjon 0021) – ikke bare innenfor kallerens egen.
       throw new HTTPException(409, {
-        message: `Du har allerede et prosjekt som heter «${name}».`,
+        message: /projects_name_unique/.test(error.message)
+          ? `Navnet «${name}» er allerede i bruk på Snoat. Velg et annet prosjektnavn.`
+          : `Du har allerede et prosjekt som heter «${name}».`,
       });
+    }
+    // 23514 = check_violation, her navnene Snoat bruker selv (migrasjon 0021).
+    if (error.code === "23514") {
+      throw new HTTPException(400, { message: error.message });
     }
     throw new HTTPException(500, { message: `Kunne ikke opprette prosjektet: ${error.message}` });
   }

@@ -275,6 +275,23 @@ void (async () => {
     logger.warn({ err: error }, "Kunne ikke rydde avbrutte deployments");
   }
 
+  // Caddy og backend startes samtidig (`depends_on: service_started`), og
+  // admin-socketen finnes først når Caddy har lest configen. Rutene lever bare i
+  // Caddys minne, så feiler synkroniseringen under, står *alle* apper uten rute
+  // til backend restartes. Vent derfor til admin-API-et svarer (maks ~30 s).
+  for (let attempt = 1; attempt <= 30; attempt++) {
+    try {
+      await caddy.ping();
+      break;
+    } catch (error) {
+      if (attempt === 30) {
+        logger.warn({ err: error }, "Caddy admin-API svarte ikke innen 30 sekunder");
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
   // Før rutene: ruter med de ekstra vertsnavnene skal ikke rekke å få en
   // handshake før Caddy vet hvilken CA de skal hentes fra.
   try {

@@ -146,8 +146,30 @@ henger.
 
 **CORS er hvitelistet** til `SNOAT_FRONTEND_ORIGIN`.
 
-**Databasen og Caddys admin-API er kun bundet til loopback** i compose
-(`127.0.0.1:5432`, `127.0.0.1:2019`).
+**Databasen er kun bundet til loopback** i compose (`127.0.0.1:5432`).
+
+**Caddys admin-API lytter bare på en unix-socket** (`/run/caddy-admin/admin.sock`
+i volumet `caddy-admin`, montert kun i caddy og backend). Tidligere lyttet det på
+`0.0.0.0:2019`, og siden Caddy står på `snoat_apps` sammen med alle kundeappene,
+kunne enhver deployet app omkonfigurere hele proxyen: sende `api.snoat.com` til
+seg selv, kapre domener, eller servere `/data` med TLS-privatnøklene.
+`admin.origins` beskytter ikke mot det – Host og Origin er headere klienten selv
+velger. Regelen: **admin-API-et skal aldri lytte på et nettverk en app står på.**
+
+**Prosjektnavn er globalt unike** (migrasjon 0021). Navnet er subdomenet og
+nøkkelen for Caddy-ruten, nettverksaliaset og TLS-oppslaget; da det bare var
+unikt per bruker, kunne en annen konto overta `<navn>.snoat.com`. Plattformens
+egne vertsnavn (`www`, `api`, `supabase`, `studio`, `edge`, `admin`) er reservert.
+
+**En GitHub-installasjon kobles bare til den som kan vise at den er deres**
+(`services/installation-ownership.ts`): koblingen finnes fra før, eierkonto,
+personlig installasjon på samme GitHub-identitet som kalleren er logget inn med,
+eller – kun i nettleserflyten med signert `state` – en installasjon opprettet
+innenfor `state`-ens levetid. At ID-en finnes hos GitHub er ikke nok; ID-ene er
+sekvensielle. Triggeren `projects_installation_owned` krever i tillegg at
+`projects.github_installation_id` er koblet til prosjekteieren, siden eieren
+skriver prosjektraden direkte, og deploy sjekker det samme før kloning.
+Installasjonstokenet legges bare i klone-URL-er mot `https://github.com`.
 
 **Unike hemmeligheter per installasjon.** Vi bruker ikke Supabase sine
 publiserte demo-nøkler; `bootstrap-env.mjs` genererer og signerer egne.
@@ -158,7 +180,7 @@ trengs. En OAuth-app ville krevd at vi oppbevarte et langlevd token med
 skrivetilgang til alt brukeren eier – med App-modellen velger brukeren selv
 hvilke repoer vi ser, og tilgangen er `Contents: read-only`.
 
-**Installasjonskoblingen er signert.** `/github/setup` treffes av nettleseren
+**Installasjonskoblingen er signert** (men signaturen binder bare brukeren, ikke installasjonen – se eierskapssjekken over). `/github/setup` treffes av nettleseren
 uten Authorization-header. `state` er HMAC-signert med `GITHUB_APP_STATE_SECRET`
 og har 30 minutters levetid; signaturen sammenlignes med `timingSafeEqual`. Uten
 den kunne hvem som helst kalt endepunktet med en vilkårlig `installation_id` og

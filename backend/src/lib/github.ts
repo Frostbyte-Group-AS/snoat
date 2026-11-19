@@ -39,6 +39,10 @@ export interface GithubInstallationAccount {
   installationId: number;
   accountLogin: string;
   accountType: string;
+  /** GitHub sin numeriske ID for kontoen (bruker eller organisasjon). */
+  accountId: number | null;
+  /** Når installasjonen ble opprettet på GitHub (ISO 8601). */
+  createdAt: string | null;
 }
 
 export class GithubError extends Error {
@@ -172,7 +176,8 @@ export function forgetInstallation(installationId: number): void {
 
 interface InstallationResponse {
   id: number;
-  account: { login: string; type: string } | null;
+  account: { login: string; type: string; id?: number } | null;
+  created_at?: string;
 }
 
 /**
@@ -191,6 +196,8 @@ export async function getInstallation(installationId: number): Promise<GithubIns
     installationId: data.id,
     accountLogin: data.account?.login ?? "ukjent",
     accountType: data.account?.type ?? "User",
+    accountId: typeof data.account?.id === "number" ? data.account.id : null,
+    createdAt: data.created_at ?? null,
   };
 }
 
@@ -317,7 +324,7 @@ export function installUrl(userId: string): string {
   return `https://github.com/apps/${slug}/installations/new?state=${encodeURIComponent(signState(userId))}`;
 }
 
-const STATE_TTL_MS = 30 * 60 * 1000;
+export const STATE_TTL_MS = 30 * 60 * 1000;
 
 function stateSecret(): string {
   if (!config.GITHUB_APP_STATE_SECRET) {
@@ -379,8 +386,16 @@ export async function authenticatedCloneUrl(
   repoUrl: string,
   installationId: number,
 ): Promise<string> {
-  const token = await installationToken(installationId);
   const url = new URL(repoUrl);
+
+  // Installasjonstokenet gir lesetilgang til alle repoene i installasjonen. Det
+  // skal bare noensinne sendes til GitHub: med `repo_url` mot en annen vert ville
+  // git ha levert tokenet rett til den som eier verten.
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "github.com") {
+    throw new GithubError(400, `Installasjonstoken sendes bare til https://github.com, ikke ${url.host}`);
+  }
+
+  const token = await installationToken(installationId);
   url.username = "x-access-token";
   url.password = token;
   return url.toString();
