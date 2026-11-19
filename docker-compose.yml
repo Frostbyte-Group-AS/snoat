@@ -240,6 +240,12 @@ services:
 
   kong:
     image: kong:2.8.1
+    # Ingen søkedomene. VM-en har `search snoat.com`, og *.snoat.com peker på
+    # serverens offentlige IP. Mens en container byttes ut kjenner ikke Dockers
+    # DNS navnet, og oppslaget blir `<navn>.snoat.com` – 88.99.100.186 – der
+    # brannmuren dropper porten. Da henger tilkoblingen i ~30 s i stedet for å
+    # feile med en gang (sett under utrullingen 2026-11-19).
+    dns_search: .
     restart: unless-stopped
     # All Supabase-trafikk fra brukerappene går gjennom Kong. Sultes den, faller
     # innlogging og databasekall i appene, ikke bare i dashbordet.
@@ -297,6 +303,12 @@ services:
       context: ./caddy
       dockerfile: Dockerfile
     image: snoat-caddy:2.11.4
+    # Ingen søkedomene. VM-en har `search snoat.com`, og *.snoat.com peker på
+    # serverens offentlige IP. Mens en container byttes ut kjenner ikke Dockers
+    # DNS navnet, og oppslaget blir `<navn>.snoat.com` – 88.99.100.186 – der
+    # brannmuren dropper porten. Da henger tilkoblingen i ~30 s i stedet for å
+    # feile med en gang (sett under utrullingen 2026-11-19).
+    dns_search: .
     restart: unless-stopped
     # Proxyen skal vinne over en pågående bygging. Cgroup-ene ligger som søsken
     # under system.slice, så uten dette konkurrerer Caddy med lik vekt mot
@@ -332,6 +344,8 @@ services:
       # Settes av scripts/bootstrap-env.mjs ut fra SNOAT_DOMAIN.
       target: ${BACKEND_BUILD_TARGET:-dev}
     restart: unless-stopped
+    # Se caddy: uten søkedomene feiler et ukjent navn med en gang.
+    dns_search: .
     # Backend styrer byggingen og svarer på TLS-tillatelser. Blir den sultet av
     # sin egen byggejobb, henger `tls-ask` – og da feiler handshaken for alle
     # domener som ikke allerede har et sertifikat.
