@@ -331,7 +331,12 @@
     "deployment_history_count_one": "{{count}} build",
     "deployment_history_count_other": "{{count}} builds",
     "deployment_history_show_all": "Show all {{count}}",
-    "deployment_history_show_recent": "Show only the latest {{count}}"
+    "deployment_history_show_recent": "Show only the latest {{count}}",
+    "env_show": "Show value",
+    "env_hide": "Hide value",
+    "env_show_value": "Show the value of {{key}}",
+    "env_hide_value": "Hide the value of {{key}}",
+    "env_remove_var": "Remove {{key}}"
   },
   "branch": {
     "label": "Branch",

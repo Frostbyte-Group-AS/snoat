@@ -331,7 +331,12 @@
     "deployment_history_count_one": "{{count}} bygg",
     "deployment_history_count_other": "{{count}} bygg",
     "deployment_history_show_all": "Vis alle {{count}}",
-    "deployment_history_show_recent": "Vis bare de siste {{count}}"
+    "deployment_history_show_recent": "Vis bare de siste {{count}}",
+    "env_show": "Vis verdi",
+    "env_hide": "Skjul verdi",
+    "env_show_value": "Vis verdien til {{key}}",
+    "env_hide_value": "Skjul verdien til {{key}}",
+    "env_remove_var": "Fjern {{key}}"
   },
   "branch": {
     "label": "Gren",

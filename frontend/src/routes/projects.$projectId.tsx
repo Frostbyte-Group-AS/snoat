@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Eye, EyeOff, X } from "lucide-react";
 import { SnoatLogo } from "@/components/SnoatLogo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { UserMenu } from "@/components/UserMenu";
@@ -1273,6 +1274,17 @@ function EnvImportModal({
   );
 }
 
+/**
+ * Skjult visning av en miljøvariabel: de fire første tegnene og et fast antall
+ * prikker. Antallet prikker er alltid det samme, så lengden avsløres ikke, og
+ * korte verdier (fire tegn eller færre) vises bare som prikker.
+ */
+function maskEnvValue(value: string): string {
+  if (value === "") return "";
+  const dots = "••••••••••••";
+  return value.length > 8 ? `${value.slice(0, 4)}${dots}` : dots;
+}
+
 function EnvTab({ project }: { project: Project }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -1292,6 +1304,20 @@ function EnvTab({ project }: { project: Project }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  // Radene der verdien vises i klartekst. Lagrede verdier er skjult til man ber
+  // om å se dem; nye, tomme rader er åpne så man kan skrive rett inn.
+  const [revealed, setRevealed] = useState<Set<string>>(
+    () => new Set(envVars.filter((item) => item.value === "").map((item) => item.id)),
+  );
+
+  const toggleReveal = (id: string) => {
+    setRevealed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const saveEnvVars = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1322,10 +1348,9 @@ function EnvTab({ project }: { project: Project }) {
   };
 
   const addEnvPair = () => {
-    setEnvVars((prev) => [
-      ...prev,
-      { id: Math.random().toString(36).substring(2, 9), key: "", value: "" },
-    ]);
+    const id = Math.random().toString(36).substring(2, 9);
+    setEnvVars((prev) => [...prev, { id, key: "", value: "" }]);
+    setRevealed((prev) => new Set(prev).add(id));
   };
 
   const removeEnvPair = (id: string) => {
@@ -1398,19 +1423,50 @@ function EnvTab({ project }: { project: Project }) {
                 onChange={(e) => updateEnvPair(pair.id, "key", e.target.value)}
                 className="field-ink w-1/2 px-[14px] py-[12px] font-mono text-[14px] outline-none"
               />
-              <input
-                type="text"
-                placeholder={t("project_details.env_value_placeholder")}
-                value={pair.value}
-                onChange={(e) => updateEnvPair(pair.id, "value", e.target.value)}
-                className="field-ink w-1/2 px-[14px] py-[12px] font-mono text-[14px] outline-none"
-              />
+              <div className="relative w-1/2">
+                {revealed.has(pair.id) ? (
+                  <input
+                    type="text"
+                    placeholder={t("project_details.env_value_placeholder")}
+                    value={pair.value}
+                    onChange={(e) => updateEnvPair(pair.id, "value", e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="field-ink w-full py-[12px] pl-[14px] pr-[44px] font-mono text-[14px] outline-none"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => toggleReveal(pair.id)}
+                    aria-label={t("project.env_show_value", { key: pair.key })}
+                    className="field-ink w-full truncate py-[12px] pl-[14px] pr-[44px] text-left font-mono text-[14px] text-ink/70 outline-none"
+                  >
+                    {maskEnvValue(pair.value)}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => toggleReveal(pair.id)}
+                  aria-label={
+                    revealed.has(pair.id)
+                      ? t("project.env_hide_value", { key: pair.key })
+                      : t("project.env_show_value", { key: pair.key })
+                  }
+                  title={revealed.has(pair.id) ? t("project.env_hide") : t("project.env_show")}
+                  className="absolute right-[6px] top-1/2 -translate-y-1/2 rounded-[8px] p-2 text-ink/60 transition-colors hover:text-ink"
+                >
+                  {revealed.has(pair.id) ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
               {envVars.length > 1 && (
                 <button
                   type="button"
                   onClick={() => removeEnvPair(pair.id)}
+                  aria-label={t("project.env_remove_var", { key: pair.key })}
                   className="p-2 text-ink/70 hover:text-error transition-colors"
-                ></button>
+                >
+                  <X size={18} />
+                </button>
               )}
             </div>
           ))}
