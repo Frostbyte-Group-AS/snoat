@@ -244,6 +244,13 @@ const schema = z.object({
   SNOAT_APP_RESTART_MAX_RETRIES: z.coerce.number().int().nonnegative().default(5),
 
   /**
+   * Maks antall prosesser/tråder i én applikasjonscontainer. En fork-bombe skal
+   * ta ned sin egen container, ikke verten. En Next.js-app bruker godt under
+   * hundre; 2048 gir rikelig rom for apper med worker-pooler.
+   */
+  SNOAT_APP_PIDS_LIMIT: z.coerce.number().int().positive().default(2048),
+
+  /**
    * Hvor ofte helsesveipet (`services/helse.ts`) sammenligner det databasen
    * påstår kjører mot det Docker faktisk har.
    *

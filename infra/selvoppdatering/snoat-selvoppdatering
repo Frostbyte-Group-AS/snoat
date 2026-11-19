@@ -101,9 +101,21 @@ vent_paa_appbygg() {
 # derfor sin egen `|| return 1`. Uten dem ville et feilet `docker compose build`
 # gått rett videre til `up -d` med de gamle imagene og meldt suksess.
 utrull() {
-  local commit=$1
+  local commit=$1 fra=${2:-}
   echo "==> $(naa) Henter $commit"
   git -C "$KILDE" checkout --quiet --force --detach "$commit" || return 1
+
+  # Må Caddy restartes? Bare hvis configen eller compose-fila er endret siden
+  # commiten som kjører nå. En restart tømmer apprutene (de lever bare i Caddys
+  # minne) og setter i gang fornyelse av hundrevis av sertifikater; 19.11.2026
+  # sto api.snoat.com og supabase.snoat.com utilgjengelige i 14 minutter etter
+  # en ren frontend-deploy. Ukjent eller tom `fra` (første kjøring,
+  # tilbakerulling) = restart, som før.
+  local caddy_endret=1
+  if [ -n "$fra" ] && git -C "$KILDE" cat-file -e "${fra}^{commit}" 2>/dev/null \
+    && git -C "$KILDE" diff --quiet "$fra" "$commit" -- caddy/ docker-compose.yml; then
+    caddy_endret=0
+  fi
 
   # `--delete`, men bare under toppnivået (`P /*` beskytter alt som ligger rett
   # i $MAL: .env, backupene av den, .snoat/). Uten den ble filer fra en ødelagt
@@ -148,9 +160,17 @@ utrull() {
   echo "==> $(naa) Starter tjenestene"
   docker compose up -d --remove-orphans || { echo "FEIL: docker compose up feilet"; return 1; }
 
-  echo "==> $(naa) Restarter Caddy og backend"
-  docker compose restart caddy || return 1
-  docker compose restart backend || return 1
+  if [ "$caddy_endret" = 1 ]; then
+    # Backend legger rutene inn igjen når den starter, så den må restartes
+    # *etter* Caddy.
+    echo "==> $(naa) Caddy-konfigurasjonen er endret: restarter Caddy og backend"
+    docker compose restart caddy || return 1
+    docker compose restart backend || return 1
+  else
+    # `up -d` over har allerede byttet ut backend hvis imaget endret seg, og den
+    # synkroniserer rutene selv ved oppstart. Ellers står alt som det sto.
+    echo "==> Caddy-konfigurasjonen er uendret: Caddy restartes ikke"
+  fi
 }
 
 verifiser() {
@@ -162,10 +182,15 @@ verifiser() {
   domene=${domene:-snoat.com}
 
   echo "==> $(naa) Venter på at backend er frisk og har lagt rutene inn igjen"
-  local forsok
+  local forsok backend_startet
   for forsok in $(seq 1 60); do
+    # Ble backend ikke startet på nytt i denne utrullingen (uendret image og
+    # uendret Caddy), kommer det ingen ny «Caddy-ruter synkronisert»-linje – og
+    # rutene står fortsatt. Da holder det at den svarer.
+    backend_startet=$(docker inspect -f '{{.State.StartedAt}}' "$(docker compose ps -q backend)" 2>/dev/null | cut -c1-19)
     if curl -fsS -m 5 "http://127.0.0.1:${port}/health" >/dev/null 2>&1 \
-      && docker compose logs --since "$siden" backend 2>/dev/null | grep -q "Caddy-ruter synkronisert"; then
+      && { docker compose logs --since "$siden" backend 2>/dev/null | grep -q "Caddy-ruter synkronisert" \
+        || { [ -n "$backend_startet" ] && [[ "$backend_startet" < "${siden%Z}" ]]; }; }; then
       echo "Backend svarer og rutene er synkronisert (etter ${forsok} forsøk)."
       break
     fi
@@ -265,7 +290,7 @@ deploy() {
   echo "Deployer $commit ($kilde): $melding" >"$logg"
 
   local resultat
-  if (utrull "$commit" && verifiser "$startet") >>"$logg" 2>&1; then
+  if (utrull "$commit" "$forrige" && verifiser "$startet") >>"$logg" 2>&1; then
     echo "$commit" >"$TILSTAND/deployet-commit"
     rm -f "$TILSTAND/feilet-commit"
     oppdater_seg_selv >>"$logg" 2>&1 || echo "ADVARSEL: kunne ikke installere ny versjon av selvoppdateringen" >>"$logg"

@@ -3,7 +3,7 @@
  *
  * `envVars` på `PATCH /projects/:id` erstatter hele settet. Det er riktig for
  * dashboardet, som har alle verdiene i klartekst i skjemaet. Gjennom MCP er det
- * en felle: verdiene kommer maskert tilbake («re_5… ••• (skjult, 36 tegn)»), så
+ * en felle: verdiene kommer maskert tilbake («••• (skjult)»), så
  * en assistent som vil endre én variabel har ingen måte å sende de andre
  * tilbake på. Det eneste den kan gjøre er å overskrive alle hemmelighetene med
  * maskeringsteksten – eller la være. Fletting på serveren, mot verdiene som

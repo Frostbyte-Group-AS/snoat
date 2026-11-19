@@ -159,16 +159,28 @@ describe("PLAN_LIMITS.maxRunningDevSites", () => {
 describe("countActiveApps", () => {
   const running = new Set(["app-1", "app-2", "statisk", "dev-side"]);
 
-  it("teller bare dynamiske prosjekter med en kjørende container", () => {
+  it("teller prosjekter med en kjørende container", () => {
     const active = countActiveApps(
       [
         app("app-1"),
         app("app-2"),
-        // Statisk: har ingen container å telle, selv om ID-en skulle dukke opp.
-        { id: "statisk", static_output_dir: "dist", parent_project_id: null },
+        // Statisk uten container: ingenting å telle.
+        { id: "statisk-uten", static_output_dir: "dist", parent_project_id: null },
         // Stoppet eller krasjet: ligger ikke i settet fra Docker.
         app("stoppet"),
       ],
+      running,
+    );
+
+    assert.equal(active, 2);
+  });
+
+  it("teller en container selv om raden er merket statisk", () => {
+    // Flagget kan settes rett i databasen etter en deploy. Det er Docker som
+    // vet om noe kjører – ellers kunne en Free-konto stablet opp containere ved
+    // å merke hver app statisk før neste deploy.
+    const active = countActiveApps(
+      [app("app-1"), { id: "statisk", static_output_dir: "dist", parent_project_id: null }],
       running,
     );
 
@@ -197,12 +209,12 @@ describe("countActiveDevSites", () => {
     assert.equal(active, 2);
   });
 
-  it("teller ikke en statisk dev-side", () => {
+  it("teller ikke en statisk dev-side uten container", () => {
     // En dev-side arver `static_output_dir` fra forelderen. Er forelderen en
     // statisk side, kjører heller ikke dev-siden en container – og da er det
     // ingenting å ta betalt for.
     const active = countActiveDevSites(
-      [{ id: "dev-statisk", static_output_dir: "dist", parent_project_id: "app-1" }],
+      [{ id: "dev-statisk-uten", static_output_dir: "dist", parent_project_id: "app-1" }],
       running,
     );
 

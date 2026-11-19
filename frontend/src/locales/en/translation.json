@@ -555,7 +555,11 @@
     "consent_login_body": "An AI client is requesting access to your Snoat account. Sign in first, and you will see exactly what it is asking for.",
     "consent_login_action": "Sign in",
     "consent_invalid_title": "The request is missing or expired",
-    "consent_invalid_body": "Start the connection again from your AI client. Requests expire after a while for security reasons."
+    "consent_invalid_body": "Start the connection again from your AI client. Requests expire after a while for security reasons.",
+    "consent_client": "Client: {{name}}",
+    "consent_client_unnamed": "(no name)",
+    "consent_redirect_host": "Access is sent to:",
+    "consent_unknown_host_warning": "Snoat doesn't recognise {{host}}. Only approve if you started this connection yourself from a service you trust – whoever owns {{host}} gets full access to your projects."
   },
   "usp": {
     "sovereignty": {

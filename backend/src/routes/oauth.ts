@@ -166,7 +166,43 @@ wellKnown.get("/openid-configuration", (c) => {
 
 // --- Dynamisk klientregistrering (RFC 7591) --------------------------------
 
+/**
+ * Registreringen er åpen for alle (det er hele poenget med RFC 7591), og hver
+ * registrering er en rad i `oauth_clients`. Uten tak kunne hvem som helst fylt
+ * tabellen. Tellingen er i minnet og per backend-prosess – nok til å stoppe en
+ * løkke, uten å stå i veien for en connector som registrerer seg på nytt.
+ *
+ * IP-en er den Caddy satte i X-Forwarded-For (siste ledd er det Caddy selv så);
+ * backend er bare nåbar gjennom Caddy.
+ */
+const REGISTER_PER_IP_PER_HOUR = 20;
+const REGISTER_TOTAL_PER_HOUR = 500;
+const registerCounts = new Map<string, number>();
+let registerTotal = 0;
+let registerWindow = 0;
+
+function registerRateLimited(ip: string): boolean {
+  const hour = Math.floor(Date.now() / 3_600_000);
+  if (hour !== registerWindow) {
+    registerWindow = hour;
+    registerCounts.clear();
+    registerTotal = 0;
+  }
+  const count = (registerCounts.get(ip) ?? 0) + 1;
+  if (count > REGISTER_PER_IP_PER_HOUR || registerTotal + 1 > REGISTER_TOTAL_PER_HOUR) return true;
+  registerCounts.set(ip, count);
+  registerTotal += 1;
+  return false;
+}
+
 oauth.post("/register", async (c) => {
+  const forwarded = c.req.header("x-forwarded-for")?.split(",").map((part) => part.trim()).filter(Boolean);
+  const ip = forwarded?.at(-1) ?? "ukjent";
+  if (registerRateLimited(ip)) {
+    const { body: error } = oauthError("invalid_request", "For mange registreringer. Prøv igjen senere.");
+    return c.json(error, 429);
+  }
+
   const body = await c.req.json<{
     client_name?: unknown;
     redirect_uris?: unknown;
@@ -417,6 +453,39 @@ oauth.post("/approve", async (c) => {
  * Vi sier det til klienten i stedet for å la den vente: `access_denied` er svaret
  * som får Claude til å vise «tilkobling avbrutt» framfor å henge i «kobler til».
  */
+/**
+ * Hvem som ber om tilgang, slik samtykkesiden skal vise det.
+ *
+ * Registreringen er åpen, så hvem som helst kan lage en klient med en vilkårlig
+ * https-`redirect_uri` og sende en innlogget Snoat-bruker en authorize-lenke. Et
+ * «Godkjenn» der sender koden – og dermed full API-tilgang – til den verten.
+ * Siden må derfor si tydelig *hvor* tilgangen går, og advare når det ikke er en
+ * vert vi kjenner. Opplysningene hentes fra den signerte forespørselen og
+ * databasen, ikke fra URL-en, som angriperen styrer.
+ */
+const KJENTE_VERTER = ["claude.ai", "claude.com", "anthropic.com", "localhost", "127.0.0.1", "[::1]"];
+
+function erKjentVert(host: string): boolean {
+  return KJENTE_VERTER.some((kjent) => host === kjent || host.endsWith(`.${kjent}`));
+}
+
+oauth.post("/describe", async (c) => {
+  const body = await c.req.json<{ request?: unknown }>().catch(() => null);
+  const sealed = typeof body?.request === "string" ? body.request : null;
+  const request = sealed ? openConsentRequest(sealed) : null;
+  if (!request) throw new HTTPException(400, { message: "Ugyldig eller utløpt forespørsel." });
+
+  const client = await findClient(request.clientId);
+  if (!client) throw new HTTPException(400, { message: "Ukjent klient." });
+
+  const redirectHost = new URL(request.redirectUri).hostname;
+  return c.json({
+    clientName: client.client_name ?? null,
+    redirectHost,
+    known: erKjentVert(redirectHost),
+  });
+});
+
 oauth.post("/deny", async (c) => {
   const body = await c.req.json<{ request?: unknown }>().catch(() => null);
   const sealed = typeof body?.request === "string" ? body.request : null;

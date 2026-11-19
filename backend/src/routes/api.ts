@@ -20,7 +20,7 @@ import * as deploy from "../services/deploy.js";
 import * as devSites from "../services/dev-sites.js";
 import { ensureProjectRoute, type RouteStatus } from "../services/deploy.js";
 import { checkDomain, edgeHost, edgeIps } from "../services/domain-status.js";
-import { domainClashesWithRedirect } from "../services/redirects.js";
+import { assertValidDomain, domainClashesWithRedirect, RedirectError } from "../services/redirects.js";
 import { domainClashesWithVps } from "../services/vps-domener.js";
 import * as errors from "../services/errors.js";
 import { assertSafeBranch, assertSafeRepoUrl } from "../services/git.js";
@@ -486,6 +486,44 @@ api.patch("/projects/:projectId/domain", async (c) => {
   const normalized = custom_domain ? custom_domain.trim().toLowerCase() : null;
 
   if (normalized) {
+    // Samme regler som for omdirigeringer: et gyldig vertsnavn, og aldri et av
+    // plattformens egne (`snoat.com` ville gitt ruten `*.snoat.com`, som fanger
+    // alle app-subdomener som ikke er rutet ennå).
+    if (!/^[a-z0-9.-]+$/.test(normalized)) {
+      throw new HTTPException(400, { message: `«${normalized}» er ikke et gyldig domenenavn.` });
+    }
+    try {
+      assertValidDomain(normalized);
+    } catch (err) {
+      if (err instanceof RedirectError) throw new HTTPException(err.status, { message: err.message });
+      throw err;
+    }
+
+    // Et prosjekt med eget domene får også `*.<domene>` (lib/caddy.ts,
+    // `hostsFor`). En annen konto skal ikke kunne legge inn et subdomene under
+    // det: den eksakte ruten flyttes foran wildcarden, og tls-ask godkjenner
+    // sertifikat – det ville vært subdomene-kapring, med tilgang til cookies
+    // satt for hele domenet.
+    const ancestors: string[] = [];
+    const labels = normalized.split(".");
+    for (let i = 1; i <= labels.length - 2; i++) ancestors.push(labels.slice(i).join("."));
+    if (ancestors.length > 0) {
+      const { data: owners, error: ownerError } = await supabase
+        .from("projects")
+        .select("custom_domain")
+        .in("custom_domain", ancestors)
+        .neq("user_id", project.user_id)
+        .limit(1);
+      if (ownerError) {
+        throw new HTTPException(500, { message: "Kunne ikke verifisere domene: " + ownerError.message });
+      }
+      if (owners && owners.length > 0) {
+        throw new HTTPException(409, {
+          message: `${owners[0]?.custom_domain} og subdomenene tilhører et prosjekt på en annen konto.`,
+        });
+      }
+    }
+
     const { count, error: countError } = await supabase
       .from("projects")
       .select("id", { count: "exact", head: true })
@@ -982,6 +1020,12 @@ api.get("/api-keys", async (c) => {
  * Utsteder en ny API-nøkkel for innlogget bruker (f.eks. for Snoat MCP Server).
  */
 api.post("/api-keys", async (c) => {
+  // Bare med en dashboardsesjon. En API-nøkkel eller et OAuth-token (en
+  // connector, eller noe som har lurt til seg et samtykke) skal ikke kunne
+  // utstede en permanent nøkkel som overlever at den kobles fra.
+  if (c.get("authKind") !== "session") {
+    throw new HTTPException(403, { message: "API-nøkler kan bare opprettes fra dashboardet." });
+  }
   const userId = c.get("userId");
   const body = await c.req.json<{ name?: string }>().catch(() => ({ name: "Snoat MCP Server" }));
 
@@ -1062,6 +1106,9 @@ api.delete("/mcp-connections/:clientId", async (c) => {
  * Trekker tilbake en API-nøkkel.
  */
 api.delete("/api-keys/:keyId", async (c) => {
+  if (c.get("authKind") !== "session") {
+    throw new HTTPException(403, { message: "API-nøkler kan bare slettes fra dashboardet." });
+  }
   const userId = c.get("userId");
   const keyId = c.req.param("keyId");
 

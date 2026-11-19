@@ -62,12 +62,6 @@ export interface McpTool {
 // --- Maskering -------------------------------------------------------------
 
 /**
- * Hvor mye av en hemmelighet som er trygt å vise: nok til å kjenne den igjen,
- * for lite til å bruke den.
- */
-const ENV_VALUE_HINT_LENGTH = 4;
-
-/**
  * Skjuler verdiene i `env_vars`, men beholder nøklene.
  *
  * `GET /api/projects` returnerer miljøvariablene i klartekst, og det er riktig
@@ -81,6 +75,18 @@ const ENV_VALUE_HINT_LENGTH = 4;
  * prosjektet?» er et rimelig spørsmål å stille en assistent, og
  * `snoat_update_project` kan sette en ny verdi uten å ha sett den gamle.
  */
+const MASKERT = "••• (skjult)";
+const MASKERT_FEIL = {
+  message:
+    "envVars inneholder maskerte verdier («••• (skjult)»). Sendes de tilbake, blir hemmelighetene " +
+    "erstattet med prikkene. Bruk snoat_set_env_vars for å endre enkeltvariabler.",
+};
+
+/** Ingen verdi er den maskerte plassholderen vi selv sender ut. */
+function ikkeMaskerte(vars: Record<string, string> | undefined): boolean {
+  return !vars || !Object.values(vars).some((value) => value.includes(MASKERT));
+}
+
 function maskEnvVars(vars: Record<string, unknown>): Record<string, string> {
   const masked: Record<string, string> = {};
 
@@ -92,10 +98,10 @@ function maskEnvVars(vars: Record<string, unknown>): Record<string, string> {
       continue;
     }
 
-    masked[key] =
-      text.length <= ENV_VALUE_HINT_LENGTH
-        ? "••• (skjult)"
-        : `${text.slice(0, ENV_VALUE_HINT_LENGTH)}… ••• (skjult, ${text.length} tegn)`;
+    // Verken starten eller lengden: fire tegn og lengden av en kort hemmelighet
+    // er en stor del av den, og like prefiks på to variabler avslørte at de
+    // hadde samme verdi. Hva verdien *er*, får modellen ikke vite herfra.
+    masked[key] = MASKERT;
   }
 
   return masked;
@@ -154,6 +160,7 @@ async function callOrThrow(
   path: string,
   body?: unknown,
 ): Promise<unknown> {
+  assertSafeApiPath(path);
   const response = await ctx.call(method, path, body);
 
   if (!response.ok) {
@@ -163,8 +170,32 @@ async function callOrThrow(
   return sanitize(response.data);
 }
 
+/**
+ * Stopper sti-manipulasjon fra verktøy-argumenter.
+ *
+ * ID-er fra modellen settes rett inn i stien (`/projects/${projectId}/deploy`),
+ * og `new Request()` normaliserer `..`. Med `projectId = "../../api-keys?"`
+ * ble et ufarlig «deploy» til `POST /api-keys`, og en ny, permanent nøkkel kom
+ * tilbake i klartekst i modellkonteksten. Argumentene kan komme fra en
+ * prompt-injeksjon (feilrapporter, byggelogger), så ingen sti får inneholde
+ * punktum-segmenter, kodede punktum eller backslash.
+ *
+ * Eksportert for test.
+ */
+export function assertSafeApiPath(path: string): void {
+  const pathname = path.split("?")[0] ?? "";
+  const segments = pathname.split("/");
+  if (
+    !pathname.startsWith("/") ||
+    segments.some((segment) => segment === "." || segment === "..") ||
+    /%2e|%2f|%5c|\\|#/i.test(pathname)
+  ) {
+    throw new Error(`Ugyldig ID i forespørselen (${pathname}).`);
+  }
+}
+
 /** Prosjekt-ID er alltid en uuid hos oss. */
-const projectIdSchema = z.object({ projectId: z.string().min(1) });
+const projectIdSchema = z.object({ projectId: z.string().uuid("projectId må være en UUID.") });
 
 function record<T>(value: T): Record<string, unknown> {
   return value as unknown as Record<string, unknown>;
@@ -382,7 +413,7 @@ export const MCP_TOOLS: McpTool[] = [
           repoUrl: z.string().min(1),
           branch: z.string().optional(),
           buildCommand: z.string().optional(),
-          envVars: z.record(z.string()).optional(),
+          envVars: z.record(z.string()).optional().refine(ikkeMaskerte, MASKERT_FEIL),
           githubInstallationId: z.number().optional(),
           staticOutputDir: z.string().optional(),
           staticSpaFallback: z.boolean().optional(),
@@ -465,11 +496,11 @@ export const MCP_TOOLS: McpTool[] = [
     async run(args, ctx) {
       const { projectId, ...updates } = z
         .object({
-          projectId: z.string().min(1),
+          projectId: z.string().uuid("projectId må være en UUID."),
           repoUrl: z.string().min(1).optional(),
           branch: z.string().nullable().optional(),
           buildCommand: z.string().optional(),
-          envVars: z.record(z.string()).optional(),
+          envVars: z.record(z.string()).optional().refine(ikkeMaskerte, MASKERT_FEIL),
           staticOutputDir: z.string().optional(),
           staticSpaFallback: z.boolean().optional(),
           githubInstallationId: z.number().nullable().optional(),
@@ -533,8 +564,8 @@ export const MCP_TOOLS: McpTool[] = [
     async run(args, ctx) {
       const { projectId, set, unset } = z
         .object({
-          projectId: z.string().min(1),
-          set: z.record(z.string()).optional(),
+          projectId: z.string().uuid("projectId må være en UUID."),
+          set: z.record(z.string()).optional().refine(ikkeMaskerte, MASKERT_FEIL),
           unset: z.array(z.string()).optional(),
         })
         .parse(args);
@@ -764,7 +795,7 @@ export const MCP_TOOLS: McpTool[] = [
     async run(args, ctx) {
       const { projectId, from, to, unit } = z
         .object({
-          projectId: z.string().min(1),
+          projectId: z.string().uuid("projectId må være en UUID."),
           from: z.string().optional(),
           to: z.string().optional(),
           unit: z.enum(["hour", "day"]).optional(),
@@ -825,7 +856,7 @@ export const MCP_TOOLS: McpTool[] = [
     async run(args, ctx) {
       const input = z
         .object({
-          projectId: z.string().min(1).optional(),
+          projectId: z.string().uuid("projectId må være en UUID.").optional(),
           since: z.string().optional(),
           status: z.enum(["open", "resolved", "ignored", "all"]).optional(),
           minEvents: z.number().optional(),
@@ -919,7 +950,7 @@ export const MCP_TOOLS: McpTool[] = [
     async run(args, ctx) {
       const { projectId, customDomain } = z
         .object({
-          projectId: z.string().min(1),
+          projectId: z.string().uuid("projectId må være en UUID."),
           customDomain: z.string().nullable(),
         })
         .parse(args);
@@ -1138,7 +1169,7 @@ export const MCP_TOOLS: McpTool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false },
     async run(args, ctx) {
       const { projectId, branch, password } = z
-        .object({ projectId: z.string(), branch: z.string(), password: z.string() })
+        .object({ projectId: z.string().uuid("projectId må være en UUID."), branch: z.string(), password: z.string() })
         .parse(args);
 
       const data = await callOrThrow(ctx, "POST", `/projects/${projectId}/dev-sites`, {
@@ -1176,7 +1207,7 @@ export const MCP_TOOLS: McpTool[] = [
     annotations: { readOnlyHint: false, destructiveHint: false },
     async run(args, ctx) {
       const { projectId, password } = z
-        .object({ projectId: z.string(), password: z.string().nullable() })
+        .object({ projectId: z.string().uuid("projectId må være en UUID."), password: z.string().nullable() })
         .parse(args);
 
       const data = await callOrThrow(ctx, "PATCH", `/projects/${projectId}/access`, { password });
@@ -1240,7 +1271,7 @@ export const MCP_TOOLS: McpTool[] = [
     async run(args, ctx) {
       const { projectId, confirmProjectName, confirmPermanentDeletion } = z
         .object({
-          projectId: z.string().min(1),
+          projectId: z.string().uuid("projectId må være en UUID."),
           confirmProjectName: z.string().min(1),
           confirmPermanentDeletion: z.boolean(),
         })

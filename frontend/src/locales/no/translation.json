@@ -555,7 +555,11 @@
     "consent_login_body": "En AI-klient ber om tilgang til Snoat-kontoen din. Logg inn først, så får du se hva den ber om.",
     "consent_login_action": "Logg inn",
     "consent_invalid_title": "Forespørselen mangler eller er utløpt",
-    "consent_invalid_body": "Start tilkoblingen på nytt fra AI-klienten. Forespørsler utløper etter en stund av sikkerhetshensyn."
+    "consent_invalid_body": "Start tilkoblingen på nytt fra AI-klienten. Forespørsler utløper etter en stund av sikkerhetshensyn.",
+    "consent_client": "Klient: {{name}}",
+    "consent_client_unnamed": "(uten navn)",
+    "consent_redirect_host": "Tilgangen sendes til:",
+    "consent_unknown_host_warning": "Snoat kjenner ikke {{host}}. Godkjenn bare hvis du selv startet tilkoblingen fra en tjeneste du stoler på – den som eier {{host}} får full tilgang til prosjektene dine."
   },
   "usp": {
     "sovereignty": {
