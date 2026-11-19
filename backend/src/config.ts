@@ -251,6 +251,13 @@ const schema = z.object({
   SNOAT_APP_PIDS_LIMIT: z.coerce.number().int().positive().default(2048),
 
   /**
+   * Hvor mye Docker-byggcache som får ligge igjen etter den periodiske
+   * oppryddingen (`services/byggcache.ts`). Uten tak vokste cachen til 179 GB
+   * og spiste disken VPS-ene skulle hatt.
+   */
+  SNOAT_BUILD_CACHE_MAX_GB: z.coerce.number().positive().default(20),
+
+  /**
    * Hvor ofte helsesveipet (`services/helse.ts`) sammenligner det databasen
    * påstår kjører mot det Docker faktisk har.
    *
