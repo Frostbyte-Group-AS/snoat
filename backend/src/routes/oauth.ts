@@ -166,7 +166,43 @@ wellKnown.get("/openid-configuration", (c) => {
 
 // --- Dynamisk klientregistrering (RFC 7591) --------------------------------
 
+/**
+ * Registreringen er åpen for alle (det er hele poenget med RFC 7591), og hver
+ * registrering er en rad i `oauth_clients`. Uten tak kunne hvem som helst fylt
+ * tabellen. Tellingen er i minnet og per backend-prosess – nok til å stoppe en
+ * løkke, uten å stå i veien for en connector som registrerer seg på nytt.
+ *
+ * IP-en er den Caddy satte i X-Forwarded-For (siste ledd er det Caddy selv så);
+ * backend er bare nåbar gjennom Caddy.
+ */
+const REGISTER_PER_IP_PER_HOUR = 20;
+const REGISTER_TOTAL_PER_HOUR = 500;
+const registerCounts = new Map<string, number>();
+let registerTotal = 0;
+let registerWindow = 0;
+
+function registerRateLimited(ip: string): boolean {
+  const hour = Math.floor(Date.now() / 3_600_000);
+  if (hour !== registerWindow) {
+    registerWindow = hour;
+    registerCounts.clear();
+    registerTotal = 0;
+  }
+  const count = (registerCounts.get(ip) ?? 0) + 1;
+  if (count > REGISTER_PER_IP_PER_HOUR || registerTotal + 1 > REGISTER_TOTAL_PER_HOUR) return true;
+  registerCounts.set(ip, count);
+  registerTotal += 1;
+  return false;
+}
+
 oauth.post("/register", async (c) => {
+  const forwarded = c.req.header("x-forwarded-for")?.split(",").map((part) => part.trim()).filter(Boolean);
+  const ip = forwarded?.at(-1) ?? "ukjent";
+  if (registerRateLimited(ip)) {
+    const { body: error } = oauthError("invalid_request", "For mange registreringer. Prøv igjen senere.");
+    return c.json(error, 429);
+  }
+
   const body = await c.req.json<{
     client_name?: unknown;
     redirect_uris?: unknown;

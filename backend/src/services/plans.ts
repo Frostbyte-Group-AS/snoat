@@ -367,7 +367,10 @@ export async function erEierkonto(userId: string): Promise<boolean> {
     return false;
   }
 
-  const treff = erEierEpost(data.user.email, EIERLISTE);
+  // Bare en *bekreftet* adresse. Eierkontoen gir ubegrenset drift, sudo og
+  // VPS-er; en ubekreftet e-post beviser ingenting om hvem som eier den.
+  const bekreftet = Boolean(data.user.email_confirmed_at);
+  const treff = bekreftet && erEierEpost(data.user.email, EIERLISTE);
   eierBuffer.set(userId, treff);
   return treff;
 }
@@ -773,9 +776,17 @@ export async function buildMinutesUsed(userId: string): Promise<number> {
  */
 export type ProjectRow = Pick<Project, "id" | "static_output_dir" | "parent_project_id">;
 
-/** Kjører raden en container akkurat nå? Statiske sider har ingen å kjøre. */
+/**
+ * Kjører raden en container akkurat nå?
+ *
+ * Det er Docker som avgjør, ikke `static_output_dir`. Flagget sier hvordan
+ * *neste* deploy skal serveres, og kan settes rett i databasen: tidligere kunne
+ * en Free-konto deploye en app, sette flagget, og deploye neste – containeren
+ * til den første sto fortsatt, men telte ikke. En ekte statisk side har ingen
+ * container og teller derfor uansett ikke.
+ */
 function erIDrift(row: ProjectRow, running: ReadonlySet<string>): boolean {
-  return !row.static_output_dir && running.has(row.id);
+  return running.has(row.id);
 }
 
 /**

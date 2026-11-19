@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { config } from "../config.js";
 import { logger } from "../lib/logger.js";
 import { isStripeConfigured, priceIdForPlan, stripe, type PaidTier } from "../lib/stripe.js";
-import type { AuthVariables } from "../middleware/auth.js";
+import { loadProject, type AuthVariables } from "../middleware/auth.js";
 import { ensureCustomer } from "../services/billing.js";
 import { planCatalogue, resolveMarket } from "../services/markets.js";
 import { entitlementFor, usageFor, type PlanLimits } from "../services/plans.js";
@@ -143,7 +143,13 @@ billing.post("/checkout", async (c) => {
   }
 
   const plan: PaidTier = body.plan;
-  const projectId = body.projectId;
+  // Prosjekt-ID-en havner i Stripe-metadataen, og webhooken nedgraderer det
+  // prosjektet når abonnementet sies opp. Den må derfor tilhøre kalleren –
+  // ellers kunne hvem som helst med en UUID sette et fremmed prosjekt til Free.
+  const projectId =
+    typeof body.projectId === "string" && body.projectId
+      ? (await loadProject(c, body.projectId, "owner")).id
+      : undefined;
   const price = priceIdForPlan(plan);
 
   if (!price) {
