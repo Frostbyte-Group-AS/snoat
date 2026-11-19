@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readlink, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
 import { logger } from "../lib/logger.js";
@@ -103,6 +103,15 @@ export async function publishStaticSite(
     });
   }
 
+  const removed = await removeEscapingSymlinks(destination);
+  if (removed.length > 0) {
+    logs.write(
+      `Fjernet ${removed.length} symbolsk(e) lenke(r) som pekte ut av «${outputDir}»: ` +
+        removed.slice(0, 5).join(", ") +
+        (removed.length > 5 ? " …" : ""),
+    );
+  }
+
   const { files, bytes } = await measure(destination);
 
   if (files === 0) {
@@ -178,6 +187,49 @@ export async function pruneOldSites(projectId: string, keepDeploymentId: string)
 /** Fjerner alle filer for et prosjekt. Brukes når prosjektet slettes. */
 export async function removeProjectSites(projectId: string): Promise<void> {
   await rm(path.join(config.SNOAT_SITES_DIR, projectId), { recursive: true, force: true });
+}
+
+/**
+ * Fjerner symbolske lenker som peker ut av den publiserte katalogen.
+ *
+ * `docker cp` tar med lenkene fra imaget ordrett, og Caddys `file_server` følger
+ * dem. En lenke som `dist/k -> /data/caddy/certificates/...` ville ellers latt
+ * hvem som helst laste ned filer fra Caddy-containeren – TLS-privatnøklene og
+ * ACME-kontonøkkelen ligger i `/data`. Lenker som holder seg innenfor katalogen
+ * (relative lenker mellom egne filer) får stå.
+ *
+ * Målet vurderes leksikalt, ikke med `realpath`: lenken skal tolkes slik Caddy
+ * ville tolket den, og målet finnes ofte ikke i backend-containeren i det hele
+ * tatt. En lenke til en annen lenke vurderes for seg, så kjeder som til slutt
+ * peker ut, brytes der de forlater katalogen.
+ *
+ * Eksportert for test.
+ */
+export async function removeEscapingSymlinks(root: string): Promise<string[]> {
+  const removed: string[] = [];
+  const base = path.resolve(root);
+
+  const walk = async (current: string): Promise<void> => {
+    const entries = await readdir(current, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+
+      if (entry.isSymbolicLink()) {
+        const target = await readlink(full);
+        const resolved = path.resolve(path.dirname(full), target);
+        if (resolved !== base && !resolved.startsWith(base + path.sep)) {
+          await rm(full, { force: true });
+          removed.push(path.relative(base, full));
+        }
+      } else if (entry.isDirectory()) {
+        await walk(full);
+      }
+    }
+  };
+
+  await walk(base);
+  return removed;
 }
 
 async function measure(directory: string): Promise<{ files: number; bytes: number }> {

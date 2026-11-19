@@ -264,6 +264,18 @@ export async function runContainer(
       // containeren som ga opp og retter tilstanden i basen.
       RestartPolicy: { Name: "on-failure", MaximumRetryCount: config.SNOAT_APP_RESTART_MAX_RETRIES },
       NetworkMode: config.SNOAT_APPS_NETWORK,
+      // Herding. Brukerkode deler kjerne med verten og nettverk med andre
+      // kunders apper, så de billigste grepene som ikke brekker vanlige apper:
+      // - PidsLimit: en fork-bombe skal ta ned containeren, ikke verten.
+      // - no-new-privileges: setuid-binærer i imaget gir ikke mer enn appen har.
+      // - CapDrop: NET_RAW er det som gjør ARP-spoofing mot naboappene på den
+      //   delte broen mulig (trafikken fra Caddy til appene går i klartekst).
+      //   De andre trenger en webapp aldri. Vi dropper ikke ALL, fordi
+      //   nixpacks-imagene kjører som root og noen apper chowner/skriver filer
+      //   eid av andre brukere (CHOWN, DAC_OVERRIDE, FOWNER, SETUID/SETGID).
+      PidsLimit: config.SNOAT_APP_PIDS_LIMIT,
+      SecurityOpt: ["no-new-privileges:true"],
+      CapDrop: ["NET_RAW", "MKNOD", "SYS_CHROOT", "AUDIT_WRITE", "SETFCAP", "SETPCAP"],
     },
     NetworkingConfig: {
       EndpointsConfig: {
