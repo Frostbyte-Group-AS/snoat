@@ -453,6 +453,39 @@ oauth.post("/approve", async (c) => {
  * Vi sier det til klienten i stedet for å la den vente: `access_denied` er svaret
  * som får Claude til å vise «tilkobling avbrutt» framfor å henge i «kobler til».
  */
+/**
+ * Hvem som ber om tilgang, slik samtykkesiden skal vise det.
+ *
+ * Registreringen er åpen, så hvem som helst kan lage en klient med en vilkårlig
+ * https-`redirect_uri` og sende en innlogget Snoat-bruker en authorize-lenke. Et
+ * «Godkjenn» der sender koden – og dermed full API-tilgang – til den verten.
+ * Siden må derfor si tydelig *hvor* tilgangen går, og advare når det ikke er en
+ * vert vi kjenner. Opplysningene hentes fra den signerte forespørselen og
+ * databasen, ikke fra URL-en, som angriperen styrer.
+ */
+const KJENTE_VERTER = ["claude.ai", "claude.com", "anthropic.com", "localhost", "127.0.0.1", "[::1]"];
+
+function erKjentVert(host: string): boolean {
+  return KJENTE_VERTER.some((kjent) => host === kjent || host.endsWith(`.${kjent}`));
+}
+
+oauth.post("/describe", async (c) => {
+  const body = await c.req.json<{ request?: unknown }>().catch(() => null);
+  const sealed = typeof body?.request === "string" ? body.request : null;
+  const request = sealed ? openConsentRequest(sealed) : null;
+  if (!request) throw new HTTPException(400, { message: "Ugyldig eller utløpt forespørsel." });
+
+  const client = await findClient(request.clientId);
+  if (!client) throw new HTTPException(400, { message: "Ukjent klient." });
+
+  const redirectHost = new URL(request.redirectUri).hostname;
+  return c.json({
+    clientName: client.client_name ?? null,
+    redirectHost,
+    known: erKjentVert(redirectHost),
+  });
+});
+
 oauth.post("/deny", async (c) => {
   const body = await c.req.json<{ request?: unknown }>().catch(() => null);
   const sealed = typeof body?.request === "string" ? body.request : null;

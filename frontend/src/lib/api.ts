@@ -582,6 +582,17 @@ export function approveOauthRequest(sealedRequest: string): Promise<{ redirect_t
  * Krever ingen innlogging: et avslag gir ingen tilgang, og en bruker som ikke er
  * innlogget skal kunne avvise en forespørsel hen ikke kjenner seg igjen i.
  */
+export interface OauthClientDescription {
+  clientName: string | null;
+  redirectHost: string;
+  known: boolean;
+}
+
+/** Hvem som ber om tilgang, og hvor tilgangen sendes. Se `/oauth/describe`. */
+export function describeOauthRequest(sealedRequest: string): Promise<OauthClientDescription> {
+  return publicPost("/oauth/describe", { request: sealedRequest });
+}
+
 export function denyOauthRequest(sealedRequest: string): Promise<{ redirect_to: string }> {
   return publicPost("/oauth/deny", { request: sealedRequest });
 }

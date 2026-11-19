@@ -100,3 +100,26 @@ describe("authenticatedCloneUrl", () => {
     }
   });
 });
+
+describe("assertSafeApiPath (MCP)", async () => {
+  const { assertSafeApiPath } = await import("./mcp-tools.js");
+
+  it("godtar vanlige stier, også med spørrestreng", () => {
+    assert.doesNotThrow(() => assertSafeApiPath("/projects/9b58d1df-3eb1-4bfc-80d8-63a63d51370d/deploy"));
+    assert.doesNotThrow(() => assertSafeApiPath("/projects/abc/analytics?range=7d"));
+  });
+
+  it("stopper punktum-segmenter og kodede varianter", () => {
+    for (const path of [
+      "/projects/../../api-keys?/deploy",
+      "/projects/./x",
+      "/projects/%2e%2e/api-keys",
+      "/projects/a%2fb",
+      "/projects/a\\b",
+      "/projects/a#b",
+      "projects/x",
+    ]) {
+      assert.throws(() => assertSafeApiPath(path), Error, path);
+    }
+  });
+});

@@ -312,14 +312,42 @@ på det verifiserte domenet og ligger i klartekst i `.env`. Faller Resend ut,
 kan ingen registrere seg eller gjenopprette passord – auth har nå en ekstern
 avhengighet den ikke hadde med autoconfirm.
 
+## Herding 19. november 2026 (andre runde)
+
+- **Appcontainere:** `PidsLimit` (`SNOAT_APP_PIDS_LIMIT`, 2048), `no-new-privileges`
+  og `CapDrop` (NET_RAW, MKNOD, SYS_CHROOT, AUDIT_WRITE, SETFCAP, SETPCAP). Ikke
+  `CapDrop: ALL` – nixpacks-imagene kjører som root og noen apper trenger
+  CHOWN/DAC_OVERRIDE. ReadonlyRootfs er ikke slått på (apper skriver cache).
+- **Statiske sider:** symlenker som peker ut av den publiserte katalogen fjernes
+  etter `docker cp` (`removeEscapingSymlinks`). Caddy følger lenker, og
+  TLS-nøklene ligger i samme container.
+- **Eget domene:** gyldig vertsnavn, ikke plattformens egne, og ikke under et
+  domene en annen konto eier (et eget domene gir også `*.<domene>`).
+- **Kolonner bare backend skriver** (migrasjon 0022): `plan`, `custom_domain` og
+  `parent_project_id` kan ikke settes av innloggede brukere, verken ved INSERT
+  eller UPDATE. `anon` får ikke lenger rettigheter på nye tabeller automatisk.
+- **Apptaket** teller kjørende containere, uansett `static_output_dir`.
+- **API-nøkler** opprettes og slettes bare med dashboardsesjon.
+- **Betaling:** checkout krever at `projectId` tilhører kalleren.
+- **Eierkonto via e-post** krever bekreftet adresse.
+- **OAuth:** `/oauth/register` er rate-begrenset; samtykkesiden viser klientnavn
+  og verten tilgangen sendes til, og advarer når verten ikke er kjent.
+- **MCP:** verdier maskeres helt (ingen prefiks eller lengde), maskerte verdier
+  avvises hvis de sendes tilbake, prosjekt-ID-er må være UUID, og stier med
+  punktum-segmenter eller kodede tegn avvises (`assertSafeApiPath`).
+- **Selvoppdateringen** restarter Caddy bare når `caddy/` eller
+  `docker-compose.yml` er endret. En restart tømmer apprutene og utløser
+  fornyelse av hundrevis av sertifikater.
+
 ## Før produksjon
 
 1. Fjern direkte docker.sock-tilgang fra backend.
 2. Krypter `env_vars` i hvile.
 3. Ett Docker-nettverk per bruker.
-4. Rate limiting på deploy-endepunktet – og på webhook-endepunktet.
+4. Rate limiting på deploy-endepunktet – og på webhook-endepunktet. (Byggekø og
+   samtidighet per plan finnes; `/oauth/register` er begrenset.)
 5. Sett `GITHUB_WEBHOOK_SECRET`, både i `.env` og på App-en.
-6. Herding av applikasjonscontainere (`no-new-privileges`, droppede
-   capabilities, read-only rootfs der det lar seg gjøre).
+6. ~~Herding av applikasjonscontainere~~ – delvis gjort 19.11.2026 (se over);
+   read-only rootfs og ikke-root-bruker gjenstår.
 7. TLS. Caddy henter Let's Encrypt-sertifikater automatisk for ekte domener –
    `*.snoat.localhost` kjører på HTTP i dev.

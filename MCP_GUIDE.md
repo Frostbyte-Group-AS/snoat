@@ -113,8 +113,8 @@ Tabellene ligger i `supabase/migrations/0011_mcp_connector.sql`, som `db-migrate
 
 ```json
 "env_vars": {
-  "DATABASE_URL": "post… ••• (skjult, 84 tegn)",
-  "APP_ENV": "prod… ••• (skjult, 10 tegn)"
+  "DATABASE_URL": "••• (skjult)",
+  "APP_ENV": "••• (skjult)"
 }
 ```
 

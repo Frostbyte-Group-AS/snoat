@@ -1,10 +1,10 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Mark } from "@/components/Mark";
 import { SnoatLogo } from "@/components/SnoatLogo";
-import { approveOauthRequest, denyOauthRequest } from "@/lib/api";
+import { approveOauthRequest, denyOauthRequest, describeOauthRequest } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { displayName } from "@/lib/auth";
 import { rememberReturnTo } from "@/lib/return-to";
@@ -65,6 +65,13 @@ function ConsentPage() {
       window.location.href = redirect_to;
     },
     onError: () => void navigate({ to: "/dashboard" }),
+  });
+
+  const client = useQuery({
+    queryKey: ["oauth-describe", request],
+    queryFn: () => describeOauthRequest(request ?? ""),
+    enabled: Boolean(request),
+    retry: false,
   });
 
   const busy = approve.isPending || deny.isPending;
@@ -129,6 +136,31 @@ function ConsentPage() {
         </p>
       </div>
 
+      {client.data && (
+        <div
+          className={
+            client.data.known
+              ? "flex flex-col gap-1 border-2 border-line p-5"
+              : "flex flex-col gap-1 border-2 border-error p-5"
+          }
+        >
+          <p className="font-body text-[16px] text-ink">
+            {t("mcp.consent_client", {
+              name: client.data.clientName || t("mcp.consent_client_unnamed"),
+            })}
+          </p>
+          <p className="font-body text-[16px] text-ink">
+            {t("mcp.consent_redirect_host")}{" "}
+            <strong className="font-mono">{client.data.redirectHost}</strong>
+          </p>
+          {!client.data.known && (
+            <p role="alert" className="font-body text-[14px] font-bold text-error">
+              {t("mcp.consent_unknown_host_warning", { host: client.data.redirectHost })}
+            </p>
+          )}
+        </div>
+      )}
+
       <ul className="flex flex-col gap-3 border-2 border-line p-5">
         {PERMISSION_KEYS.map((key) => (
           <li key={key} className="flex items-center gap-3">
@@ -150,7 +182,7 @@ function ConsentPage() {
         <button
           type="button"
           onClick={() => approve.mutate()}
-          disabled={busy}
+          disabled={busy || !client.data}
           className="btn-ink flex-1 px-6 py-3.5 font-body text-[16px] disabled:opacity-60"
         >
           {approve.isPending ? t("mcp.consent_approving") : t("mcp.consent_approve")}
