@@ -19,6 +19,7 @@ import { githubWebhooks } from "./routes/webhooks.js";
 import { startAnalyticsIngest } from "./services/analytics-ingest.js";
 import { errorCollector, startErrorIngest } from "./services/error-ingest.js";
 import { startRuntimeErrorSweep } from "./services/error-runtime.js";
+import { startBuildCacheSweep } from "./services/byggcache.js";
 import { failOrphanedDeployments, reconcileRoutes } from "./services/deploy.js";
 import { reconcileRedirects } from "./services/redirects.js";
 import { reconcileVpsDomener } from "./services/vps-domener.js";
@@ -348,6 +349,9 @@ void (async () => {
   // de to spiller ingen rolle – den som starter først frisker det opp.
   startErrorIngest();
   startRuntimeErrorSweep();
+
+  // Docker rydder aldri byggcachen selv; se services/byggcache.ts.
+  startBuildCacheSweep();
 })();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
