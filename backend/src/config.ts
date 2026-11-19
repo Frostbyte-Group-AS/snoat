@@ -28,6 +28,17 @@ const schema = z.object({
   CADDY_ADMIN_URL: z.string().url().default("http://caddy:2019"),
 
   /**
+   * Unix-socketen Caddys admin-API lytter på (delt volum `caddy-admin`).
+   *
+   * Når den er satt, går alle admin-kall over socketen, og `CADDY_ADMIN_URL`
+   * brukes bare til Host/Origin-headerne. Admin-API-et skal aldri lytte på TCP:
+   * Caddy står på `snoat_apps` sammen med kundeappene, og alt som når en
+   * TCP-lytter der, kan omkonfigurere proxyen. Tom streng = TCP mot
+   * `CADDY_ADMIN_URL`, kun for backend kjørt utenfor Docker i utvikling.
+   */
+  CADDY_ADMIN_SOCKET: z.string().default("/run/caddy-admin/admin.sock"),
+
+  /**
    * Porten Caddy strømmer access-loggen til.
    *
    * Kun på `snoat`-nettverket – aldri i `ports:`. Alt som når denne porten kan

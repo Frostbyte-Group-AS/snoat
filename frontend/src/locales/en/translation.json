@@ -161,6 +161,7 @@
     "logout": "Log out",
     "github_connected": "GitHub is connected. Your repositories are now listed under «New Project».",
     "github_failed": "GitHub connection was not completed. Please try again.",
+    "github_not_owner": "We couldn't confirm that this GitHub installation is yours. Sign in with the GitHub account it belongs to, or install the Snoat app again.",
     "close_notice": "Close",
     "new_project_modal": {
       "title": "New Project",

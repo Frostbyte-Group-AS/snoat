@@ -311,11 +311,15 @@ services:
       - caddy-config:/config
       # Statiske sider. Skrivebeskyttet: Caddy skal servere dem, aldri endre dem.
       - snoat-sites:${SNOAT_SITES_DIR:-/srv/sites}:ro
+      # Admin-API-et lytter på en unix-socket i dette volumet, ikke på TCP.
+      # Caddy står på `snoat_apps` sammen med alle kundeappene; en TCP-lytter
+      # der kunne enhver app nå og omkonfigurere hele proxyen med (Host- og
+      # Origin-sjekken er bare headere klienten selv velger). Kun backend
+      # monterer volumet, så kun backend kan snakke med admin-API-et.
+      - caddy-admin:/run/caddy-admin
     ports:
       - "80:80"
       - "443:443"
-      # Admin-API-et er hvordan backend oppretter ruter. Kun loopback.
-      - "127.0.0.1:2019:2019"
     networks:
       # Caddy må ligge på begge nettverk: plattformtjenester + brukerapplikasjoner.
       - snoat
@@ -448,6 +452,8 @@ services:
       # Ferdigbygde statiske sider. Backend skriver, Caddy leser – derfor må
       # begge ha volumet montert på samme sti (SNOAT_SITES_DIR).
       - snoat-sites:${SNOAT_SITES_DIR:-/srv/sites}
+      # Caddys admin-socket. Se caddy-tjenesten: dette er eneste vei inn.
+      - caddy-admin:/run/caddy-admin
       # Selvoppdateringen på verten (infra/selvoppdatering/) skriver status og
       # bygglogger hit og leser bestillinger herfra. Lokalt er det en tom mappe
       # i repoet, og funksjonen er av.
@@ -479,6 +485,8 @@ volumes:
   db-data:
   caddy-data:
   caddy-config:
+  # Unix-socketen til Caddys admin-API. Delt av caddy og backend, ingen andre.
+  caddy-admin:
   # Statiske sider som serveres uten container. Skrives av backend, leses av Caddy.
   snoat-sites:
 

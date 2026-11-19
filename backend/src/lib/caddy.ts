@@ -1,3 +1,5 @@
+import http from "node:http";
+
 import { config } from "../config.js";
 import { logger } from "./logger.js";
 
@@ -200,24 +202,69 @@ class CaddyError extends Error {
 }
 
 /**
- * Caddy krever at admin-kall kommer fra en kjent origin når admin-API-et lytter
- * på noe annet enn loopback (det gjør det her, siden backend står i en egen
- * container). Vi setter headeren eksplisitt i stedet for å stole på hva
- * runtime-en finner på: `fetch` uten Origin avvises med
- * «client is not allowed to access from origin ''», mens curl slipper gjennom.
- * Verdien må matche `admin.origins` i caddy/config.json.
+ * Caddy sjekker Host (og Origin) mot `admin.origins` i caddy/config.json. Vi
+ * setter Origin eksplisitt i stedet for å stole på hva runtime-en finner på:
+ * `fetch` uten Origin avvises med «client is not allowed to access from origin
+ * ''», mens curl slipper gjennom. Host og Origin hentes fra `CADDY_ADMIN_URL`
+ * også når kallet går over unix-socketen.
  */
-const adminOrigin = new URL(config.CADDY_ADMIN_URL).origin;
+const adminUrl = new URL(config.CADDY_ADMIN_URL);
+const adminOrigin = adminUrl.origin;
+
+/**
+ * Ett admin-kall over unix-socketen. `fetch` i Node kan ikke snakke med en
+ * socket uten undici som egen avhengighet, så vi bruker `node:http` og pakker
+ * svaret i en vanlig `Response`, slik at resten av fila er uendret.
+ */
+function requestOverSocket(
+  socketPath: string,
+  method: string,
+  path: string,
+  headers: Record<string, string>,
+  payload: string | undefined,
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        socketPath,
+        method,
+        path,
+        headers: {
+          ...headers,
+          Host: adminUrl.host,
+          ...(payload === undefined ? {} : { "Content-Length": Buffer.byteLength(payload).toString() }),
+        },
+        timeout: 30_000,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => {
+          const status = res.statusCode ?? 502;
+          // `Response` godtar ikke kropp på 204/304.
+          const responseBody = status === 204 || status === 304 ? null : Buffer.concat(chunks);
+          resolve(new Response(responseBody, { status, statusText: res.statusMessage }));
+        });
+        res.on("error", reject);
+      },
+    );
+    req.on("timeout", () => req.destroy(new Error(`Caddy admin ${method} ${path}: tidsavbrudd`)));
+    req.on("error", reject);
+    if (payload !== undefined) req.write(payload);
+    req.end();
+  });
+}
 
 async function request(method: string, path: string, body?: unknown): Promise<Response> {
-  const response = await fetch(`${config.CADDY_ADMIN_URL}${path}`, {
-    method,
-    headers: {
-      Origin: adminOrigin,
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const headers: Record<string, string> = {
+    Origin: adminOrigin,
+    ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+  };
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+
+  const response = config.CADDY_ADMIN_SOCKET
+    ? await requestOverSocket(config.CADDY_ADMIN_SOCKET, method, path, headers, payload)
+    : await fetch(`${config.CADDY_ADMIN_URL}${path}`, { method, headers, body: payload });
 
   if (!response.ok) {
     throw new CaddyError(response.status, method, path, await response.text());

@@ -71,8 +71,9 @@ slår slugen opp i `projects` og feiler lukket: databasefeil gir 503, ikke 200.
 
 **Endring uten nedetid.** TLS-appen kan legges inn med `PUT /config/apps/tls` mot
 admin-API-et i stedet for å restarte Caddy. Da røres ikke `http`-appen, og
-apprutene som bare finnes i minnet overlever. Husk `Origin`-header med skjema
-(`http://localhost:2019`) – Caddy svarer 403 på skrivende kall uten den.
+apprutene som bare finnes i minnet overlever. Admin-API-et nås bare over
+unix-socketen i backend-containeren (se kommandoen under), og Caddy svarer 403 på
+skrivende kall uten `Origin`-header med skjema (`http://caddy:2019`).
 
 ### HTTP→HTTPS: ruten `snoat_https_redirect`
 
@@ -105,8 +106,9 @@ endringer – en fil som ikke laster tar ned all ruting ved neste restart.
 stedet for å erstatte, så
 
 ```bash
-curl -X PUT -H "Origin: http://localhost:2019" -d @rute.json \
-  http://localhost:2019/config/apps/http/servers/snoat/routes/0
+docker compose exec -T backend curl -s --unix-socket /run/caddy-admin/admin.sock \
+  -X PUT -H "Origin: http://caddy:2019" -H "Content-Type: application/json" -d @- \
+  http://caddy:2019/config/apps/http/servers/snoat/routes/0 < rute.json
 ```
 
 legger ruten først uten å skrive over `snoat_apps` og rutene som bare finnes i

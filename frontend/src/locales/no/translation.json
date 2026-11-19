@@ -161,6 +161,7 @@
     "logout": "Logg ut",
     "github_connected": "GitHub er koblet til. Repositoriene dine ligger nå i «Nytt prosjekt».",
     "github_failed": "GitHub-koblingen ble ikke fullført. Prøv igjen.",
+    "github_not_owner": "Vi kunne ikke bekrefte at GitHub-installasjonen er din. Logg inn med GitHub-kontoen den ligger på, eller installer Snoat-appen på nytt.",
     "close_notice": "Lukk",
     "new_project_modal": {
       "title": "Nytt prosjekt",

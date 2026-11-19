@@ -22,6 +22,7 @@ import { notifyDeploymentFailed, notifyFirstDeploymentLive } from "./notify.js";
 import { clearHealthFlag } from "./helse.js";
 import { aliasHostnamesFor, passwordHashFor, publicUrlFor } from "./dev-sites.js";
 import { rm, stat } from "node:fs/promises";
+import { assertInstallationBelongsToOwner } from "./installation-ownership.js";
 
 /**
  * Prosjekter som bygges akkurat nå.
@@ -576,6 +577,10 @@ async function runPipeline(
     // Er den satt, er det den grenen som bygges, og `cloneRepository` skriver
     // valget til byggeloggen slik at det er etterprøvbart hvilken kode som ble
     // rullet ut.
+    if (project.github_installation_id) {
+      await assertInstallationBelongsToOwner(project.user_id, project.github_installation_id);
+    }
+
     const { directory, commitHash, branch } = await cloneRepository(
       project.repo_url,
       project.id,
