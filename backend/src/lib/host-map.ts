@@ -28,7 +28,7 @@ export async function refreshHostMap(): Promise<void> {
   refreshing = (async () => {
     const { data, error } = await supabase
       .from("projects")
-      .select("id, name, custom_domain, parent_project_id, branch");
+      .select("id, name, custom_domain, extra_domains, parent_project_id, branch");
 
     if (error) {
       logger.warn({ err: error.message }, "Kunne ikke friske opp vertsnavn-kartet");
@@ -39,6 +39,7 @@ export async function refreshHostMap(): Promise<void> {
       id: string;
       name: string;
       custom_domain: string | null;
+      extra_domains: string[] | null;
       parent_project_id: string | null;
       branch: string | null;
     };
@@ -51,6 +52,7 @@ export async function refreshHostMap(): Promise<void> {
       next.set(`${row.name}${config.SNOAT_APP_DOMAIN_SUFFIX}`.toLowerCase(), row.id);
       for (const host of extraAppHostnames(row.name)) next.set(host.toLowerCase(), row.id);
       if (row.custom_domain) next.set(row.custom_domain.toLowerCase(), row.id);
+      for (const host of row.extra_domains ?? []) next.set(host.toLowerCase(), row.id);
 
       // En dev-side svarer også på `<gren>.<hovedprosjekt>`. Uten denne linja
       // ville alle treff på den pene adressen falt utenfor kartet og blitt

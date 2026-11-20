@@ -66,6 +66,15 @@ tlsPermission.get("/tls-ask", async (c) => {
           .maybeSingle()
       : await lookup("custom_domain", domain);
 
+  // `extra_domains` (migrasjon 0023): eksakte navn, typisk kundens domene på en
+  // side som har byråets adresse som `custom_domain`. Slås opp før
+  // foreldredomenet, så et eksplisitt registrert navn vinner.
+  if (!slug && !devAlias && !error && !data) {
+    const extra = await supabase.from("projects").select("id").contains("extra_domains", [domain]).limit(1);
+    error = extra.error;
+    data = extra.data?.[0] ?? null;
+  }
+
   // Et eget domene dekker subdomenene sine, siden en flerleietaker-app gir hver
   // kunde sitt eget `<kunde>.domenet` og de ikke kan registreres én for én.
   // Oppslaget gjøres kun når navnet ikke traff et prosjekt direkte, slik at et

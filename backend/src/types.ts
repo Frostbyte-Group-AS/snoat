@@ -11,6 +11,12 @@ export interface Project {
   /** URL-vennlig slug – blir subdomenet `<name>.snoat.localhost`. */
   name: string;
   custom_domain: string | null;
+  /**
+   * Eksakte vertsnavn prosjektet svarer på i tillegg (migrasjon 0023), f.eks.
+   * kundens `kunde.no` og `www.kunde.no` når `custom_domain` er byråets faste
+   * adresse for siden. Valgfri i typen fordi eldre rader i tester mangler den.
+   */
+  extra_domains?: string[] | null;
   repo_url: string;
   /**
    * Grenen som klones og deployes (migrasjon 0012).
