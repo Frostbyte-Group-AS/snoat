@@ -152,6 +152,8 @@ Byggelogger klippes til de siste 20 000 tegnene og kjøres gjennom `redactCreden
 | `snoat_set_custom_domain` | skrivende | Kobler eller fjerner eget domene. |
 | `snoat_create_dev_site` | skrivende | Spinner opp en passordbeskyttet forhåndsvisning av en gren. Arver repo, plan og miljøvariabler. |
 | `snoat_set_access_password` | skrivende | Setter eller fjerner passordet foran en app. Virker uten ny deployment. |
+| `snoat_create_share_link` | skrivende | Lenke forbi passordet på en beskyttet app, som utløper etter valgt tid (5 min–30 dager). |
+| `snoat_set_extra_domains` | skrivende | Erstatter de ekstra domenene appen svarer på (eksakte navn, f.eks. kundens domene ved siden av byråets adresse). |
 | `snoat_stop_project` | destruktiv | Stopper appen. Prosjektet beholdes. |
 | `snoat_delete_project` | destruktiv | Permanent sletting. Krever bekreftelse. |
 

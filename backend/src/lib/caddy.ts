@@ -337,15 +337,15 @@ export async function upsertAppRoute(
   slug: string,
   customDomain: string | null,
   upstream: string,
-  accessPasswordHash: string | null = null,
+  access: string | AccessGuard | null = null,
   aliasHosts: string[] = [],
 ): Promise<string> {
   return await upsertRoute(
     slug,
     hostsFor(slug, customDomain, aliasHosts),
     injectHandlers([{ handler: "reverse_proxy", upstreams: [{ dial: upstream }] }]),
-    { upstream, protected: Boolean(accessPasswordHash) },
-    accessPasswordHash,
+    { upstream, protected: Boolean(access) },
+    access,
   );
 }
 
@@ -367,15 +367,15 @@ export async function upsertStaticRoute(
   customDomain: string | null,
   root: string,
   spaFallback: boolean,
-  accessPasswordHash: string | null = null,
+  access: string | AccessGuard | null = null,
   aliasHosts: string[] = [],
 ): Promise<string> {
   return await upsertRoute(
     slug,
     hostsFor(slug, customDomain, aliasHosts),
     injectHandlers(staticHandlers(root, spaFallback)),
-    { root, spaFallback, protected: Boolean(accessPasswordHash) },
-    accessPasswordHash,
+    { root, spaFallback, protected: Boolean(access) },
+    access,
   );
 }
 
@@ -547,20 +547,119 @@ function basicAuthHandler(hash: string): Record<string, unknown> {
   };
 }
 
+/**
+ * Parameteren og informasjonskapselen en delelenke bærer tokenet i (migrasjon
+ * 0023): `https://<vert>/?snoat_tilgang=<token>`.
+ */
+export const SHARE_PARAM = "snoat_tilgang";
+
+/** En aktiv delelenke slik ruten trenger den: tokenet og når det utløper. */
+export interface ShareToken {
+  token: string;
+  expiresAt: Date;
+}
+
+/**
+ * Vakten foran en beskyttet app: passord-hashen, og delelenkene som slipper
+ * forbi den til de utløper. Utløpte tokener skal ikke sendes hit – sveipet i
+ * `services/dev-sites.ts` skriver ruten på nytt uten dem.
+ */
+export interface AccessGuard {
+  hash: string;
+  shareTokens: ShareToken[];
+}
+
+/** Bakoverkompatibelt: en ren hash er en vakt uten delelenker. */
+export function toGuard(access: string | AccessGuard | null | undefined): AccessGuard | null {
+  if (!access) return null;
+  return typeof access === "string" ? { hash: access, shareTokens: [] } : access;
+}
+
+/** Bare tegn som er trygge både i et regulært uttrykk og i en informasjonskapsel. */
+const SAFE_TOKEN = /^[A-Za-z0-9_-]{16,128}$/;
+
+/**
+ * Handler-kjeden for en beskyttet app.
+ *
+ * Uten delelenker: passordvakten først, så appen – som før.
+ *
+ * Med delelenker blir det en `subroute` med tre slags ruter, i denne rekkefølgen:
+ *
+ * 1. `?snoat_tilgang=<token>` i URL-en: setter informasjonskapselen og serverer
+ *    siden. Ingen omdirigering – lenken virker på første forsøk, også når den
+ *    åpnes i en forhåndsvisning som ikke følger 302.
+ * 2. Informasjonskapselen med et gyldig token: serverer uten passord. Det er
+ *    denne som gjør at bildene, JS-filene og de andre sidene virker etterpå.
+ * 3. Alt annet: passordvakten som før.
+ *
+ * Tokenet sammenlignes i Caddy, ikke i backend: en `forward_auth` ville gjort
+ * hver forespørsel til dev-siden avhengig av at backend svarer.
+ *
+ * Eksportert og ren slik at testene kan lese formen uten en Caddy.
+ */
+export function guardedHandlers(
+  guard: AccessGuard | null,
+  handle: Array<Record<string, unknown>>,
+  now: Date = new Date(),
+): Array<Record<string, unknown>> {
+  if (!guard) return handle;
+
+  const active = guard.shareTokens.filter(
+    (share) => SAFE_TOKEN.test(share.token) && share.expiresAt.getTime() > now.getTime(),
+  );
+
+  if (active.length === 0) return [basicAuthHandler(guard.hash), ...handle];
+
+  const routes: Array<Record<string, unknown>> = [];
+  for (const share of active) {
+    const maxAge = Math.max(1, Math.floor((share.expiresAt.getTime() - now.getTime()) / 1000));
+    routes.push({
+      match: [{ query: { [SHARE_PARAM]: [share.token] } }],
+      handle: [
+        {
+          handler: "headers",
+          response: {
+            add: {
+              "Set-Cookie": [
+                `${SHARE_PARAM}=${share.token}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`,
+              ],
+            },
+          },
+        },
+        ...handle,
+      ],
+      terminal: true,
+    });
+    routes.push({
+      match: [
+        {
+          header_regexp: {
+            Cookie: { pattern: `(?:^|;\\s*)${SHARE_PARAM}=${share.token}(?:;|$)` },
+          },
+        },
+      ],
+      handle,
+      terminal: true,
+    });
+  }
+  routes.push({ handle: [basicAuthHandler(guard.hash), ...handle] });
+
+  return [{ handler: "subroute", routes }];
+}
+
 async function upsertRoute(
   slug: string,
   hosts: string[],
   handle: Array<Record<string, unknown>>,
   logContext: Record<string, unknown>,
-  accessPasswordHash: string | null = null,
+  access: string | AccessGuard | null = null,
 ): Promise<string> {
   const hostname = hosts[0] ?? appHostname(slug);
 
   // Vakten står *først*: en 401 skal komme før reverse_proxy har åpnet en
-  // forbindelse til appen, og før file_server har lest en fil fra disk.
-  const handlers = accessPasswordHash
-    ? [basicAuthHandler(accessPasswordHash), ...handle]
-    : handle;
+  // forbindelse til appen, og før file_server har lest en fil fra disk. Med
+  // delelenker blir den en subroute – se `guardedHandlers()`.
+  const handlers = guardedHandlers(toGuard(access), handle);
 
   const route: CaddyRoute = {
     "@id": routeId(slug),

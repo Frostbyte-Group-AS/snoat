@@ -20,7 +20,7 @@ import { redactCredentials } from "../lib/redact.js";
 /** Utfører et internt kall mot vårt eget API med kallerens legitimasjon. */
 export interface McpToolContext {
   call(
-    method: "GET" | "POST" | "PATCH" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     body?: unknown,
   ): Promise<{ ok: boolean; status: number; data: unknown; error: string | null }>;
@@ -156,7 +156,7 @@ function sanitize(value: unknown, depth = 0): unknown {
  */
 async function callOrThrow(
   ctx: McpToolContext,
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<unknown> {
@@ -1214,6 +1214,73 @@ export const MCP_TOOLS: McpTool[] = [
 
       return {
         summary: password === null ? "Passordbeskyttelsen er fjernet." : "Passordet er satt.",
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_create_share_link",
+    title: "Lag delelenke",
+    description:
+      "Lager en lenke som slipper forbi passordet på en beskyttet app (typisk en dev-side) til den utløper. " +
+      "Lenken virker uten passord; etter utløpet tar passordet over igjen. Caddy-ruten skrives om umiddelbart.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Prosjektets ID — må være passordbeskyttet." },
+        ttlMinutes: {
+          type: "number",
+          description: "Hvor lenge lenken skal virke, i minutter (5 til 43200). Standard 1440 (ett døgn).",
+        },
+      },
+      required: ["projectId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    async run(args, ctx) {
+      const { projectId, ttlMinutes } = z
+        .object({ projectId: z.string().uuid("projectId må være en UUID."), ttlMinutes: z.number().optional() })
+        .parse(args);
+
+      const data = await callOrThrow(ctx, "POST", `/projects/${projectId}/share-links`, {
+        ...(ttlMinutes === undefined ? {} : { ttlMinutes }),
+      });
+      const link = (data as { shareLink?: { url?: string; expiresAt?: string } }).shareLink;
+
+      return {
+        summary: `Delelenken ${link?.url ?? ""} virker til ${link?.expiresAt ?? "utløpet"}.`,
+        data,
+      };
+    },
+  },
+
+  {
+    name: "snoat_set_extra_domains",
+    title: "Sett ekstra domener",
+    description:
+      "Erstatter listen med ekstra domener prosjektet svarer på i tillegg til <navn>.snoat.com og eget domene, " +
+      "f.eks. kundens «kunde.no» og «www.kunde.no» når eget domene er byråets faste adresse. Eksakte navn, ingen " +
+      "wildcard. Send [] for å fjerne alle. Domenene må peke mot Snoat i DNS før sertifikatet kan utstedes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Prosjektets ID." },
+        domains: { type: "array", items: { type: "string" }, description: "Hele listen, høyst 10 navn." },
+      },
+      required: ["projectId", "domains"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    async run(args, ctx) {
+      const { projectId, domains } = z
+        .object({ projectId: z.string().uuid("projectId må være en UUID."), domains: z.array(z.string()) })
+        .parse(args);
+
+      const data = await callOrThrow(ctx, "PUT", `/projects/${projectId}/extra-domains`, { domains });
+
+      return {
+        summary: domains.length ? `Ekstra domener: ${domains.join(", ")}.` : "Ekstra domener er fjernet.",
         data,
       };
     },

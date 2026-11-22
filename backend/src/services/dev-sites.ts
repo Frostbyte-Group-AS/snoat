@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
@@ -186,12 +187,12 @@ export async function setAccessPassword(
  * deployet har ingen, og å opprette en her ville pekt på en upstream som ikke
  * finnes.
  */
-async function refreshRoute(project: Project): Promise<void> {
+export async function refreshRoute(project: Project): Promise<void> {
   try {
     const existing = await caddy.getAppRoute(project.name);
     if (!existing) return;
 
-    const hash = project.access_protected ? await passwordHashFor(project.id) : null;
+    const hash = project.access_protected ? await accessGuardFor(project.id) : null;
     const aliases = await aliasHostnamesFor(project);
 
     // ⚠️ `routeUpstream()`/`routeRoot()` så tidligere bare på `handle[0]`, som
@@ -262,7 +263,15 @@ export async function passwordHashFor(projectId: string): Promise<string | null>
  * enn ingen dev-side.
  */
 export async function aliasHostnamesFor(project: Project): Promise<string[]> {
-  if (!project.parent_project_id || !project.branch) return [];
+  // `extra_domains` (migrasjon 0023) kommer etter dev-aliaset, slik at
+  // `publicUrlFor()` fortsatt viser den pene dev-adressen først.
+  const extra = (project.extra_domains ?? []).map((domain) => domain.toLowerCase());
+  const devAlias = await devAliasFor(project);
+  return [...new Set([...(devAlias ? [devAlias] : []), ...extra])];
+}
+
+async function devAliasFor(project: Project): Promise<string | null> {
+  if (!project.parent_project_id || !project.branch) return null;
 
   const { data, error } = await supabase
     .from("projects")
@@ -272,11 +281,10 @@ export async function aliasHostnamesFor(project: Project): Promise<string[]> {
 
   if (error || !data) {
     logger.warn({ project: project.name, err: error }, "Fant ikke hovedprosjektet til dev-siden");
-    return [];
+    return null;
   }
 
-  const alias = caddy.devAliasHostname((data as { name: string }).name, project.branch);
-  return alias ? [alias] : [];
+  return caddy.devAliasHostname((data as { name: string }).name, project.branch);
 }
 
 /**
@@ -287,7 +295,10 @@ export async function aliasHostnamesFor(project: Project): Promise<string[]> {
  * navnekonvensjonen for å lenke riktig.
  */
 export function publicUrlFor(project: Project, aliasHosts: string[]): string {
-  const alias = aliasHosts[0];
+  // Bare dev-aliaset: `extra_domains` er kundens domener, og deployment-URL-en
+  // skal ikke bytte til et av dem bare fordi de ble lagt til.
+  const extra = new Set((project.extra_domains ?? []).map((domain) => domain.toLowerCase()));
+  const alias = project.parent_project_id ? aliasHosts.find((host) => !extra.has(host)) : undefined;
   return alias ? caddy.hostnameUrl(alias) : caddy.appUrl(project.name);
 }
 
@@ -319,4 +330,188 @@ async function hashPassword(password: string): Promise<string> {
   }
 
   return await bcrypt.hash(value, BCRYPT_COST);
+}
+
+// ── Delelenker (migrasjon 0023) ─────────────────────────────────────────────
+//
+// En beskyttet app kan deles med en lenke som slipper forbi passordet til den
+// utløper. Tokenet står i Caddy-ruten (se `caddy.guardedHandlers()`), så hver
+// endring skriver ruten på nytt med `refreshRoute()`.
+
+/** Korteste og lengste levetid en delelenke kan få. */
+export const SHARE_MIN_MINUTES = 5;
+export const SHARE_MAX_MINUTES = 30 * 24 * 60;
+
+export interface ShareLink {
+  id: string;
+  url: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/**
+ * Passordvakten for et prosjekt: hashen og de aktive delelenkene, eller null om
+ * appen er åpen. Erstatter `passwordHashFor()` overalt en rute skrives, slik at
+ * en ny deployment aldri mister delelenkene.
+ *
+ * Feiler oppslaget av delelenkene, svarer vi med hashen alene: da virker
+ * passordet som før, og lenkene kommer tilbake ved neste skriving av ruten.
+ */
+export async function accessGuardFor(projectId: string): Promise<caddy.AccessGuard | null> {
+  const hash = await passwordHashFor(projectId);
+  if (!hash) return null;
+
+  const { data, error } = await supabase
+    .from("project_share_links")
+    .select("token, expires_at")
+    .eq("project_id", projectId)
+    .gt("expires_at", new Date().toISOString());
+
+  if (error) {
+    logger.warn({ projectId, err: error }, "Kunne ikke lese delelenkene");
+    return { hash, shareTokens: [] };
+  }
+
+  return {
+    hash,
+    shareTokens: ((data ?? []) as Array<{ token: string; expires_at: string }>).map((row) => ({
+      token: row.token,
+      expiresAt: new Date(row.expires_at),
+    })),
+  };
+}
+
+/** Adressen en delelenke peker på: eget domene først, så dev-aliaset, så `<navn>.snoat.com`. */
+async function shareBaseUrl(project: Project): Promise<string> {
+  if (project.custom_domain) return caddy.hostnameUrl(project.custom_domain);
+  const devAlias = await devAliasFor(project);
+  return devAlias ? caddy.hostnameUrl(devAlias) : caddy.appUrl(project.name);
+}
+
+function shareUrl(base: string, token: string): string {
+  return `${base}/?${caddy.SHARE_PARAM}=${token}`;
+}
+
+/**
+ * Lager en delelenke som utløper om `ttlMinutes` minutter.
+ *
+ * Krever at appen er passordbeskyttet: på en åpen app ville lenken ikke betydd
+ * noe, og kunden kunne trodd at den begrenset tilgangen.
+ */
+export async function createShareLink(project: Project, ttlMinutes: number): Promise<ShareLink> {
+  if (!project.access_protected) {
+    throw new DeployError("dev_site", "Appen er ikke passordbeskyttet, så en delelenke ville ikke begrenset noe.", {
+      code: "share_link.not_protected",
+    });
+  }
+
+  if (!Number.isFinite(ttlMinutes) || ttlMinutes < SHARE_MIN_MINUTES || ttlMinutes > SHARE_MAX_MINUTES) {
+    throw new DeployError(
+      "dev_site",
+      `Levetiden må være mellom ${SHARE_MIN_MINUTES} minutter og ${SHARE_MAX_MINUTES / (24 * 60)} dager.`,
+      { code: "share_link.invalid_ttl", params: { min: SHARE_MIN_MINUTES, max: SHARE_MAX_MINUTES } },
+    );
+  }
+
+  const token = randomBytes(24).toString("base64url");
+  const expiresAt = new Date(Date.now() + Math.round(ttlMinutes) * 60_000);
+
+  const { data, error } = await supabase
+    .from("project_share_links")
+    .insert({ project_id: project.id, token, expires_at: expiresAt.toISOString() })
+    .select("id, created_at, expires_at")
+    .single();
+
+  if (error || !data) {
+    throw new DeployError("dev_site", `Kunne ikke lagre delelenken: ${error?.message}`);
+  }
+
+  await refreshRoute(project);
+
+  const row = data as { id: string; created_at: string; expires_at: string };
+  logger.info({ project: project.name, expiresAt: row.expires_at }, "Delelenke opprettet");
+
+  return {
+    id: row.id,
+    url: shareUrl(await shareBaseUrl(project), token),
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+  };
+}
+
+/** De aktive delelenkene til et prosjekt, nyeste først. */
+export async function listShareLinks(project: Project): Promise<ShareLink[]> {
+  const { data, error } = await supabase
+    .from("project_share_links")
+    .select("id, token, expires_at, created_at")
+    .eq("project_id", project.id)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false });
+
+  if (error) throw new DeployError("dev_site", `Kunne ikke hente delelenkene: ${error.message}`);
+
+  const base = await shareBaseUrl(project);
+  return ((data ?? []) as Array<{ id: string; token: string; expires_at: string; created_at: string }>).map((row) => ({
+    id: row.id,
+    url: shareUrl(base, row.token),
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+  }));
+}
+
+/** Trekker tilbake en delelenke med en gang. En som alt er borte er ikke en feil. */
+export async function deleteShareLink(project: Project, linkId: string): Promise<void> {
+  const { error } = await supabase
+    .from("project_share_links")
+    .delete()
+    .eq("id", linkId)
+    .eq("project_id", project.id);
+
+  if (error) throw new DeployError("dev_site", `Kunne ikke slette delelenken: ${error.message}`);
+
+  await refreshRoute(project);
+}
+
+/**
+ * Fjerner utløpte delelenker og skriver rutene deres på nytt.
+ *
+ * Informasjonskapselen utløper av seg selv i nettleseren, men tokenet står i
+ * Caddy-ruten til noen skriver den om. Uten sveipet ville en lenke som er
+ * kopiert videre virket til neste deployment.
+ */
+export async function sweepExpiredShareLinks(): Promise<number> {
+  const { data, error } = await supabase
+    .from("project_share_links")
+    .delete()
+    .lte("expires_at", new Date().toISOString())
+    .select("project_id");
+
+  if (error) {
+    logger.warn({ err: error }, "Kunne ikke rydde utløpte delelenker");
+    return 0;
+  }
+
+  const projectIds = [...new Set(((data ?? []) as Array<{ project_id: string }>).map((row) => row.project_id))];
+  if (projectIds.length === 0) return 0;
+
+  const { data: projects } = await supabase.from("projects").select("*").in("id", projectIds);
+  for (const project of (projects ?? []) as Project[]) {
+    await refreshRoute(project);
+  }
+
+  logger.info({ projects: projectIds.length }, "Utløpte delelenker fjernet fra rutene");
+  return projectIds.length;
+}
+
+const SHARE_SWEEP_MS = 60_000;
+
+/** Starter sveipet. Kjøres fra `index.ts` etter at rutene er gjenopprettet. */
+export function startShareLinkSweep(): void {
+  const run = () => {
+    void sweepExpiredShareLinks().catch((error: unknown) => {
+      logger.warn({ err: error }, "Sveipet for delelenker feilet");
+    });
+  };
+  run();
+  setInterval(run, SHARE_SWEEP_MS).unref();
 }

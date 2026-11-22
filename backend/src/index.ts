@@ -20,6 +20,7 @@ import { startAnalyticsIngest } from "./services/analytics-ingest.js";
 import { errorCollector, startErrorIngest } from "./services/error-ingest.js";
 import { startRuntimeErrorSweep } from "./services/error-runtime.js";
 import { startBuildCacheSweep } from "./services/byggcache.js";
+import { startShareLinkSweep } from "./services/dev-sites.js";
 import { failOrphanedDeployments, reconcileRoutes } from "./services/deploy.js";
 import { reconcileRedirects } from "./services/redirects.js";
 import { reconcileVpsDomener } from "./services/vps-domener.js";
@@ -352,6 +353,10 @@ void (async () => {
 
   // Docker rydder aldri byggcachen selv; se services/byggcache.ts.
   startBuildCacheSweep();
+
+  // Delelenker står i Caddy-rutene til noen skriver dem om; sveipet fjerner de
+  // utløpte. Etter reconcile, så rutene det skriver om finnes.
+  startShareLinkSweep();
 })();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

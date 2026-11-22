@@ -478,6 +478,112 @@ api.post("/projects/:projectId/stop", async (c) => {
  * Verifiserer at domenet er unikt. Er applikasjonen i live, byttes Caddy-ruten
  * umiddelbart slik at domenet fungerer uten en ny deployment.
  */
+/**
+ * Sjekker at et vertsnavn kan tas av prosjektet – som `custom_domain` eller som
+ * et av `extra_domains`. Én funksjon for begge, så reglene ikke kan skille lag:
+ * et navn som er sperret det ene stedet skal ikke slippe inn det andre.
+ *
+ * Kaster `HTTPException` med samme statuskoder som før (400 ugyldig, 409 tatt).
+ */
+async function assertDomainClaimable(
+  project: { id: string; user_id: string },
+  normalized: string,
+): Promise<void> {
+  // Samme regler som for omdirigeringer: et gyldig vertsnavn, og aldri et av
+  // plattformens egne (`snoat.com` ville gitt ruten `*.snoat.com`, som fanger
+  // alle app-subdomener som ikke er rutet ennå).
+  if (!/^[a-z0-9.-]+$/.test(normalized)) {
+    throw new HTTPException(400, { message: `«${normalized}» er ikke et gyldig domenenavn.` });
+  }
+  try {
+    assertValidDomain(normalized);
+  } catch (err) {
+    if (err instanceof RedirectError) throw new HTTPException(err.status, { message: err.message });
+    throw err;
+  }
+
+  // Et prosjekt med eget domene får også `*.<domene>` (lib/caddy.ts,
+  // `hostsFor`). En annen konto skal ikke kunne legge inn et subdomene under
+  // det: den eksakte ruten flyttes foran wildcarden, og tls-ask godkjenner
+  // sertifikat – det ville vært subdomene-kapring, med tilgang til cookies
+  // satt for hele domenet.
+  const ancestors: string[] = [];
+  const labels = normalized.split(".");
+  for (let i = 1; i <= labels.length - 2; i++) ancestors.push(labels.slice(i).join("."));
+  if (ancestors.length > 0) {
+    const { data: owners, error: ownerError } = await supabase
+      .from("projects")
+      .select("custom_domain")
+      .in("custom_domain", ancestors)
+      .neq("user_id", project.user_id)
+      .limit(1);
+    if (ownerError) {
+      throw new HTTPException(500, { message: "Kunne ikke verifisere domene: " + ownerError.message });
+    }
+    if (owners && owners.length > 0) {
+      throw new HTTPException(409, {
+        message: `${owners[0]?.custom_domain} og subdomenene tilhører et prosjekt på en annen konto.`,
+      });
+    }
+  }
+
+  const { count, error: countError } = await supabase
+    .from("projects")
+    .select("id", { count: "exact", head: true })
+    .eq("custom_domain", normalized)
+    .neq("id", project.id);
+    
+  if (countError) {
+    throw new HTTPException(500, { message: "Kunne ikke verifisere domene: " + countError.message });
+  }
+  
+  if (count && count > 0) {
+    throw new HTTPException(409, { message: "Domenet er allerede i bruk av et annet prosjekt" });
+  }
+
+  // En omdirigering står foran apprutene i Caddy. Var domenet allerede en
+  // omdirigering, ville prosjektet fått domenet i databasen uten at noen
+  // besøkende noen gang nådde appen.
+  let clash: string | null;
+  try {
+    clash = await domainClashesWithRedirect(project.user_id, normalized);
+  } catch (err) {
+    throw new HTTPException(500, { message: `Kunne ikke verifisere domene: ${(err as Error).message}` });
+  }
+  if (clash) {
+    throw new HTTPException(409, {
+      message: `«${clash}» omdirigeres allerede. Fjern omdirigeringen først.`,
+    });
+  }
+
+  // Samme regel for et VPS-domene, som også står foran apprutene.
+  let vpsClash: string | null;
+  try {
+    vpsClash = await domainClashesWithVps(project.user_id, normalized);
+  } catch (err) {
+    throw new HTTPException(500, { message: `Kunne ikke verifisere domene: ${(err as Error).message}` });
+  }
+  if (vpsClash) {
+    throw new HTTPException(409, {
+      message: `«${vpsClash}» er koblet til en VPS. Fjern det der først.`,
+    });
+  }
+
+  // Navnet kan også stå i et annet prosjekts `extra_domains` (migrasjon 0023).
+  const { data: extraOwners, error: extraError } = await supabase
+    .from("projects")
+    .select("id")
+    .contains("extra_domains", [normalized])
+    .neq("id", project.id)
+    .limit(1);
+  if (extraError) {
+    throw new HTTPException(500, { message: "Kunne ikke verifisere domene: " + extraError.message });
+  }
+  if (extraOwners && extraOwners.length > 0) {
+    throw new HTTPException(409, { message: "Domenet er allerede i bruk av et annet prosjekt" });
+  }
+}
+
 api.patch("/projects/:projectId/domain", async (c) => {
   const project = await loadProject(c, c.req.param("projectId"), "member");
   const { custom_domain } = await c.req.json<{ custom_domain: string | null }>();
@@ -486,85 +592,7 @@ api.patch("/projects/:projectId/domain", async (c) => {
   const normalized = custom_domain ? custom_domain.trim().toLowerCase() : null;
 
   if (normalized) {
-    // Samme regler som for omdirigeringer: et gyldig vertsnavn, og aldri et av
-    // plattformens egne (`snoat.com` ville gitt ruten `*.snoat.com`, som fanger
-    // alle app-subdomener som ikke er rutet ennå).
-    if (!/^[a-z0-9.-]+$/.test(normalized)) {
-      throw new HTTPException(400, { message: `«${normalized}» er ikke et gyldig domenenavn.` });
-    }
-    try {
-      assertValidDomain(normalized);
-    } catch (err) {
-      if (err instanceof RedirectError) throw new HTTPException(err.status, { message: err.message });
-      throw err;
-    }
-
-    // Et prosjekt med eget domene får også `*.<domene>` (lib/caddy.ts,
-    // `hostsFor`). En annen konto skal ikke kunne legge inn et subdomene under
-    // det: den eksakte ruten flyttes foran wildcarden, og tls-ask godkjenner
-    // sertifikat – det ville vært subdomene-kapring, med tilgang til cookies
-    // satt for hele domenet.
-    const ancestors: string[] = [];
-    const labels = normalized.split(".");
-    for (let i = 1; i <= labels.length - 2; i++) ancestors.push(labels.slice(i).join("."));
-    if (ancestors.length > 0) {
-      const { data: owners, error: ownerError } = await supabase
-        .from("projects")
-        .select("custom_domain")
-        .in("custom_domain", ancestors)
-        .neq("user_id", project.user_id)
-        .limit(1);
-      if (ownerError) {
-        throw new HTTPException(500, { message: "Kunne ikke verifisere domene: " + ownerError.message });
-      }
-      if (owners && owners.length > 0) {
-        throw new HTTPException(409, {
-          message: `${owners[0]?.custom_domain} og subdomenene tilhører et prosjekt på en annen konto.`,
-        });
-      }
-    }
-
-    const { count, error: countError } = await supabase
-      .from("projects")
-      .select("id", { count: "exact", head: true })
-      .eq("custom_domain", normalized)
-      .neq("id", project.id);
-      
-    if (countError) {
-      throw new HTTPException(500, { message: "Kunne ikke verifisere domene: " + countError.message });
-    }
-    
-    if (count && count > 0) {
-      throw new HTTPException(409, { message: "Domenet er allerede i bruk av et annet prosjekt" });
-    }
-
-    // En omdirigering står foran apprutene i Caddy. Var domenet allerede en
-    // omdirigering, ville prosjektet fått domenet i databasen uten at noen
-    // besøkende noen gang nådde appen.
-    let clash: string | null;
-    try {
-      clash = await domainClashesWithRedirect(project.user_id, normalized);
-    } catch (err) {
-      throw new HTTPException(500, { message: `Kunne ikke verifisere domene: ${(err as Error).message}` });
-    }
-    if (clash) {
-      throw new HTTPException(409, {
-        message: `«${clash}» omdirigeres allerede. Fjern omdirigeringen først.`,
-      });
-    }
-
-    // Samme regel for et VPS-domene, som også står foran apprutene.
-    let vpsClash: string | null;
-    try {
-      vpsClash = await domainClashesWithVps(project.user_id, normalized);
-    } catch (err) {
-      throw new HTTPException(500, { message: `Kunne ikke verifisere domene: ${(err as Error).message}` });
-    }
-    if (vpsClash) {
-      throw new HTTPException(409, {
-        message: `«${vpsClash}» er koblet til en VPS. Fjern det der først.`,
-      });
-    }
+    await assertDomainClaimable(project, normalized);
   }
 
   const { error } = await supabase
@@ -610,11 +638,115 @@ api.patch("/projects/:projectId/domain", async (c) => {
 api.get("/projects/:projectId/domain/status", async (c) => {
   const project = await loadProject(c, c.req.param("projectId"), "member");
 
+  // `?domain=` måler et av `extra_domains` i stedet (migrasjon 0023). Bare navn
+  // prosjektet faktisk har – ellers ble endepunktet en åpen DNS-/TLS-prober.
+  const requested = (c.req.query("domain") ?? "").trim().toLowerCase();
+  if (requested) {
+    const own = [project.custom_domain, ...(project.extra_domains ?? [])].filter(Boolean) as string[];
+    if (!own.includes(requested)) {
+      throw new HTTPException(404, { message: `«${requested}» er ikke koblet til prosjektet.` });
+    }
+    return c.json(await checkDomain(project, requested));
+  }
+
   if (!project.custom_domain) {
     throw new HTTPException(404, { message: "Prosjektet har ikke noe eget domene." });
   }
 
   return c.json(await checkDomain(project, project.custom_domain));
+});
+
+/** Høyeste antall ekstra domener per prosjekt. Hvert navn er et sertifikat. */
+const MAX_EXTRA_DOMAINS = 10;
+
+/**
+ * Erstatter `extra_domains` – de eksakte vertsnavnene appen svarer på i tillegg
+ * til `<navn>.snoat.com` og `custom_domain` (migrasjon 0023).
+ *
+ * Bruken som drev fram feltet: et byrå gir siden sin faste adresse som
+ * `custom_domain` (`kunde.sider.osia.no`), og kundens domene (`kunde.no`,
+ * `www.kunde.no`) peker dit med CNAME. Begge må stå i ruten og få sertifikat.
+ *
+ * Hele lista sendes hver gang; `[]` fjerner alle. Hvert navn valideres med
+ * samme regler som `custom_domain`. Ingen wildcard: `www.` må stå for seg.
+ */
+api.put("/projects/:projectId/extra-domains", async (c) => {
+  const project = await loadProject(c, c.req.param("projectId"), "member");
+  const body = await c.req.json<{ domains?: unknown }>().catch(() => null);
+
+  if (!body || !Array.isArray(body.domains) || body.domains.some((d) => typeof d !== "string")) {
+    throw new HTTPException(400, { message: "«domains» må være en liste med domenenavn." });
+  }
+
+  const domains = [
+    ...new Set((body.domains as string[]).map((d) => d.trim().toLowerCase().replace(/\.$/, "")).filter(Boolean)),
+  ];
+
+  if (domains.length > MAX_EXTRA_DOMAINS) {
+    throw new HTTPException(400, { message: `Høyst ${MAX_EXTRA_DOMAINS} ekstra domener per prosjekt.` });
+  }
+
+  for (const domain of domains) {
+    if (domain.includes("*")) {
+      throw new HTTPException(400, { message: `«${domain}»: wildcard støttes ikke i ekstra domener.` });
+    }
+    if (domain === project.custom_domain) {
+      throw new HTTPException(409, { message: `«${domain}» er allerede prosjektets eget domene.` });
+    }
+    await assertDomainClaimable(project, domain);
+  }
+
+  const { error } = await supabase.from("projects").update({ extra_domains: domains }).eq("id", project.id);
+  if (error) throw new HTTPException(500, { message: error.message });
+
+  invalidateHostMap();
+
+  let route: RouteStatus;
+  try {
+    route = await ensureProjectRoute({ ...project, extra_domains: domains });
+  } catch (err) {
+    logger.error({ project: project.name, err }, "Kunne ikke oppdatere Caddy-rute med ekstra domener");
+    throw new HTTPException(502, {
+      message: "Domenene ble lagret, men ruten kunne ikke settes opp. Prøv å deploye prosjektet på nytt.",
+    });
+  }
+
+  logger.info({ project: project.name, domains, via: c.get("authKind") }, "Ekstra domener satt");
+  return c.json({ success: true, extra_domains: domains, route });
+});
+
+/**
+ * Delelenker forbi passordet på en beskyttet app (migrasjon 0023).
+ *
+ * `POST` med `{ ttlMinutes }` gir `{ shareLink: { id, url, expiresAt } }`. URL-en
+ * virker uten passord til den utløper; etter det tar passordet over igjen.
+ * Caddy-ruten skrives om med en gang, også når lenken trekkes tilbake.
+ */
+api.post("/projects/:projectId/share-links", async (c) => {
+  const project = await loadProject(c, c.req.param("projectId"), "member");
+  const body = await c.req.json<{ ttlMinutes?: unknown }>().catch(() => ({}) as { ttlMinutes?: unknown });
+  const ttl = body.ttlMinutes === undefined ? 24 * 60 : Number(body.ttlMinutes);
+
+  try {
+    const shareLink = await devSites.createShareLink(project, ttl);
+    return c.json({ shareLink }, 201);
+  } catch (error) {
+    if (error instanceof DeployError) {
+      throw new HTTPException(409, { message: error.message, cause: error.detail ?? undefined });
+    }
+    throw error;
+  }
+});
+
+api.get("/projects/:projectId/share-links", async (c) => {
+  const project = await loadProject(c, c.req.param("projectId"), "member");
+  return c.json({ shareLinks: await devSites.listShareLinks(project) });
+});
+
+api.delete("/projects/:projectId/share-links/:linkId", async (c) => {
+  const project = await loadProject(c, c.req.param("projectId"), "member");
+  await devSites.deleteShareLink(project, c.req.param("linkId"));
+  return c.json({ deleted: true });
 });
 
 /**
