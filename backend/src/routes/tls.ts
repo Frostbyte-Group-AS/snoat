@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { devAliasParts, parentDomain, slugFromHostname } from "../lib/caddy.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
+import { askApp, tlsAskPath } from "../lib/tls-ask-app.js";
 import { redirectForHostname } from "../services/redirects.js";
 import { vpsDomeneForHostname } from "../services/vps-domener.js";
 
@@ -86,7 +87,29 @@ tlsPermission.get("/tls-ask", async (c) => {
   if (!slug && !devAlias && !error && !data) {
     const parent = parentDomain(domain);
     if (parent) {
-      ({ data, error } = await lookup("custom_domain", parent));
+      const parentLookup = await supabase
+        .from("projects")
+        .select("id, name, env_vars")
+        .eq("custom_domain", parent)
+        .maybeSingle();
+      error = parentLookup.error;
+      data = parentLookup.data ? { id: parentLookup.data.id } : null;
+
+      // Appen kan selv si hvilke subdomener som finnes (`lib/tls-ask-app.ts`).
+      // Et nei lar oppslagene under (omdirigering, VPS) få sjansen; en feil er
+      // et nei til Caddy denne gangen, aldri et ja.
+      const askPath = tlsAskPath(parentLookup.data?.env_vars as Record<string, string> | null);
+      if (parentLookup.data && askPath) {
+        const answer = await askApp(parent, askPath, domain);
+        if (answer === "feil") {
+          logger.warn({ domain, project: parentLookup.data.name }, "TLS-spørsmål til appen feilet");
+          return c.text("appen svarer ikke", 503);
+        }
+        if (answer === "nei") {
+          logger.info({ domain, project: parentLookup.data.name }, "TLS avvist av appen");
+          data = null;
+        }
+      }
     }
   }
 
