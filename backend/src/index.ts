@@ -8,6 +8,7 @@ import * as caddy from "./lib/caddy.js";
 import * as dockerLib from "./lib/docker.js";
 import { logger } from "./lib/logger.js";
 import * as supabaseLib from "./lib/supabase.js";
+import { accessGate, startAccessGateHousekeeping } from "./routes/access-gate.js";
 import { api } from "./routes/api.js";
 import { githubSetup } from "./routes/github.js";
 import { mcp } from "./routes/mcp.js";
@@ -256,6 +257,22 @@ const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
 });
 
 /**
+ * Passordsiden og adgangssjekken foran beskyttede apper, på sin egen port.
+ *
+ * Ikke montert på `app` over: `routes/access-gate.ts` stoler på headerne
+ * Caddy-ruten setter (hvilket prosjekt, hvilken passordversjon, klientens IP).
+ * Port 3000 nås også via `api.snoat.com`, der en klient kunne sendt de samme
+ * headerne selv. Denne porten er bare på `snoat`-nettverket og publiseres
+ * aldri; appene står på `snoat_apps` og når den ikke.
+ */
+const accessCheckServer = serve(
+  { fetch: accessGate.fetch, port: config.SNOAT_ACCESS_CHECK_PORT },
+  (info) => {
+    logger.info({ port: info.port }, "Adgangssjekk kjører");
+  },
+);
+
+/**
  * Klargjør infrastrukturen backend eier, men blokker ikke oppstart på den –
  * health-endepunktet rapporterer hva som eventuelt mangler.
  *
@@ -367,11 +384,15 @@ void (async () => {
   // Delelenker står i Caddy-rutene til noen skriver dem om; sveipet fjerner de
   // utløpte. Etter reconcile, så rutene det skriver om finnes.
   startShareLinkSweep();
+
+  // Rydder gamle rate-limit-bøtter for passordsiden.
+  startAccessGateHousekeeping();
 })();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     logger.info({ signal }, "Avslutter");
+    accessCheckServer.close();
     server.close(() => process.exit(0));
   });
 }

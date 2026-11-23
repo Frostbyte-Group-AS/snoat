@@ -35,6 +35,25 @@ nettleseren. Anon-nøkkelen er offentlig og gir ingen tilgang i seg selv – det
 RLS-policyene som avgjør hva som returneres. Frontend filtrerer aldri på
 `user_id`; databasen gjør det.
 
+**Passordsiden foran beskyttede apper** (`routes/access-gate.ts`,
+`guardedHandlers()` i `lib/caddy.ts`, detaljer i `03_deployment_flow.md`).
+Adgangscookien `__Host-snoat_adgang` (lokalt `snoat_adgang`) er HMAC-signert
+(nøkkel utledet fra service-role-nøkkelen), bundet til prosjekt, vertsnavn og
+passordversjon, `HttpOnly; Secure; SameSite=Lax`, host-only, 24 t, og
+sammenlignes med `timingSafeEqual`. `__Host-` hindrer at en annen kundes app på
+`*.snoat.com` planter en cookie med samme navn for hele domenet; sjekken godtar
+dessuten om *én* av flere like cookies er gyldig. Innloggingen er rate-limitet
+per IP+prosjekt (8/min), per IP (30/min) og per prosjekt (30/min) – nøkkelen er
+prosjekt-ID-en fra ruten, ikke `Host` (et eget domene svarer på `*.domenet`),
+og IPv6 telles per /64. Rate-limiten og en `Origin`-sjekk kjører før bodyen
+leses; bodyen er begrenset til 8 KiB (16 KiB i Caddy), og høyst fire
+bcrypt-sammenligninger kjører samtidig i hele prosessen. Uten hash sammenlignes
+det mot en dummy, så svartiden er lik. `retur` er alltid en sti på samme vert.
+Siden sier ikke hvilket prosjekt den står foran, og sendes med `no-store`,
+`X-Frame-Options: DENY` og en streng CSP. Backend stoler på headerne
+Caddy-ruten setter fordi porten (3101) bare er på `snoat`-nettverket – appene
+står på `snoat_apps`. Vakten feiler lukket: backend nede gir 502, manglende hash gir en vakt ingen kommer forbi.
+
 **Eierskapssjekk i backend.** Backend bruker service-role-nøkkelen og omgår RLS.
 `loadProject()` er derfor den eneste kontrollen som står mellom en bruker og
 andres prosjekter. Den svarer 404 og ikke 403, slik at et ID-gjett ikke avslører

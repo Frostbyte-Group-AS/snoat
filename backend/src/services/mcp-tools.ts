@@ -1191,7 +1191,8 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "Legger et passord foran en app, eller fjerner det med password: null. Caddy-ruten skrives om umiddelbart, " +
       "så endringen gjelder uten en ny deployment. Gjelder alle prosjekter, ikke bare dev-grener — «legg et passord " +
-      "foran denne appen» er like nyttig for en kundedemo.",
+      "foran denne appen» er like nyttig for en kundedemo. Besøkende får Snoats passordside og taster bare passordet " +
+      "(ingen brukernavn); et nytt passord logger ut alle som var inne med det gamle.",
     inputSchema: {
       type: "object",
       properties: {

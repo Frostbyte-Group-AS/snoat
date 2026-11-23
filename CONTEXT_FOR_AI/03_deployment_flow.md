@@ -418,10 +418,46 @@ nøyaktig det bryteren ved siden av gjør.
 den. Delingen er ikke ryddighet – dashboardet leser `projects` direkte fra
 Supabase, så en hash på den raden er en hash i nettleseren.
 
-Vakten er Caddys egen `authentication`-handler med `http_basic` og bcrypt, lagt
-**først** i handler-kjeden for ruten, slik at en 401 kommer før `reverse_proxy`
-har åpnet en forbindelse. `hash_cache` er slått på: bcrypt cost 12 er ~250 ms med
-vilje, og uten cachen ville hvert bilde og hver JS-fil på siden betalt den prisen.
+Vakten er Snoats egen **passordside** (fra november 2026; før det Caddys
+`http_basic`, se under). Besøkende taster bare passordet – ingen brukernavn,
+ingen nettleserdialog. Formen, i `guardedHandlers()` i `lib/caddy.ts`, er én
+`subroute` lagt **først** i handler-kjeden:
+
+1. `/_snoat/adgang` → passordsiden og innloggingen (`routes/access-gate.ts`).
+   Finnes bare på beskyttede apper; på en åpen app går stien til appen.
+2. Delelenkene (`?snoat_tilgang=` og informasjonskapselen), som før.
+3. Alt annet → adgangssjekken, så appen. Sjekken er Caddys `forward_auth`
+   skrevet ut i JSON: en `reverse_proxy` med `rewrite: {method: GET}` (bodyen
+   følger ikke med, så en POST til appen har den i behold) og
+   `handle_response` som lar et 2xx falle gjennom til appen. Alt annet er en
+   401 med passordsiden, på adressen klienten ba om. Dekker alle stier og
+   metoder, også `/_next`, API-er og websockets.
+
+Begge går til backend på den interne porten `SNOAT_ACCESS_CHECK_PORT` (3101),
+som bare er på `snoat`-nettverket. Ruten **setter** headerne
+`X-Snoat-Prosjekt`, `X-Snoat-Adgang-Versjon`, `X-Snoat-Vert`, `X-Snoat-Uri` og
+`X-Snoat-Klient-Ip`; backend stoler på dem fordi ingen klient eller app når
+porten. Derfor trengs ikke vertsnavn-kartet: en helt ny forhåndsvisning er
+beskyttet fra første forespørsel.
+
+Innloggingen sjekker passordet mot `project_access.password_hash` med bcrypt –
+samme hash som før, så eksisterende passord virker uendret – og setter
+`__Host-snoat_adgang` (lokalt `snoat_adgang`): `<utløp>.<HMAC>` over prosjekt-ID, vertsnavn, passordversjon og
+utløp (24 t), `HttpOnly; Secure; SameSite=Lax; Path=/`, uten `Domain`
+(host-only). Rate-limit, body-tak og tak på samtidige bcrypt-kall: se
+`08_security_model.md`. Passordversjonen er et fingeravtrykk av hashen
+(`accessVersion()` i `lib/access-cookie.ts`) og står i ruten, så **et nytt
+passord logger ut alle** med en gang. Selve hashen står ikke lenger i Caddy.
+
+Svarer ikke backend, gir Caddy 502: vakten feiler lukket. Det gjør
+`accessGuardFor()` også: et beskyttet prosjekt uten lesbar hash får vakten med
+en versjon ingen innlogging matcher, aldri en åpen rute.
+
+**Overgangen fra `http_basic`.** Caddy holder rutene i minnet, og
+`reconcileRoutes()` skriver alle på nytt fra databasen når backend starter. En
+deploy av backend migrerer dermed hver beskyttet app til passordsiden uten at
+noen setter passordet på nytt. Fram til det står den gamle vakten, som fortsatt
+beskytter. `routeIsProtected()` kjenner igjen begge formene.
 
 > ⚠️ **At vakten står først, veltet i sin tid hver eneste dev-deployment.**
 > `routeUpstream()` og `routeRoot()` i `lib/caddy.ts` leste bare `handle[0]` for
@@ -436,14 +472,12 @@ vilje, og uten cachen ville hvert bilde og hver JS-fil på siden betalt den pris
 >
 > Begge leserne går nå gjennom hele handler-kjeden, også inn i `subroute`.
 
-Brukernavnet er alltid `snoat`. Basic auth krever et brukernavn, men det er
-*appen* som er beskyttet, ikke en konto – ett fast navn er mer ærlig enn å late
-som det betyr noe.
+`accessGuardFor()` leser hashen per ruteskriving (via `accessHashFor()` i
+`deploy.ts`), og bare når `access_protected` er sant.
 
-Hashen leses per ruteskriving (`accessHashFor()` i `deploy.ts`), og bare når
-`access_protected` er sant. Feiler oppslaget, svarer vi null – en dev-side som er
-åpen i noen minutter er dårlig, men en dev-side som ikke kan deployes er verre.
-Skal det snus til fail closed, må `runPipeline` også kunne feile på det.
+> ⚠️ **Vakten er selv en `reverse_proxy`.** `routeUpstream()` hopper over den
+> (upstream `backend:3101`); ellers ville `refreshRoute()` og rollback skrevet
+> vaktens adresse inn som appens upstream.
 
 #### Vakten spratt opp en dialog over dashboardet
 
@@ -462,8 +496,9 @@ har samme registrerbare domene – de er same-site. Derfor ser man dialogen i
 produksjon, men ikke når dashboardet kjøres fra `localhost`.
 
 `ProjectFavicon` ber derfor ikke om faviconet i det hele tatt når
-`access_protected` er sant, men går rett til eierens GitHub-avatar. Vakten selv
-er urørt: den som går til vertsnavnet direkte får fortsatt 401. Skal en beskyttet
+`access_protected` er sant, men går rett til eierens GitHub-avatar. Passordsiden
+(over) fjerner selve årsaken – den sender aldri `WWW-Authenticate` – men
+faviconet ville fortsatt vært en 401, så unntaket står. Skal en beskyttet
 app vise sitt *ekte* favicon i oversikten, må ressursen hentes server-til-server
 gjennom vårt eget API – nettleseren kan ikke møte den 401-en.
 

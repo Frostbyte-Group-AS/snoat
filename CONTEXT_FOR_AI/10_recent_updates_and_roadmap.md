@@ -4,6 +4,16 @@ Denne filen dokumenterer nye funksjonaliteter og forbedringer som er innført i 
 
 ---
 
+## 0j. Egen passordside i stedet for nettleserens dialog (november 2026)
+
+En beskyttet app ber nå bare om **passord**, på en side Snoat tegner selv,
+ikke nettleserens basic auth-dialog med brukernavnet «snoat». Gjelder alle
+beskyttede apper, også dev-sider og forhåndsvisninger. Eksisterende passord
+virker uendret (samme bcrypt-hash); `reconcileRoutes()` flytter alle rutene
+over til den nye vakten når backend starter etter deploy. Et nytt passord
+logger nå ut alle som var inne med det gamle. Se «Passordet foran appen» i
+`03_deployment_flow.md`.
+
 ## 0i. Team: inviter andre til et prosjekt
 
 Et prosjekt hadde én bruker. Nå kan eieren invitere andre på e-post under

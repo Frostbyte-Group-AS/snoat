@@ -612,7 +612,7 @@
     "locked": "Passordbeskyttet",
     "open": "Åpen",
     "password": "Passord for dev-siden",
-    "password_hint": "Minst 8 tegn. Nettleseren spør om det første gang siden åpnes – brukernavnet er «snoat».",
+    "password_hint": "Minst 8 tegn. Den som åpner siden får en passordside – bare passordet, ingen brukernavn.",
     "create": "Opprett dev-side",
     "creating": "Oppretter …",
     "heading_none": "Ingen dev-gren ennå",
@@ -629,7 +629,7 @@
     "state_open": "Appen er åpen for alle som har adressen.",
     "password": "Passord",
     "new_password": "Nytt passord",
-    "username_note": "Minst 8 tegn. Brukernavnet er alltid «snoat» – det er appen som er beskyttet, ikke en konto.",
+    "password_note": "Minst 8 tegn. Besøkende får en passordside og taster bare passordet. Et nytt passord logger ut alle som var inne med det gamle.",
     "save": "Lagre passord",
     "saving": "Lagrer …",
     "remove": "Fjern passordet"

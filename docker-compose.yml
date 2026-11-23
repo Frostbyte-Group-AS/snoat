@@ -368,6 +368,9 @@ services:
       # Trafikkanalyse. Caddy strømmer access-loggen til INGEST_PORT over
       # snoat-nettverket – porten skal aldri publiseres på verten.
       SNOAT_ANALYTICS_INGEST_PORT: ${SNOAT_ANALYTICS_INGEST_PORT:-3100}
+      # Adgangssjekken (routes/access-gate.ts). Samme regel som porten over:
+      # kun snoat-nettverket, aldri i `ports:`.
+      SNOAT_ACCESS_CHECK_PORT: ${SNOAT_ACCESS_CHECK_PORT:-3101}
       SNOAT_ANALYTICS_FLUSH_MS: ${SNOAT_ANALYTICS_FLUSH_MS:-5000}
       SNOAT_ANALYTICS_TIMEZONE: ${SNOAT_ANALYTICS_TIMEZONE:-Europe/Oslo}
       SNOAT_ANALYTICS_VISITOR_RETENTION_DAYS: ${SNOAT_ANALYTICS_VISITOR_RETENTION_DAYS:-90}

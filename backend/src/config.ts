@@ -47,6 +47,17 @@ const schema = z.object({
   SNOAT_ANALYTICS_INGEST_PORT: z.coerce.number().int().positive().default(3100),
 
   /**
+   * Porten passordsiden og adgangssjekken svarer på (routes/access-gate.ts).
+   *
+   * Egen lytter, ikke en rute på port 3000: Caddy-ruten til en beskyttet app
+   * setter headere (prosjekt, passordversjon, klientens IP) som backend stoler
+   * på. Port 3000 nås via `api.snoat.com`, der en klient kunne sendt de samme
+   * headerne selv; denne porten er bare på `snoat`-nettverket og publiseres
+   * aldri i `ports:`. Appene står på `snoat_apps` og når den ikke.
+   */
+  SNOAT_ACCESS_CHECK_PORT: z.coerce.number().int().positive().default(3101),
+
+  /**
    * Hvor lenge treff samles i minnet før de skrives.
    *
    * Hele poenget med bufferet er at en app med 300 000 treff i timen blir én
