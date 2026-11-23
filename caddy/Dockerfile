@@ -1,5 +1,10 @@
 # ---------------------------------------------------------------------------
-# Caddy med `replace_response`
+# Caddy med `replace_response` og `dns.providers.cloudflare`
+#
+# Cloudflare-modulen gir wildcard-sertifikater (`*.domenet`) via DNS-01, for
+# prosjekter som har lagt inn et Cloudflare-token (se services/wildcard-certs.ts).
+# Ett wildcard erstatter ett sertifikat per subdomene, og Let's Encrypt tillater
+# bare 50 nye per registrert domene per uke.
 #
 # Stock-imaget holder for alt annet vi gjør, men feilsporingen trenger én ting
 # det ikke har: å skrive en script-tag inn i HTML-svarene til appene på vei ut.
@@ -23,7 +28,8 @@
 FROM caddy:2.11.4-builder-alpine AS builder
 
 RUN xcaddy build v2.11.4 \
-      --with github.com/caddyserver/replace-response
+      --with github.com/caddyserver/replace-response \
+      --with github.com/caddy-dns/cloudflare
 
 FROM caddy:2.11.4-alpine
 
@@ -36,4 +42,5 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 # fordi xcaddy ikke fikk hentet modulen – langt bedre å oppdage under bygg enn
 # som en «unknown handler: replace_response» når Caddy nekter å starte i prod
 # og hele plattformen står.
-RUN caddy list-modules | grep -q '^http.handlers.replace_response$'
+RUN caddy list-modules | grep -q '^http.handlers.replace_response$' \
+ && caddy list-modules | grep -q '^dns.providers.cloudflare$'

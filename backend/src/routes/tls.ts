@@ -3,6 +3,7 @@ import { devAliasParts, parentDomain, slugFromHostname } from "../lib/caddy.js";
 import { logger } from "../lib/logger.js";
 import { supabase } from "../lib/supabase.js";
 import { askApp, tlsAskPath } from "../lib/tls-ask-app.js";
+import { wildcardDomainCovering } from "../services/wildcard-certs.js";
 import { redirectForHostname } from "../services/redirects.js";
 import { vpsDomeneForHostname } from "../services/vps-domener.js";
 
@@ -84,6 +85,23 @@ tlsPermission.get("/tls-ask", async (c) => {
   // Merk at on-demand utsteder ett sertifikat per navn, ikke ett wildcard:
   // Let's Encrypt teller 50 per registrert domene per uke, så en app som får
   // mange nye subdomener på kort tid kan møte den grensen.
+  // Dekkes navnet av et wildcard-sertifikat, skal det aldri få et eget: det
+  // ville brukt av kvoten på 50 per uke for et navn som allerede har HTTPS.
+  // Caddy spør normalt ikke engang (wildcard-policyen er ikke on-demand), så
+  // dette er en sperre for det tilfellet at policyen mangler i minnet.
+  if (!slug && !devAlias && !error && !data) {
+    try {
+      const wildcard = await wildcardDomainCovering(domain);
+      if (wildcard) {
+        logger.info({ domain, wildcard }, "TLS avvist: dekkes av wildcard-sertifikat");
+        return c.text("dekkes av wildcard", 404);
+      }
+    } catch (err) {
+      logger.error({ domain, err }, "TLS-oppslag for wildcard feilet");
+      return c.text("oppslag feilet", 503);
+    }
+  }
+
   if (!slug && !devAlias && !error && !data) {
     const parent = parentDomain(domain);
     if (parent) {

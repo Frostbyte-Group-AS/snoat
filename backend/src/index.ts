@@ -24,6 +24,7 @@ import { startShareLinkSweep } from "./services/dev-sites.js";
 import { failOrphanedDeployments, reconcileRoutes } from "./services/deploy.js";
 import { reconcileRedirects } from "./services/redirects.js";
 import { reconcileVpsDomener } from "./services/vps-domener.js";
+import { reconcileWildcardCerts } from "./services/wildcard-certs.js";
 import { startHealthSweep } from "./services/helse.js";
 import { startSignupSweep } from "./services/signups.js";
 import { eierlisteAntall } from "./services/plans.js";
@@ -301,6 +302,15 @@ void (async () => {
     if (tls !== "av") logger.info({ tls, suffikser: caddy.extraAppDomainSuffixes }, "TLS-policy for ekstra suffikser");
   } catch (error) {
     logger.warn({ err: error }, "Kunne ikke legge inn TLS-policy for ekstra suffikser");
+  }
+
+  // Også før rutene: `<x>.domenet` skal treffe wildcard-policyen, ikke
+  // catch-all on-demand, fra første handshake.
+  try {
+    const wildcard = await reconcileWildcardCerts();
+    if (wildcard.restored || wildcard.skipped) logger.info(wildcard, "Wildcard-sertifikater gjenopprettet");
+  } catch (error) {
+    logger.warn({ err: error }, "Kunne ikke gjenopprette wildcard-sertifikater");
   }
 
   try {

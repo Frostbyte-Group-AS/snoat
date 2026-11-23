@@ -18,6 +18,7 @@ import * as analytics from "../services/analytics.js";
 import { invalidateHostMap } from "../lib/host-map.js";
 import * as deploy from "../services/deploy.js";
 import * as devSites from "../services/dev-sites.js";
+import * as wildcardCerts from "../services/wildcard-certs.js";
 import { ensureProjectRoute, type RouteStatus } from "../services/deploy.js";
 import { checkDomain, edgeHost, edgeIps } from "../services/domain-status.js";
 import { assertValidDomain, domainClashesWithRedirect, RedirectError } from "../services/redirects.js";
@@ -602,6 +603,14 @@ api.patch("/projects/:projectId/domain", async (c) => {
   
   if (error) throw new HTTPException(500, { message: error.message });
 
+  // Et wildcard gjelder domenet det ble satt opp for. Byttes domenet, slettes
+  // tokenet, så det aldri gir sertifikat for et domene prosjektet ikke eier.
+  if (normalized !== project.custom_domain) {
+    await wildcardCerts.removeWildcardCertForProject(project).catch((err) => {
+      logger.warn({ project: project.name, err }, "Kunne ikke fjerne wildcard etter domenebytte");
+    });
+  }
+
   // Statistikken kobler treff til prosjekt via vertsnavnet, så et nytt eget
   // domene må være kjent for ingesten før den første besøkende kommer.
   invalidateHostMap();
@@ -654,6 +663,47 @@ api.get("/projects/:projectId/domain/status", async (c) => {
   }
 
   return c.json(await checkDomain(project, project.custom_domain));
+});
+
+/**
+ * Wildcard-sertifikat for prosjektets eget domene (`*.<custom_domain>`), via
+ * DNS-01 med et Cloudflare-token. Se `services/wildcard-certs.ts`.
+ *
+ * `GET` viser om det er på – aldri tokenet. `PUT` med `{ dnsProvider, apiToken }`
+ * slår det på eller bytter tokenet, `DELETE` slår det av. Bare eieren: tokenet
+ * gir skrivetilgang til DNS-sonen.
+ */
+function wildcardError(error: unknown): never {
+  if (error instanceof wildcardCerts.WildcardCertError) {
+    throw new HTTPException(error.status, { message: error.message });
+  }
+  throw error;
+}
+
+api.get("/projects/:projectId/wildcard-cert", async (c) => {
+  const project = await loadProject(c, c.req.param("projectId"), "member");
+  const row = await wildcardCerts.getWildcardCert(project.id);
+  return c.json({ wildcardCert: row ? wildcardCerts.toStatus(row) : null });
+});
+
+api.put("/projects/:projectId/wildcard-cert", async (c) => {
+  const project = await loadProject(c, c.req.param("projectId"), "owner");
+  const body = await c.req.json<{ dnsProvider?: unknown; apiToken?: unknown }>().catch(() => null);
+  if (!body || typeof body.apiToken !== "string") {
+    throw new HTTPException(400, { message: "«apiToken» må være en streng." });
+  }
+  const dnsProvider = typeof body.dnsProvider === "string" ? body.dnsProvider : "cloudflare";
+  try {
+    const wildcardCert = await wildcardCerts.setWildcardCert(project, { dnsProvider, apiToken: body.apiToken });
+    return c.json({ wildcardCert });
+  } catch (error) {
+    wildcardError(error);
+  }
+});
+
+api.delete("/projects/:projectId/wildcard-cert", async (c) => {
+  const project = await loadProject(c, c.req.param("projectId"), "owner");
+  return c.json({ removed: await wildcardCerts.removeWildcardCertForProject(project) });
 });
 
 /** Høyeste antall ekstra domener per prosjekt. Hvert navn er et sertifikat. */

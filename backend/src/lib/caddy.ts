@@ -1086,3 +1086,107 @@ export function routeCoversHost(route: CaddyRoute | null, hostname: string): boo
     return !hostname.slice(0, -suffix.length).includes(".");
   });
 }
+
+// ---------------------------------------------------------------------------
+// Wildcard-sertifikater (`*.<eget domene>`) via DNS-01
+// ---------------------------------------------------------------------------
+
+/** `@id` på TLS-policyen for et wildcard, så den kan byttes og fjernes alene. */
+export const wildcardPolicyId = (domain: string) => `snoat_wildcard_${domain}`;
+
+export interface WildcardDnsCredentials {
+  provider: "cloudflare";
+  apiToken: string;
+}
+
+/**
+ * TLS-policyen for `*.<domain>`: DNS-01 mot leverandøren, ikke on-demand.
+ *
+ * Caddy velger policy for et navn ved å matche `subjects` med wildcard-regler,
+ * så `vel.mittvel.no` treffer denne foran catch-all `{ on_demand: true }`. Uten
+ * `on_demand` bestiller Caddy da aldri et eget sertifikat for subdomenet – det
+ * får wildcard-sertifikatet fra cachen. Rotdomenet står ikke i `subjects`: det
+ * har sitt eget sertifikat, og Caddy holder ett sertifikat per navn uansett.
+ */
+export function wildcardTlsPolicy(domain: string, dns: WildcardDnsCredentials, email?: string | null) {
+  return {
+    "@id": wildcardPolicyId(domain),
+    subjects: [`*.${domain}`],
+    issuers: [
+      {
+        module: "acme",
+        ...(email ? { email } : {}),
+        challenges: {
+          dns: { provider: { name: dns.provider, api_token: dns.apiToken } },
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * Ny `certificates.automate`-liste med `add` lagt til og `remove` tatt ut,
+ * uten duplikater og uten å røre andre navn.
+ */
+export function mergeAutomateList(existing: unknown, add: string[], remove: string[]): string[] {
+  const current = Array.isArray(existing) ? existing.filter((x): x is string => typeof x === "string") : [];
+  const result = current.filter((name) => !remove.includes(name));
+  for (const name of add) if (!result.includes(name)) result.push(name);
+  return result;
+}
+
+async function readTlsCertificates(): Promise<Record<string, unknown> | null> {
+  try {
+    const response = await request("GET", "/config/apps/tls/certificates");
+    const value = (await response.json()) as Record<string, unknown> | null;
+    return value && typeof value === "object" ? value : null;
+  } catch (error) {
+    // Caddy svarer `null` for en nøkkel som ikke finnes, men eldre versjoner
+    // gir 400/404 med «invalid traversal path» når forelderen mangler.
+    if (error instanceof CaddyError && (error.status === 404 || /traversal/i.test(error.message))) return null;
+    throw error;
+  }
+}
+
+async function setAutomateList(add: string[], remove: string[]): Promise<void> {
+  const certificates = await readTlsCertificates();
+  const automate = mergeAutomateList(certificates?.automate, add, remove);
+  if (certificates === null) {
+    if (automate.length === 0) return;
+    await request("PUT", "/config/apps/tls/certificates", { automate });
+    return;
+  }
+  await request("PATCH", "/config/apps/tls/certificates", { ...certificates, automate });
+}
+
+async function removeWildcardPolicy(domain: string): Promise<void> {
+  try {
+    await request("DELETE", `/id/${wildcardPolicyId(domain)}`);
+  } catch (error) {
+    if (!isUnknownObject(error)) throw error;
+  }
+}
+
+/**
+ * Legger inn (eller bytter) wildcard-policyen og ber Caddy holde
+ * `*.<domain>` – da hentes sertifikatet med én gang og fornyes av seg selv.
+ *
+ * Policyen settes inn først i lista, foran ZeroSSL-policyen og catch-all. Som
+ * resten av TLS-oppsettet lever den bare i Caddys minne og legges inn igjen av
+ * `reconcileWildcardCerts()` når backend starter.
+ */
+export async function upsertWildcardCert(
+  domain: string,
+  dns: WildcardDnsCredentials,
+  email?: string | null,
+): Promise<void> {
+  await removeWildcardPolicy(domain);
+  await request("PUT", "/config/apps/tls/automation/policies/0", wildcardTlsPolicy(domain, dns, email));
+  await setAutomateList([`*.${domain}`], []);
+}
+
+/** Fjerner policyen og navnet fra `automate`. Sertifikatet i lageret blir liggende til det utløper. */
+export async function removeWildcardCert(domain: string): Promise<void> {
+  await removeWildcardPolicy(domain);
+  await setAutomateList([], [`*.${domain}`]);
+}

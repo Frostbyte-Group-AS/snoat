@@ -1287,6 +1287,51 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   {
+    name: "snoat_set_wildcard_cert",
+    title: "Wildcard-sertifikat for eget domene",
+    description:
+      "Slår på wildcard-sertifikat (*.<eget domene>) via DNS-01, så alle subdomenene får HTTPS med ett sertifikat " +
+      "i stedet for ett per navn (Let's Encrypt gir høyst 50 nye per domene per uke). Krever eget domene og et " +
+      "Cloudflare API-token med «Zone → DNS → Edit» for akkurat den sonen; tokenet sjekkes mot Cloudflare og vises " +
+      "aldri igjen. remove: true slår det av og sletter tokenet. Bare prosjekteieren.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Prosjektets ID." },
+        apiToken: { type: "string", description: "Cloudflare API-token. Utelates med remove: true." },
+        remove: { type: "boolean", description: "true slår wildcard av og sletter tokenet." },
+      },
+      required: ["projectId"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    async run(args, ctx) {
+      const { projectId, apiToken, remove } = z
+        .object({
+          projectId: z.string().uuid("projectId må være en UUID."),
+          apiToken: z.string().optional(),
+          remove: z.boolean().optional(),
+        })
+        .parse(args);
+
+      if (remove) {
+        const data = await callOrThrow(ctx, "DELETE", `/projects/${projectId}/wildcard-cert`);
+        return { summary: "Wildcard-sertifikatet er slått av og tokenet slettet.", data };
+      }
+      if (!apiToken) throw new Error("apiToken mangler. Send et Cloudflare API-token, eller remove: true.");
+
+      const data = (await callOrThrow(ctx, "PUT", `/projects/${projectId}/wildcard-cert`, {
+        dnsProvider: "cloudflare",
+        apiToken,
+      })) as { wildcardCert?: { wildcard?: string } };
+      return {
+        summary: `Wildcard ${data.wildcardCert?.wildcard ?? ""} er slått på. Caddy bestiller sertifikatet nå; det tar vanligvis under et minutt.`,
+        data,
+      };
+    },
+  },
+
+  {
     name: "snoat_stop_project",
     title: "Stopp prosjekt",
     description:
