@@ -321,7 +321,11 @@ function pageHeaders(c: Context): void {
     "Content-Security-Policy",
     "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   );
-  c.header("Referrer-Policy", "no-referrer");
+  // `same-origin`, ikke `no-referrer`: med `no-referrer` sender nettleseren
+  // `Origin: null` på skjemaets POST (Fetch-spesifikasjonen), og
+  // opprinnelsessjekken i innloggingen avviste dermed hvert eneste forsøk.
+  // `same-origin` gir fortsatt ingen referrer til andre verter.
+  c.header("Referrer-Policy", "same-origin");
   c.header("X-Content-Type-Options", "nosniff");
   c.header("X-Robots-Tag", "noindex, nofollow");
 }
