@@ -109,6 +109,9 @@ describe("passordsiden og adgangssjekken", () => {
     assert.match(res.headers.get("content-type") ?? "", /text\/html/);
     assert.equal(res.headers.get("cache-control"), "no-store");
     assert.equal(res.headers.get("x-frame-options"), "DENY");
+    // `no-referrer` får nettleseren til å sende `Origin: null` på skjemaets
+    // POST, og da avviser opprinnelsessjekken hver innlogging.
+    assert.equal(res.headers.get("referrer-policy"), "same-origin");
 
     const html = await res.text();
     assert.match(html, /Passord kreves/);
@@ -233,6 +236,20 @@ describe("passordsiden og adgangssjekken", () => {
         ...caddyHeaders(),
         "content-type": "application/x-www-form-urlencoded",
         origin: "https://evil.example",
+      },
+      body: form({ password: PASSORD, retur: "/" }),
+    });
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get("set-cookie"), null);
+  });
+
+  it("avviser et skjema med Origin: null (sandkasset iframe o.l.)", async () => {
+    const res = await gate.request(ACCESS_GATE_PATH, {
+      method: "POST",
+      headers: {
+        ...caddyHeaders(),
+        "content-type": "application/x-www-form-urlencoded",
+        origin: "null",
       },
       body: form({ password: PASSORD, retur: "/" }),
     });
